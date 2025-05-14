@@ -47,14 +47,14 @@ interface DisplayParticipant extends ParticipantType {
 }
 
 const participantColors = [
-  { name: 'sky', bg: "bg-sky-500", text: "text-sky-50", ring: "ring-sky-400", nameText: "text-sky-100" },
-  { name: 'emerald', bg: "bg-emerald-500", text: "text-emerald-50", ring: "ring-emerald-400", nameText: "text-emerald-100" },
-  { name: 'violet', bg: "bg-violet-500", text: "text-violet-50", ring: "ring-violet-400", nameText: "text-violet-100" },
-  { name: 'rose', bg: "bg-rose-500", text: "text-rose-50", ring: "ring-rose-400", nameText: "text-rose-100" },
-  { name: 'amber', bg: "bg-amber-500", text: "text-amber-50", ring: "ring-amber-400", nameText: "text-amber-100" },
-  { name: 'teal', bg: "bg-teal-500", text: "text-teal-50", ring: "ring-teal-400", nameText: "text-teal-100" },
-  { name: 'indigo', bg: "bg-indigo-500", text: "text-indigo-50", ring: "ring-indigo-400", nameText: "text-indigo-100" },
-  { name: 'fuchsia', bg: "bg-fuchsia-500", text: "text-fuchsia-50", ring: "ring-fuchsia-400", nameText: "text-fuchsia-100" },
+  { name: 'sky', bg: "bg-sky-600/70", text: "text-sky-50", ring: "ring-sky-500", nameText: "text-sky-100" },
+  { name: 'emerald', bg: "bg-emerald-600/70", text: "text-emerald-50", ring: "ring-emerald-500", nameText: "text-emerald-100" },
+  { name: 'violet', bg: "bg-violet-600/70", text: "text-violet-50", ring: "ring-violet-500", nameText: "text-violet-100" },
+  { name: 'rose', bg: "bg-rose-600/70", text: "text-rose-50", ring: "ring-rose-500", nameText: "text-rose-100" },
+  { name: 'amber', bg: "bg-amber-600/70", text: "text-amber-50", ring: "ring-amber-500", nameText: "text-amber-100" },
+  { name: 'teal', bg: "bg-teal-600/70", text: "text-teal-50", ring: "ring-teal-500", nameText: "text-teal-100" },
+  { name: 'indigo', bg: "bg-indigo-600/70", text: "text-indigo-50", ring: "ring-indigo-500", nameText: "text-indigo-100" },
+  { name: 'fuchsia', bg: "bg-fuchsia-600/70", text: "text-fuchsia-50", ring: "ring-fuchsia-500", nameText: "text-fuchsia-100" },
 ];
 
 // Simple hash function to get a color index consistently for a user
@@ -69,7 +69,7 @@ const simpleHash = (str: string): number => {
   return Math.abs(hash);
 };
 
-const basicEmojis = ['😀', '😂', '👍', '❤️', '🙏', '😢', '😮', '🤔', '🎉', '🔥', '😊', '💯', '👋', '👀', '👉', '👈', '🤷', '✨', '🙌', '😕'];
+const basicEmojis = ['😀', '😂', '👍', '❤️', '🙏', '😢', '😮', '🤔', '🎉', '🔥', '😊', '💯', '👋', '👀', '👉', '👈', '🤷', '✨', '🙌', '😕', '🥳', '🤯', '😱', '😅', '🥺'];
 
 
 function ChatPageContent({ sessionId }: ChatPageContentProps) {
@@ -95,6 +95,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
 
   useEffect(() => {
@@ -272,6 +273,18 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+   const scrollToMessage = (messageId: string) => {
+    const messageElement = document.getElementById(`msg-${messageId}`);
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Optional: Add a temporary highlight effect
+      messageElement.classList.add('ring-2', 'ring-primary', 'transition-all', 'duration-1000');
+      setTimeout(() => {
+        messageElement.classList.remove('ring-2', 'ring-primary', 'transition-all', 'duration-1000');
+      }, 1500);
+    }
+  };
+
   useEffect(scrollToBottom, [messages]);
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
@@ -357,8 +370,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   const handleSetReply = (message: DisplayMessage) => {
     setQuotingMessage(null); // Cancel any active quote
     setReplyingTo(message);
-    // Optionally focus input field
-    document.getElementById("message-input")?.focus();
+    inputRef.current?.focus();
   };
 
   const handleCancelReply = () => {
@@ -369,16 +381,19 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     setReplyingTo(null); // Cancel any active reply
     setQuotingMessage(message);
     setNewMessage(`> ${message.senderName} schrieb:\n> "${message.content}"\n\n`);
-    // Optionally focus input field
-    document.getElementById("message-input")?.focus();
+    inputRef.current?.focus();
   };
 
   const handleCancelQuote = () => {
     setQuotingMessage(null);
-    // Optionally clear the input if it only contains the quote boilerplate
     if (newMessage.startsWith(`> ${quotingMessage?.senderName} schrieb:\n> "${quotingMessage?.content}"\n\n`)) {
         setNewMessage("");
     }
+  };
+
+  const handleMentionUser = (name: string) => {
+    setNewMessage(prev => `${prev}@${name} `);
+    inputRef.current?.focus();
   };
 
 
@@ -431,7 +446,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
           </Badge>
           {userName && userRole && userId && (
             <>
-              <Avatar className="h-8 w-8 border hidden sm:flex">
+              <Avatar className={cn("h-8 w-8 border hidden sm:flex", getParticipantColorClasses(userId, 'user').ring, "ring-2")}>
                 <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user" />
                 <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
                   {userAvatarFallback}
@@ -458,7 +473,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                     const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
                     return (
                       <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                        <Avatar className="h-9 w-9 border">
+                        <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
                           <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
                           <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
                         </Avatar>
@@ -491,14 +506,14 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
                 return (
                   <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                    <Avatar className="h-9 w-9 border">
+                     <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
                       <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
                       <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
                     </Avatar>
                     <div>
                       <p className="text-sm font-medium">
                         {p.name}
-                        {p.isBot && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">BOT</Badge>}
+                        {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
                         {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                       </p>
                       <p className="text-xs text-muted-foreground">{p.role}</p>
@@ -513,7 +528,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
             <Card className="mt-auto bg-muted/30">
               <CardHeader className="p-3">
                 <div className="flex items-center gap-2">
-                  <Avatar className="h-10 w-10 border">
+                   <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
                     <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
                     <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
                       {userAvatarFallback}
@@ -526,7 +541,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 </div>
               </CardHeader>
               <CardContent className="p-3 pt-0">
-                <ScrollArea className="max-h-32 text-xs"> {/* Increased height for role description */}
+                <ScrollArea className="h-40 text-xs"> {/* Increased height for role description */}
                     <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                         {currentScenario.langbeschreibung}
                     </CardDescription>
@@ -541,11 +556,11 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
           <ScrollArea className="flex-1 p-4 md:p-6">
             <div className="space-y-6">
               {messages.map((msg) => {
-                const bubbleColor = msg.isOwn ? { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90" } : getParticipantColorClasses(msg.senderUserId, msg.senderType);
+                const bubbleColor = msg.isOwn ? { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" } : getParticipantColorClasses(msg.senderUserId, msg.senderType);
                 return (
-                  <div key={msg.id} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
+                  <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
                     {!msg.isOwn && (
-                      <Avatar className="h-10 w-10 border self-end">
+                      <Avatar className={cn("h-10 w-10 border-2 self-end", bubbleColor.ring)}>
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user" />
                         <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{msg.avatarFallback}</AvatarFallback>
                       </Avatar>
@@ -553,14 +568,22 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                     <div className={cn("max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md", bubbleColor.bg, bubbleColor.text)}>
                       <CardContent className="p-3">
                         <div className="flex items-center justify-between mb-1">
-                          <span className={cn("text-xs font-semibold", msg.isOwn ? bubbleColor.nameText : bubbleColor.nameText)}>
+                          <button
+                            onClick={() => !msg.isOwn && handleMentionUser(msg.senderName)}
+                            className={cn("text-xs font-semibold cursor-pointer hover:underline", msg.isOwn ? bubbleColor.nameText : bubbleColor.nameText)}
+                            disabled={msg.isOwn}
+                          >
                             {msg.senderName}
                             {msg.senderType === 'bot' && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
-                          </span>
+                          </button>
                           <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
                         </div>
                         {msg.replyToMessageId && msg.replyToMessageSenderName && msg.replyToMessageContentSnippet && (
-                          <div className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-black/20" : "bg-black/10"} opacity-80`}>
+                          <div 
+                            className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-black/20" : "bg-black/10"} opacity-80 cursor-pointer hover:opacity-100`}
+                            onClick={() => scrollToMessage(msg.replyToMessageId as string)}
+                            title="Zum Original springen"
+                          >
                             <CornerDownLeft className="h-3 w-3 shrink-0" />
                             <div className="truncate">
                               <span className="font-medium">Antwort auf {msg.replyToMessageSenderName}:</span> {msg.replyToMessageContentSnippet}
@@ -579,14 +602,14 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                               </Button>
                             </>
                           )}
-                          <Button variant="ghost" size="icon" className={`h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => alert("Reagieren noch nicht implementiert")} aria-label="Reagieren">
-                            <SmilePlus className="h-4 w-4" />
-                          </Button>
+                           <Button variant="ghost" size="icon" className={`h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => toast({title: "Reagieren (noch nicht implementiert)"})} aria-label="Reagieren">
+                                <SmilePlus className="h-4 w-4" />
+                           </Button>
                         </div>
                       </CardContent>
                     </div>
                     {msg.isOwn && userName && userAvatarFallback && userId && (
-                      <Avatar className="h-10 w-10 border self-end">
+                       <Avatar className={cn("h-10 w-10 border-2 self-end", getParticipantColorClasses(userId, 'user').ring)}>
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
                         <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>{userAvatarFallback}</AvatarFallback>
                       </Avatar>
@@ -645,7 +668,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               </Alert>
             )}
             <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Anhang (noch nicht implementiert)"})}>
                 <Paperclip className="h-5 w-5" />
               </Button>
 
@@ -675,6 +698,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               </Popover>
 
               <Input
+                ref={inputRef}
                 id="message-input"
                 type="text"
                 placeholder={inputPlaceholderText}
@@ -683,7 +707,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 onChange={(e) => setNewMessage(e.target.value)}
                 disabled={!canSendMessage || isLoading}
               />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
                 <Mic className="h-5 w-5" />
               </Button>
               <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!canSendMessage || !newMessage.trim() || isLoading} aria-label="Senden">
