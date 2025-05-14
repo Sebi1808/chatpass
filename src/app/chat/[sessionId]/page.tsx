@@ -397,13 +397,14 @@ export function ChatPageContent({
     let uploadedImageFileName: string | undefined = undefined;
 
     try {
-      if (selectedImageFile) {
+      if (selectedImageFile && selectedImageFile instanceof File) {
         const file = selectedImageFile;
-        const imageFileName = `${file.name}_${Date.now()}`; // Ensure unique enough name
+        const imageFileName = `${file.name}_${Date.now()}`;
         const imagePath = `chat_images/${sessionId}/${imageFileName}`;
         const sRef = storageRef(storage, imagePath);
         
         console.log(`Attempting to upload ${file.name} to ${imagePath}`);
+        console.log("Storage reference:", sRef);
 
         const uploadTask = uploadBytesResumable(sRef, file);
 
@@ -411,31 +412,60 @@ export function ChatPageContent({
           uploadTask.on('state_changed',
             (snapshot) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              console.log('Upload is ' + progress + '% done');
+              console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
               setImageUploadProgress(progress);
+              switch (snapshot.state) {
+                case 'paused':
+                  console.log('Upload is paused');
+                  break;
+                case 'running':
+                  console.log('Upload is running');
+                  break;
+              }
             },
             (error) => { 
-              console.error("Error during Firebase Storage upload: ", error);
-              toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: `Fehler: ${error.code} - ${error.message}` });
-              reject(error); // Reject the promise on error
+              console.error("Firebase Storage upload error: ", error);
+              let errorMessage = `Fehler: ${error.code || 'Unbekannt'}`;
+              if (error.message) errorMessage += ` - ${error.message}`;
+              switch (error.code) {
+                case 'storage/unauthorized':
+                  errorMessage = "Fehler: Keine Berechtigung zum Hochladen. Bitte Admin kontaktieren oder Storage-Regeln prüfen.";
+                  break;
+                case 'storage/canceled':
+                  errorMessage = "Upload abgebrochen.";
+                  break;
+                case 'storage/unknown':
+                  errorMessage = "Unbekannter Fehler beim Upload. Server-Antwort prüfen.";
+                  break;
+              }
+              toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: errorMessage });
+              reject(error);
             },
-            async () => { // This is the 'complete' callback
+            async () => { 
               console.log('Upload successful, getting download URL...');
               try {
-                uploadedImageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                console.log('Download URL:', downloadURL);
+                uploadedImageUrl = downloadURL;
                 uploadedImageFileName = file.name; 
-                console.log('Download URL:', uploadedImageUrl);
-                resolve(); // Resolve the promise on successful completion
+                resolve(); 
               } catch (getUrlError) {
                 console.error("Error getting download URL: ", getUrlError);
-                toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: "URL konnte nicht abgerufen werden." });
-                reject(getUrlError); // Reject if getting URL fails
+                toast({ variant: "destructive", title: "Bild-URL Abruf fehlgeschlagen", description: "URL konnte nicht abgerufen werden." });
+                reject(getUrlError); 
               }
             }
           );
         });
         console.log("Image upload process finished. URL:", uploadedImageUrl);
+      } else if (selectedImageFile) {
+        console.error("selectedImageFile is not a File object:", selectedImageFile);
+        toast({ variant: "destructive", title: "Ungültige Datei", description: "Das ausgewählte Element ist keine gültige Bilddatei." });
+        setIsSendingMessage(false);
+        setImageUploadProgress(null);
+        return;
       }
+
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: Omit<MessageType, 'id'> = {
@@ -469,8 +499,7 @@ export function ChatPageContent({
 
     } catch (error) {
       console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
-      // Toast for generic error if not already handled by upload-specific toasts
-      if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("URL konnte nicht abgerufen werden")))) {
+      if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("URL konnte nicht abgerufen werden") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
       }
     } finally {
@@ -625,7 +654,7 @@ export function ChatPageContent({
             <ScrollArea className="flex-1">
               <div className="space-y-3">
                 {participants.map((p) => {
-                  const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
+                  const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
                   return (
                     <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
                        <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
@@ -908,7 +937,7 @@ export function ChatPageContent({
 }
 
 export default function ChatPage({ params }: { params: ChatPageProps }) {
-  const { sessionId } = params;
+  const { sessionId } = params; // Destructure here
 
   return (
     <Suspense fallback={
@@ -923,3 +952,4 @@ export default function ChatPage({ params }: { params: ChatPageProps }) {
     </Suspense>
   );
 }
+
