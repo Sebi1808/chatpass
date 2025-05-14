@@ -5,11 +5,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot, CornerDownLeft, Settings } from "lucide-react";
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings } from "lucide-react"; // Renamed Bot to BotIcon to avoid conflict
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Added CardHeader, CardTitle
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useRef, type FormEvent } from "react";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario } from "@/lib/types";
 import {
@@ -25,8 +25,21 @@ interface ChatPageProps {
   params: { sessionId: string };
 }
 
+interface Message {
+  id: string;
+  sender: string;
+  senderType: 'admin' | 'user' | 'bot';
+  avatarFallback: string;
+  content: string;
+  timestamp: string;
+  isOwn: boolean;
+  userId: string;
+  replyTo?: string;
+  botFlag?: boolean;
+}
+
 // Mock message data - this will eventually come from a real-time backend
-const mockMessages = [
+const initialMockMessages: Message[] = [
   { id: '1', sender: 'Lehrkraft', senderType: 'admin', avatarFallback: 'LK', content: 'Willkommen zur Simulation "Hate-Speech"! Bitte achtet auf einen respektvollen Umgang.', timestamp: '10:00', isOwn: false, userId: 'admin-001' },
   { id: '2', sender: 'Bot Provokateur', senderType: 'bot', avatarFallback: 'BP', content: 'Respekt? Was für ein langweiliges Wort! 😂', timestamp: '10:01', botFlag: true, isOwn: false, userId: 'bot-provokateur' },
   { id: '3', sender: 'Schüler Max', senderType: 'user', avatarFallback: 'SM', content: 'Das ist nicht witzig. Solche Aussagen sind verletzend.', timestamp: '10:02', isOwn: true, replyTo: 'Bot Provokateur', userId: 'user-max-123' }, // Example with isOwn for the current user
@@ -51,51 +64,84 @@ const initialParticipants: Participant[] = [
 ];
 
 
-function ChatPageContent({ params }: ChatPageProps) {
+function ChatPageContent({ params: pageParams }: ChatPageProps) {
+  const { sessionId } = pageParams; // Destructure sessionId here
   const searchParams = useSearchParams();
   const [userName, setUserName] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [participants, setParticipants] = useState<Participant[]>(initialParticipants);
   const [userAvatarFallback, setUserAvatarFallback] = useState<string>("??");
 
+  const [messages, setMessages] = useState<Message[]>(initialMockMessages);
+  const [newMessage, setNewMessage] = useState("");
+  const messagesEndRef = useRef<null | HTMLDivElement>(null);
+
   useEffect(() => {
-    const nameFromStorage = localStorage.getItem(`chatUser_${params.sessionId}_name`);
-    const roleFromStorage = localStorage.getItem(`chatUser_${params.sessionId}_role`);
+    const nameFromStorage = localStorage.getItem(`chatUser_${sessionId}_name`);
+    const roleFromStorage = localStorage.getItem(`chatUser_${sessionId}_role`);
     
     const nameFromQuery = searchParams.get("name");
     const roleFromQuery = searchParams.get("role");
 
     const finalName = nameFromQuery || nameFromStorage;
     const finalRole = roleFromQuery || roleFromStorage;
+    const generatedUserId = `user-${finalName?.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}`;
+
 
     setUserName(finalName);
     setUserRole(finalRole);
+    setUserId(generatedUserId);
+
 
     if (finalName) {
       setUserAvatarFallback(finalName.substring(0, 2).toUpperCase());
       
-      // Add current user to participants list if not already present
       setParticipants(prev => {
-        const userExists = prev.some(p => p.name === finalName && p.role === finalRole);
+        const userExists = prev.some(p => p.id === generatedUserId);
         if (!userExists && finalName && finalRole) {
-          return [...prev, { id: `user-${Date.now()}`, name: finalName, role: finalRole, avatarFallback: finalName.substring(0,2).toUpperCase(), type: 'user' }];
+          return [...prev, { id: generatedUserId, name: finalName, role: finalRole, avatarFallback: finalName.substring(0,2).toUpperCase(), type: 'user' }];
         }
         return prev;
       });
     }
     
-    const scenario = scenarios.find(s => s.id === params.sessionId);
+    const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
 
-  }, [searchParams, params.sessionId]);
+  }, [searchParams, sessionId]); // Use destructured sessionId
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [messages]);
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
-  // Determine if a message is from the current user
-  // This is a simplified check; in a real app, you'd use unique user IDs.
-  const isOwnMessage = (messageSender: string, messageSenderType: 'admin' | 'user' | 'bot') => {
-    return messageSenderType === 'user' && messageSender === userName;
+  const isOwnMessage = (messageUserId: string) => {
+    return messageUserId === userId;
+  };
+
+  const handleSendMessage = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newMessage.trim() || !userName || !userRole || !userId) return;
+
+    const now = new Date();
+    const newMsg: Message = {
+      id: Date.now().toString(),
+      sender: userName,
+      senderType: 'user',
+      avatarFallback: userAvatarFallback,
+      content: newMessage.trim(),
+      timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isOwn: true,
+      userId: userId,
+    };
+
+    setMessages(prevMessages => [...prevMessages, newMsg]);
+    setNewMessage("");
   };
 
 
@@ -105,7 +151,7 @@ function ChatPageContent({ params }: ChatPageProps) {
       <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
         <h1 className="text-lg font-semibold text-primary">Simulation: {getScenarioTitle()}</h1>
         <div className="flex items-center gap-2">
-            <Badge variant="secondary">ID: {params.sessionId}</Badge>
+            <Badge variant="secondary">ID: {sessionId}</Badge>
             {userName && userRole && (
               <>
                 <Avatar className="h-8 w-8 border">
@@ -138,7 +184,7 @@ function ChatPageContent({ params }: ChatPageProps) {
                         </Avatar>
                         <div>
                           <p className="text-sm font-medium">{p.name}</p>
-                          <p className="text-xs text-muted-foreground">{p.role} {p.type === 'bot' ? <Bot className="inline h-3 w-3" /> : p.type === 'admin' ? <User className="inline h-3 w-3" /> : null}</p>
+                          <p className="text-xs text-muted-foreground">{p.role} {p.type === 'bot' ? <BotIcon className="inline h-3 w-3" /> : p.type === 'admin' ? <User className="inline h-3 w-3" /> : null}</p>
                         </div>
                       </div>
                     ))}
@@ -164,7 +210,7 @@ function ChatPageContent({ params }: ChatPageProps) {
                   </Avatar>
                   <div>
                     <p className="text-sm font-medium">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{p.role} {p.type === 'bot' ? <Bot className="inline h-3 w-3" /> : p.type === 'admin' ? <User className="inline h-3 w-3" /> : null}</p>
+                    <p className="text-xs text-muted-foreground">{p.role} {p.type === 'bot' ? <BotIcon className="inline h-3 w-3" /> : p.type === 'admin' ? <User className="inline h-3 w-3" /> : null}</p>
                   </div>
                 </div>
               ))}
@@ -179,6 +225,7 @@ function ChatPageContent({ params }: ChatPageProps) {
                 {/* Placeholder for role description - this needs to be properly implemented */}
                 {userRole.toLowerCase().includes("teilnehmer") && currentScenario.langbeschreibung.substring(0,100)+"..."}
                  {userRole.toLowerCase().includes("bot") && "Sie sind ein Bot und nehmen aktiv an der Diskussion teil."}
+                 {userRole.toLowerCase().includes("admin") && "Sie sind Admin und moderieren die Diskussion."}
               </CardContent>
             </Card>
           )}
@@ -188,8 +235,8 @@ function ChatPageContent({ params }: ChatPageProps) {
         <main className="flex flex-1 flex-col">
           <ScrollArea className="flex-1 p-4 md:p-6">
             <div className="space-y-6">
-              {mockMessages.map((msg) => {
-                const ownMsg = isOwnMessage(msg.sender, msg.senderType as 'user' | 'admin' | 'bot');
+              {messages.map((msg) => {
+                const ownMsg = isOwnMessage(msg.userId);
                 return (
                   <div key={msg.id} className={`flex gap-3 ${ownMsg ? "justify-end" : "justify-start"}`}>
                     {!ownMsg && (
@@ -203,7 +250,7 @@ function ChatPageContent({ params }: ChatPageProps) {
                         <div className="flex items-center justify-between mb-1">
                           <span className={`text-xs font-semibold ${ownMsg ? "text-primary-foreground/80" : "text-accent"}`}>
                             {msg.sender}
-                            {msg.senderType === 'bot' && <Bot className="inline-block h-3 w-3 ml-1" />}
+                            {msg.senderType === 'bot' && <BotIcon className="inline-block h-3 w-3 ml-1" />}
                             {msg.senderType === 'admin' && <Settings className="inline-block h-3 w-3 ml-1" />}
                           </span>
                           <span className={`text-xs ${ownMsg ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{msg.timestamp}</span>
@@ -216,7 +263,7 @@ function ChatPageContent({ params }: ChatPageProps) {
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       </CardContent>
                     </Card>
-                    {ownMsg && userName && ( // Ensure userName is not null
+                    {ownMsg && userName && ( 
                       <Avatar className="h-10 w-10 border">
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
                         <AvatarFallback>{userAvatarFallback}</AvatarFallback>
@@ -225,12 +272,13 @@ function ChatPageContent({ params }: ChatPageProps) {
                   </div>
                 );
               })}
+              <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
 
           {/* Message Input */}
           <div className="border-t bg-background p-3 md:p-4">
-            <form className="flex items-center gap-2 md:gap-3">
+            <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
               <Button variant="ghost" size="icon" type="button" className="shrink-0">
                 <Paperclip className="h-5 w-5" />
                 <span className="sr-only">Anhang</span>
@@ -243,8 +291,8 @@ function ChatPageContent({ params }: ChatPageProps) {
                 type="text"
                 placeholder="Nachricht eingeben..."
                 className="flex-1 text-base"
-                // Example, do not keep defaultValue in a real chat
-                // defaultValue="Das ist nicht witzig. Solche Aussagen sind verletzend." 
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
               />
               <Button variant="ghost" size="icon" type="button" className="shrink-0">
                 <Mic className="h-5 w-5" />
@@ -271,3 +319,4 @@ export default function ChatPage(props: ChatPageProps) {
     </Suspense>
   );
 }
+
