@@ -15,6 +15,7 @@ import { ArrowLeft, LogIn } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { Progress } from "@/components/ui/progress";
 
 export default function JoinSessionPage() {
   const router = useRouter();
