@@ -15,7 +15,7 @@ import {
 import { Logo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LayoutGrid, MessageCircle, Settings, LogOut, Home } from 'lucide-react';
+import { LayoutGrid, MessageCircle, Settings, LogOut, Home, NotebookPen } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +27,7 @@ import {
 import { scenarios } from '@/lib/scenarios';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const firstScenarioId = scenarios.length > 0 ? scenarios[0].id : '1'; // Use first scenario or fallback
+  const firstScenarioId = scenarios.length > 0 ? scenarios[0].id : '1'; 
 
   return (
     <SidebarProvider defaultOpen>
@@ -64,6 +64,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </Link>
             </SidebarMenuItem>
             <SidebarMenuItem>
+              <Link href="/admin/scenario-editor" legacyBehavior passHref>
+                <SidebarMenuButton tooltip="Szenario Editor">
+                  <NotebookPen /> 
+                  <span>Szenario Editor</span>
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
               <Link href="#" legacyBehavior passHref>
                 <SidebarMenuButton tooltip="Einstellungen">
                   <Settings />
@@ -75,23 +83,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </SidebarContent>
       </Sidebar>
       <SidebarInset>
-        {/* Floating Sidebar Trigger for collapsed state */}
         <div className="fixed top-3 left-3 z-20 hidden group-data-[state=collapsed]:md:block print:hidden">
           <SidebarTrigger className="bg-background/50 hover:bg-background/80 backdrop-blur-sm border"/>
         </div>
-         {/* Standard Header - might hide its own trigger when floating one is active or based on state */}
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-md sm:px-6 print:hidden">
-            {/* Mobile trigger - visible when sidebar is part of Sheet via SidebarProvider */}
             <div className="md:hidden"> 
                 <SidebarTrigger />
             </div>
-            {/* Desktop trigger for offcanvas collapsed state - This one shows when sidebar is completely off screen */}
             <div className="hidden md:block group-data-[variant=sidebar]:group-data-[collapsible=offcanvas]:group-data-[state=collapsed]:block">
                 <SidebarTrigger />
             </div>
 
             <div className="flex-1">
-                {/* Page title or breadcrumbs can go here */}
             </div>
             <div className="flex items-center gap-4">
                 <Link href="/" passHref legacyBehavior>

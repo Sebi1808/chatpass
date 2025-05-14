@@ -6,10 +6,10 @@ import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CornerDownLeft, Quote, SmilePlus, Eye } from "lucide-react";
+import { CornerDownLeft, Quote, SmilePlus, Eye, MessageSquare } from "lucide-react";
 import { cn } from '@/lib/utils';
 import type { DisplayMessage } from '@/lib/types';
-import type { ParticipantColor } from '@/lib/config'; // Assuming ParticipantColor type is exported
+import type { ParticipantColor } from '@/lib/config'; 
 
 interface MessageBubbleProps {
   message: DisplayMessage;
@@ -43,11 +43,9 @@ export function MessageBubble({
     : getParticipantColorClasses(message.senderUserId, message.senderType);
 
   const handleMessageClick = (e: MouseEvent<HTMLDivElement>) => {
-    // Prevent click action if a button or link inside the bubble was clicked
-    if ((e.target as HTMLElement).closest('button, a')) {
+    if ((e.target as HTMLElement).closest('button, a, img')) {
       return;
     }
-    // Potentially add a double click to react or other global message action here
   };
 
   return (
@@ -57,13 +55,13 @@ export function MessageBubble({
       onClick={handleMessageClick}
     >
       {!isOwn && (
-        <Avatar className={cn("h-10 w-10 border-2 self-end", bubbleColor.ring)}>
+        <Avatar className={cn("h-10 w-10 border-2 self-end shrink-0", bubbleColor.ring)}>
           <AvatarImage src={`https://placehold.co/40x40.png?text=${message.avatarFallback}`} alt={message.senderName} data-ai-hint="person user"/>
           <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{message.avatarFallback}</AvatarFallback>
         </Avatar>
       )}
       <div className={cn("max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md", bubbleColor.bg, bubbleColor.text)}>
-        <div className="p-3"> {/* Replaced CardContent with a div for direct styling control */}
+        <div className="p-3">
           <div className="flex items-center justify-between mb-1">
             <button
               onClick={() => !isOwn && onMentionUser(message.senderName)}
@@ -71,9 +69,9 @@ export function MessageBubble({
               disabled={isOwn}
             >
               {message.senderName}
-              {message.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent text-accent bg-accent/10")}>BOT</Badge>}
-              {message.senderType === 'admin' && !isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>ADMIN</Badge>}
-              {message.senderType === 'admin' && isOwn && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 border-primary-foreground/70 text-primary-foreground/80")}>ADMIN (Du)</Badge>}
+              {message.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-current text-current bg-transparent opacity-80")}>🤖 BOT</Badge>}
+              {message.senderType === 'admin' && !isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>👑 ADMIN</Badge>}
+              {message.senderType === 'admin' && isOwn && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 border-primary-foreground/70 text-primary-foreground/80")}>👑 ADMIN (Du)</Badge>}
             </button>
             <span className={`text-xs ${isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{message.timestampDisplay}</span>
           </div>
@@ -92,19 +90,19 @@ export function MessageBubble({
           )}
 
           {message.imageUrl && (
-            <div
+             <div
               className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-auto rounded-md overflow-hidden cursor-pointer group"
-              onClick={() => onSetImageForModal(message.imageUrl || null, message.imageFileName || "Bild")}
+              onClick={(e) => { e.stopPropagation(); onSetImageForModal(message.imageUrl || null, message.imageFileName || "Bild");}}
             >
               <Image
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
-                width={300}
-                height={200}
+                width={300} 
+                height={200} 
                 style={{
                   maxWidth: "100%",
                   height: "auto",
-                  objectFit: "contain",
+                  objectFit: "contain", 
                   display: "block"
                 }}
                 className="transition-transform duration-300 group-hover:scale-105"
@@ -135,7 +133,7 @@ export function MessageBubble({
                         ? `border ${bubbleColor.text === 'text-primary-foreground' ? 'border-primary-foreground/50 bg-black/30' : 'border-current bg-black/20'} ${bubbleColor.text}`
                         : `${bubbleColor.text} hover:bg-black/10`
                     )}
-                    onClick={() => onReactionClick(message.id, emoji)}
+                    onClick={(e) => { e.stopPropagation(); onReactionClick(message.id, emoji); }}
                   >
                     <span className="text-sm mr-0.5">{emoji}</span>
                     <span>{reactedUserIds.length}</span>
@@ -148,22 +146,22 @@ export function MessageBubble({
           <div className="flex items-center gap-1 mt-1.5">
             {!isOwn && (
               <>
-                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => onSetReply(message)} aria-label="Antworten">
+                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
                   <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
                 </Button>
-                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => onSetQuote(message)} aria-label="Zitieren">
+                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onSetQuote(message); }} aria-label="Zitieren">
                   <Quote className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Zitieren</span>
                 </Button>
               </>
             )}
-            <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => onOpenReactionPicker(message.id)} aria-label="Reagieren">
+            <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onOpenReactionPicker(message.id); }} aria-label="Reagieren">
               <SmilePlus className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reagieren</span>
             </Button>
           </div>
         </div>
       </div>
       {isOwn && message.senderName && message.avatarFallback && (
-        <Avatar className={cn("h-10 w-10 border-2 self-end", bubbleColor.ring)}>
+        <Avatar className={cn("h-10 w-10 border-2 self-end shrink-0", bubbleColor.ring)}>
           <AvatarImage src={`https://placehold.co/40x40.png?text=${message.avatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
           <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>
             {message.senderType === 'admin' ? "AD" : message.avatarFallback}

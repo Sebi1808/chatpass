@@ -22,6 +22,7 @@ export interface BotConfig {
   isActive?: boolean; 
   autoTimerEnabled?: boolean;
   id?: string; // Eindeutige ID für den Bot innerhalb des Szenarios
+  currentMission?: string; // Für die Missionseingabe
 }
 
 export interface SessionData {
@@ -65,11 +66,10 @@ export interface Message {
   botFlag?: boolean; 
   imageUrl?: string; 
   imageFileName?: string;
-  reactions?: { [emoji: string]: string[] }; // Array of userIds for each emoji
+  reactions?: { [emoji: string]: string[] }; 
 }
 
 export interface DisplayMessage extends Message {
   isOwn: boolean;
   timestampDisplay: string;
 }
-

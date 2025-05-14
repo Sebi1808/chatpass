@@ -1,3 +1,4 @@
+
 // This is a server-side file.
 'use server';
 
@@ -14,9 +15,10 @@ import {z} from 'genkit';
 
 const BotMessageInputSchema = z.object({
   scenarioContext: z.string().describe('The context of the current chat scenario.'),
-  botPersonality: z.enum(['provokateur', 'verteidiger', 'informant']).describe('The personality of the bot.'),
+  botPersonality: z.enum(['provokateur', 'verteidiger', 'informant', 'standard']).describe('The personality of the bot.'),
   chatHistory: z.string().optional().describe('Previous chat history to maintain context.'),
   escalationLevel: z.number().min(0).max(3).default(0).describe('The current escalation level of the bot (0-3).'),
+  currentMission: z.string().optional().describe('A specific mission or instruction for the bot for the next message.'),
 });
 export type BotMessageInput = z.infer<typeof BotMessageInputSchema>;
 
@@ -44,9 +46,12 @@ Here is the recent chat history:
 {{chatHistory}}
 {{/if}}
 
-Your task is to generate a message that is relevant to the scenario and reflects your personality.
-Consider the current escalation level: {{{escalationLevel}}}. Adjust your message accordingly to escalate or de-escalate the conversation, if appropriate.
+Your current escalation level is: {{{escalationLevel}}}. Adjust your message accordingly to escalate or de-escalate the conversation, if appropriate.
+{{#if currentMission}}
+Your specific instruction for this message is: "{{currentMission}}". Please try to incorporate this into your response.
+{{/if}}
 
+Your task is to generate a message that is relevant to the scenario and reflects your personality.
 Format your response as a JSON object with the following keys:
 - message: The generated message for the bot.
 - bot_flag: (Optional) A flag indicating a specific bot behavior or characteristic. Use if helpful, but it is not required.
