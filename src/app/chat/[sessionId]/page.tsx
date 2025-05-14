@@ -18,7 +18,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger } from "@/components/ui/dialog"; // Added DialogTrigger
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -27,8 +27,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
-import { participantColors, emojiCategories } from '@/lib/config';
+import { participantColors, emojiCategories, type ParticipantColor } from '@/lib/config';
 import { MessageInputBar } from '@/components/chat/message-input-bar';
+import { MessageList } from '@/components/chat/message-list';
 
 
 interface ChatPageUrlParams {
@@ -61,7 +62,7 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: currentSessionId, 
+  sessionId: currentSessionId,
   initialUserName,
   initialUserRole,
   initialUserId,
@@ -88,23 +89,25 @@ export function ChatPageContent({
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isChatDataLoading, setIsChatDataLoading] = useState(true);
-  
+
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
-  
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
-  
+
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  
+
   const [imageForModal, setImageForModal] = useState<string | null>(null);
   const [imageFileNameForModal, setImageFileNameForModal] = useState<string | null>(null);
 
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
+
+  const isSessionActive = sessionData?.status === "active";
 
 
   useEffect(() => {
@@ -294,7 +297,7 @@ export function ChatPageContent({
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
-  const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, nameText: string, ring: string } => {
+  const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
     if (isAdminView && pUserId === userId && pSenderType === 'admin') {
        return { bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
@@ -305,10 +308,12 @@ export function ChatPageContent({
       return { bg: "bg-accent/60", text: "text-accent-foreground", nameText: "text-accent-foreground/90", ring: "ring-accent" };
     }
     if (!pUserId) {
-        return { ...participantColors[0], ring: participantColors[0].ring || "ring-gray-400" };
+        const defaultColor = participantColors[0];
+        return { ...defaultColor, ring: defaultColor.ring || "ring-gray-400" };
     }
     const colorIndex = simpleHash(pUserId) % participantColors.length;
-    return { ...participantColors[colorIndex], ring: participantColors[colorIndex].ring || `ring-${participantColors[colorIndex].name}-400`};
+    const selectedColor = participantColors[colorIndex];
+    return { ...selectedColor, ring: selectedColor.ring || `ring-${selectedColor.name}-400`};
   };
 
 
@@ -321,7 +326,7 @@ export function ChatPageContent({
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUploadProgress(null); 
+      setImageUploadProgress(null);
     }
   };
 
@@ -332,7 +337,7 @@ export function ChatPageContent({
       setImagePreviewUrl(null);
     }
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; 
+      fileInputRef.current.value = "";
     }
     setImageUploadProgress(null);
   };
@@ -500,7 +505,7 @@ export function ChatPageContent({
       setNewMessage("");
       setReplyingTo(null);
       setQuotingMessage(null);
-      handleRemoveSelectedImage(); 
+      handleRemoveSelectedImage();
       if (!isAdminView) setLastMessageSentAt(Date.now());
       setShowEmojiPicker(false);
 
@@ -512,7 +517,7 @@ export function ChatPageContent({
     } finally {
       console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
-      setImageUploadProgress(null); 
+      setImageUploadProgress(null);
     }
   };
 
@@ -530,14 +535,14 @@ export function ChatPageContent({
     setReplyingTo(null);
     const quotedText = `> ${message.senderName} schrieb:\n> "${message.content.replace(/\n/g, '\n> ')}"\n\n`;
     setNewMessage(prev => quotedText + prev);
-    setQuotingMessage(message); 
+    setQuotingMessage(message);
     inputRef.current?.focus();
   };
 
   const handleCancelQuote = () => {
      if (quotingMessage) {
         const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\n\\n`;
-        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g'); 
+        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g');
         setNewMessage(prev => prev.replace(regex, ""));
     }
     setQuotingMessage(null);
@@ -551,7 +556,7 @@ export function ChatPageContent({
   const handleEmojiSelect = (emoji: string) => {
     if (reactingToMessageId) {
       handleReaction(reactingToMessageId, emoji);
-      setReactingToMessageId(null); 
+      setReactingToMessageId(null);
     } else {
       setNewMessage(prev => prev + emoji);
     }
@@ -570,16 +575,16 @@ export function ChatPageContent({
           throw "Document does not exist!";
         }
 
-        const currentData = messageDoc.data() as MessageType; 
+        const currentData = messageDoc.data() as MessageType;
         const currentReactions = currentData.reactions || {};
         const usersWhoReactedWithEmoji: string[] = currentReactions[emoji] || [];
-        
+
         let newReactions = { ...currentReactions };
 
         if (usersWhoReactedWithEmoji.includes(userId)) {
           const updatedUserList = usersWhoReactedWithEmoji.filter(uid => uid !== userId);
           if (updatedUserList.length === 0) {
-            delete newReactions[emoji]; 
+            delete newReactions[emoji];
           } else {
             newReactions[emoji] = updatedUserList;
           }
@@ -602,7 +607,12 @@ export function ChatPageContent({
 
   const openReactionPicker = (messageId: string) => {
     setReactingToMessageId(messageId);
-    setShowEmojiPicker(true); 
+    setShowEmojiPicker(true);
+  };
+
+  const handleSetImageForModal = (imageUrl: string | null, imageFileName: string | null = null) => {
+    setImageForModal(imageUrl);
+    setImageFileNameForModal(imageFileName);
   };
 
 
@@ -621,10 +631,9 @@ export function ChatPageContent({
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
 
-  const isSessionActive = sessionData?.status === "active";
 
   return (
-    <Dialog open={!!imageForModal} onOpenChange={(isOpen) => { if (!isOpen) setImageForModal(null); }}>
+    <Dialog open={!!imageForModal} onOpenChange={(isOpen) => { if (!isOpen) handleSetImageForModal(null); }}>
       <div className={cn("flex flex-col bg-muted/40", isAdminView ? "h-full" : "h-screen")}>
         {!isAdminView && (
           <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
@@ -734,7 +743,7 @@ export function ChatPageContent({
                     </div>
                   </CardHeader>
                   <CardContent className="p-3 pt-0">
-                    <ScrollArea className="h-[200px] text-xs">
+                    <ScrollArea className="h-[150px] text-xs"> {/* Adjusted height */}
                         <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                             {currentScenario.langbeschreibung}
                         </CardDescription>
@@ -747,144 +756,21 @@ export function ChatPageContent({
 
           <main className="flex flex-1 flex-col">
             <ScrollArea className={cn("flex-1 p-4 md:p-6", isAdminView ? "bg-background" : "")}>
-              <div className="space-y-6">
-                {messages.map((msg) => {
-                  const bubbleColor = msg.isOwn ? (isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin') : { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }) : getParticipantColorClasses(msg.senderUserId, msg.senderType);
-                  return (
-                    <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
-                      {!msg.isOwn && (
-                        <Avatar className={cn("h-10 w-10 border-2 self-end", bubbleColor.ring)}>
-                          <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user"/>
-                          <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{msg.avatarFallback}</AvatarFallback>
-                        </Avatar>
-                      )}
-                      <div className={cn("max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md", bubbleColor.bg, bubbleColor.text)}>
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <button
-                              onClick={() => !msg.isOwn && handleMentionUser(msg.senderName)}
-                              className={cn("text-xs font-semibold cursor-pointer hover:underline", bubbleColor.nameText)}
-                              disabled={msg.isOwn}
-                            >
-                              {msg.senderName}
-                              {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent text-accent bg-accent/10")}>BOT</Badge>}
-                              {msg.senderType === 'admin' && !msg.isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>ADMIN</Badge>}
-                              {msg.senderType === 'admin' && msg.isOwn && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 border-primary-foreground/70 text-primary-foreground/80")}>ADMIN (Du)</Badge>}
-
-                            </button>
-                            <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
-                          </div>
-                          {msg.replyToMessageId && msg.replyToMessageSenderName && msg.replyToMessageContentSnippet && (
-                            <div
-                              className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-black/20" : "bg-black/10"} opacity-80 cursor-pointer hover:opacity-100`}
-                              onClick={() => scrollToMessage(msg.replyToMessageId as string)}
-                              title="Zum Original springen"
-                            >
-                              <CornerDownLeft className="h-3 w-3 shrink-0" />
-                              <div className="truncate">
-                                <span className="font-medium">Antwort auf {msg.replyToMessageSenderName}:</span> {msg.replyToMessageContentSnippet}
-                              </div>
-                            </div>
-                          )}
-                          {msg.imageUrl && (
-                             <div 
-                                className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-auto rounded-md overflow-hidden cursor-pointer group"
-                                onClick={() => {
-                                  setImageForModal(msg.imageUrl || null);
-                                  setImageFileNameForModal(msg.imageFileName || "Bild");
-                                }}
-                               >
-                                <Image
-                                  src={msg.imageUrl}
-                                  alt={msg.imageFileName || "Hochgeladenes Bild"}
-                                  width={300} 
-                                  height={200} 
-                                  style={{ 
-                                    maxWidth: "100%", 
-                                    height: "auto", 
-                                    objectFit: "contain", 
-                                    display: "block" 
-                                  }}
-                                  className="transition-transform duration-300 group-hover:scale-105"
-                                  data-ai-hint="chat image"
-                                />
-                                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                    <Eye className="h-8 w-8 text-white" />
-                                </div>
-                               </div>
-                          )}
-                           {msg.imageFileName && !msg.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {msg.imageFileName}</p>}
-                          {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
-                          
-                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {Object.entries(msg.reactions).map(([emoji, reactedUserIds]) => {
-                                if (!Array.isArray(reactedUserIds) || reactedUserIds.length === 0) return null;
-                                const currentUserReacted = reactedUserIds.includes(userId!);
-                                return (
-                                  <Button
-                                    key={emoji}
-                                    variant={currentUserReacted ? "secondary" : "ghost"}
-                                    size="sm"
-                                    className={cn(
-                                      "h-auto px-1.5 py-0.5 rounded-full text-xs",
-                                      currentUserReacted 
-                                        ? `border ${bubbleColor.text === 'text-primary-foreground' ? 'border-primary-foreground/50 bg-black/30' : 'border-current bg-black/20'} ${bubbleColor.text}`
-                                        : `${bubbleColor.text} hover:bg-black/10`
-                                    )}
-                                    onClick={() => handleReaction(msg.id, emoji)}
-                                  >
-                                    <span className="text-sm mr-0.5">{emoji}</span>
-                                    <span>{reactedUserIds.length}</span>
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-1 mt-1.5">
-                            {!msg.isOwn && (
-                              <>
-                                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => handleSetReply(msg)} aria-label="Antworten">
-                                  <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
-                                </Button>
-                                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => handleSetQuote(msg)} aria-label="Zitieren">
-                                  <Quote className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Zitieren</span>
-                                </Button>
-                              </>
-                            )}
-                             <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => openReactionPicker(msg.id)} aria-label="Reagieren">
-                                <SmilePlus className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reagieren</span>
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </div>
-                       {msg.isOwn && userName && userAvatarFallback && userId && (
-                         <Avatar className={cn("h-10 w-10 border-2 self-end", isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').ring : getParticipantColorClasses(userId, 'user').ring)}>
-                          <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
-                          <AvatarFallback className={`${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').bg : getParticipantColorClasses(userId, 'user').bg} ${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').text : getParticipantColorClasses(userId, 'user').text}`}>
-                             {msg.senderType === 'admin' && isAdminView ? "AD" : userAvatarFallback}
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                    </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-                {messages.length === 0 && !isChatDataLoading && (
-                  <div className="text-center text-muted-foreground py-8">
-                    <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                    <p>Noch keine Nachrichten in dieser Sitzung.</p>
-                    {!isAdminView && <p>Sei der Erste, der eine Nachricht sendet!</p>}
-                  </div>
-                )}
-                {isChatDataLoading && (
-                  <div className="text-center text-muted-foreground py-8">
-                    <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50 animate-pulse" />
-                    <p>Lade Chat-Nachrichten...</p>
-                  </div>
-                )}
-              </div>
+              <MessageList
+                messages={messages}
+                currentUserId={userId}
+                getParticipantColorClasses={getParticipantColorClasses}
+                onMentionUser={handleMentionUser}
+                onSetReply={handleSetReply}
+                onSetQuote={handleSetQuote}
+                onOpenReactionPicker={openReactionPicker}
+                onScrollToMessage={scrollToMessage}
+                onSetImageForModal={handleSetImageForModal}
+                onReactionClick={handleReaction}
+                messagesEndRef={messagesEndRef}
+                isChatDataLoading={isChatDataLoading}
+                isAdminView={isAdminView}
+              />
             </ScrollArea>
 
             <MessageInputBar
@@ -929,17 +815,17 @@ export function ChatPageContent({
             <Image
               src={imageForModal}
               alt={imageFileNameForModal || "Vollbild-Vorschau"}
-              width={1200} 
+              width={1200}
               height={800}
               sizes="(max-width: 768px) 80vw, (max-width: 1200px) 60vw, 50vw"
               style={{
-                objectFit: "contain", 
-                maxWidth: '100%',    
+                objectFit: "contain",
+                maxWidth: '100%',
                 maxHeight: '100%',
-                width: 'auto',      // Added for aspect ratio
-                height: 'auto'     // Added for aspect ratio
+                width: 'auto',
+                height: 'auto'
               }}
-              className="block rounded-md" 
+              className="block rounded-md"
               data-ai-hint="image modal"
             />
           </div>
@@ -949,8 +835,12 @@ export function ChatPageContent({
   );
 }
 
-export default function ChatPage({ params: pageParams }: ChatPageProps) {
-  const { sessionId } = pageParams; 
+interface ChatPageOuterProps {
+  params: { sessionId: string };
+}
+
+export default function ChatPage({ params: pageParams }: ChatPageOuterProps) {
+  const { sessionId } = pageParams;
 
   return (
     <Suspense fallback={
@@ -965,5 +855,3 @@ export default function ChatPage({ params: pageParams }: ChatPageProps) {
     </Suspense>
   );
 }
-
-    
