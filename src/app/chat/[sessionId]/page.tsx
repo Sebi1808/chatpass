@@ -96,8 +96,11 @@ export function ChatPageContent({
 
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
+  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
 
   const [showEmojiPickerForInput, setShowEmojiPickerForInput] = useState(false);
+  const [showEmojiPickerForReaction, setShowEmojiPickerForReaction] = useState(false);
+
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -302,16 +305,16 @@ export function ChatPageContent({
 
   const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
     if (isAdminView && pUserId === userId && pSenderType === 'admin') {
-       return { bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
+       return { name: 'admin', bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
     if (pSenderType === 'admin') {
-      return { bg: "bg-destructive/70", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
+      return { name: 'admin-other', bg: "bg-destructive/70", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
     if (pSenderType === 'bot') {
-      return { bg: "bg-accent/60", text: "text-accent-foreground", nameText: "text-accent-foreground/90", ring: "ring-accent" };
+      return { name: 'bot', bg: "bg-accent/60", text: "text-accent-foreground", nameText: "text-accent-foreground/90", ring: "ring-accent" };
     }
     if (!pUserId) {
-        const defaultColor = participantColors[0];
+        const defaultColor = participantColors[0]; // Should ideally not happen if pUserId is always present for users
         return { ...defaultColor, ring: defaultColor.ring || "ring-gray-400" };
     }
     const colorIndex = simpleHash(pUserId) % participantColors.length;
@@ -562,6 +565,19 @@ export function ChatPageContent({
     setShowEmojiPickerForInput(false);
   };
 
+  const handleEmojiSelectForReaction = (emoji: string) => {
+    if (reactingToMessageId) {
+      handleReaction(reactingToMessageId, emoji);
+    }
+    setShowEmojiPickerForReaction(false);
+    setReactingToMessageId(null);
+  };
+
+  const handleOpenReactionPicker = (messageId: string) => {
+    setReactingToMessageId(messageId);
+    setShowEmojiPickerForReaction(true); // This will now be handled by individual popovers in MessageBubble
+  };
+
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) return;
 
@@ -592,8 +608,6 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-      // Optional: Toast for successful reaction, can be too noisy
-      // toast({ title: `Reagiert mit ${emoji}` });
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -708,6 +722,7 @@ export function ChatPageContent({
                 messagesEndRef={messagesEndRef}
                 isChatDataLoading={isChatDataLoading}
                 isAdminView={isAdminView}
+                onOpenReactionPicker={handleOpenReactionPicker}
               />
             </ScrollArea>
 
@@ -767,11 +782,11 @@ export function ChatPageContent({
 
 
 interface ChatPageProps {
-  params: { sessionId: string };
+  params: ChatPageUrlParams;
 }
 
-export default function ChatPage({ params }: ChatPageProps) {
-  const sessionId = params.sessionId; 
+export default function ChatPage(props: ChatPageOuterProps) {
+  const sessionId = props.params.sessionId; 
 
   return (
     <Suspense fallback={
@@ -786,3 +801,6 @@ export default function ChatPage({ params }: ChatPageProps) {
     </Suspense>
   );
 }
+
+
+    

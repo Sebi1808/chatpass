@@ -1,7 +1,7 @@
 
 "use client";
 
-import { type MouseEvent, useState } from 'react'; // Added useState import
+import { type MouseEvent, useState } from 'react';
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ interface MessageBubbleProps {
   onSetImageForModal: (imageUrl: string | null, imageFileName?: string | null) => void;
   onReaction: (messageId: string, emoji: string) => void;
   emojiCategories: typeof EmojiCategoriesType;
+  onOpenReactionPicker: (messageId: string) => void; // To inform parent about opening
 }
 
 export function MessageBubble({
@@ -40,14 +41,14 @@ export function MessageBubble({
   onSetImageForModal,
   onReaction,
   emojiCategories,
+  onOpenReactionPicker,
 }: MessageBubbleProps) {
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   const bubbleColor = isOwn
-    ? (message.senderType === 'admin' ? getParticipantColorClasses(currentUserId || undefined, 'admin') : { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" })
+    ? (message.senderType === 'admin' ? getParticipantColorClasses(currentUserId || undefined, 'admin') : { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" })
     : getParticipantColorClasses(message.senderUserId, message.senderType);
 
   const handleMessageClick = (e: MouseEvent<HTMLDivElement>) => {
-    // Prevents the message click from closing popovers if the click is inside a popover or on a button
     if ((e.target as HTMLElement).closest('button, a, img, [data-radix-popover-content-wrapper]')) {
       return;
     }
@@ -55,7 +56,7 @@ export function MessageBubble({
 
   const handleEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
-    setShowReactionPicker(false); // Close picker after selection
+    setShowReactionPicker(false);
   };
 
 
@@ -110,7 +111,8 @@ export function MessageBubble({
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
                 width={300} 
-                height={300} 
+                height={200} // Default height, adjust if needed or use intrinsic
+                sizes="(max-width: 640px) 250px, 300px"
                 style={{
                   maxWidth: "100%",
                   height: "auto", 
@@ -141,8 +143,9 @@ export function MessageBubble({
                     size="sm"
                     className={cn(
                       "h-auto px-1.5 py-0.5 rounded-full text-xs",
+                       // Ensure proper contrast for selected reactions
                       currentUserReacted
-                        ? `border ${bubbleColor.text === 'text-primary-foreground' ? 'border-primary-foreground/50 bg-black/30' : 'border-current bg-black/20'} ${bubbleColor.text}`
+                        ? (bubbleColor.bg === 'bg-primary' ? 'bg-primary-foreground/20 border border-primary-foreground/50 text-primary-foreground' : 'bg-black/30 border border-current text-current')
                         : `${bubbleColor.text} hover:bg-black/10`
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
@@ -168,11 +171,21 @@ export function MessageBubble({
             )}
             <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); setShowReactionPicker(true); }} aria-label="Reagieren">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    onOpenReactionPicker(message.id); // Inform parent
+                    setShowReactionPicker(true); 
+                  }} 
+                  aria-label="Reagieren"
+                >
                   <SmilePlus className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reagieren</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start" onClick={(e) => e.stopPropagation()}>
+              <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align={isOwn ? "end" : "start"} onClick={(e) => e.stopPropagation()}>
                 <Tabs defaultValue={emojiCategories[0].name} className="w-full">
                   <TabsList className="grid w-full grid-cols-5 h-auto p-1">
                     {emojiCategories.map(category => (
@@ -217,3 +230,5 @@ export function MessageBubble({
     </div>
   );
 }
+
+    

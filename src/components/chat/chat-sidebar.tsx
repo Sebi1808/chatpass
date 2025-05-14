@@ -42,7 +42,7 @@ export function ChatSidebar({
           {participants.map((p) => {
             const pColor = getParticipantColorClasses(p.userId, p.isBot ? 'bot' : (p.userId === currentUserId && isAdminView ? 'admin' : 'user'));
             const isAdminParticipant = p.userId === currentUserId && isAdminView;
-            const isCurrentParticipantMuted = p.userId === currentUserId && isMuted;
+            const isCurrentParticipantMuted = p.isMuted ?? false; // Use participant's own muted status
 
             return (
               <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
@@ -53,9 +53,9 @@ export function ChatSidebar({
                 <div>
                   <p className="text-sm font-medium">
                     {p.name}
-                    {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent bg-accent/10">🤖 BOT</Badge>}
+                    {p.isBot && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent bg-accent/10")}>🤖 BOT</Badge>}
                     {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">👑 ADMIN</Badge>}
-                    {isCurrentParticipantMuted && !isAdminParticipant && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
+                    {isCurrentParticipantMuted && !p.isBot && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                   </p>
                   <p className="text-xs text-muted-foreground">{p.role}</p>
                 </div>
@@ -95,3 +95,5 @@ export function ChatSidebar({
     </>
   );
 }
+
+    

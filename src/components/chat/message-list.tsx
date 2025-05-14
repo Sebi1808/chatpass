@@ -16,11 +16,12 @@ interface MessageListProps {
   onSetQuote: (message: DisplayMessage) => void;
   onScrollToMessage: (messageId: string) => void;
   onSetImageForModal: (imageUrl: string | null, imageFileName?: string | null) => void;
-  onReaction: (messageId: string, emoji: string) => void; // Updated prop name
-  emojiCategories: typeof EmojiCategoriesType; // Added prop
+  onReaction: (messageId: string, emoji: string) => void; 
+  emojiCategories: typeof EmojiCategoriesType; 
   messagesEndRef: RefObject<HTMLDivElement>;
   isChatDataLoading: boolean;
   isAdminView?: boolean;
+  onOpenReactionPicker: (messageId: string) => void;
 }
 
 export function MessageList({
@@ -32,11 +33,12 @@ export function MessageList({
   onSetQuote,
   onScrollToMessage,
   onSetImageForModal,
-  onReaction, // Updated prop name
-  emojiCategories, // Added prop
+  onReaction, 
+  emojiCategories, 
   messagesEndRef,
   isChatDataLoading,
   isAdminView = false,
+  onOpenReactionPicker,
 }: MessageListProps) {
   return (
     <div className="space-y-6">
@@ -52,8 +54,9 @@ export function MessageList({
           onSetQuote={onSetQuote}
           onScrollToMessage={onScrollToMessage}
           onSetImageForModal={onSetImageForModal}
-          onReaction={onReaction} // Pass down the reaction handler
-          emojiCategories={emojiCategories} // Pass down emoji categories
+          onReaction={onReaction} 
+          emojiCategories={emojiCategories} 
+          onOpenReactionPicker={onOpenReactionPicker}
         />
       ))}
       <div ref={messagesEndRef} />
@@ -73,3 +76,5 @@ export function MessageList({
     </div>
   );
 }
+
+    
