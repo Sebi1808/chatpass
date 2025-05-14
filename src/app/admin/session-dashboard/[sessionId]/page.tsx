@@ -28,6 +28,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"; // Import Avatar components
+import { cn } from '@/lib/utils'; // For cn utility
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
@@ -42,6 +44,29 @@ const DEFAULT_COOLDOWN = 0; // Default 0 seconds cooldown
 
 // Helper to generate a random token
 const generateToken = () => Math.random().toString(36).substring(2, 10);
+
+// Participant colors from chat page for consistency in mirror view
+const participantColors = [
+  { name: 'sky', bg: "bg-sky-600/70", text: "text-sky-50", ring: "ring-sky-500", nameText: "text-sky-100" },
+  { name: 'emerald', bg: "bg-emerald-600/70", text: "text-emerald-50", ring: "ring-emerald-500", nameText: "text-emerald-100" },
+  { name: 'violet', bg: "bg-violet-600/70", text: "text-violet-50", ring: "ring-violet-500", nameText: "text-violet-100" },
+  { name: 'rose', bg: "bg-rose-600/70", text: "text-rose-50", ring: "ring-rose-500", nameText: "text-rose-100" },
+  { name: 'amber', bg: "bg-amber-600/70", text: "text-amber-50", ring: "ring-amber-500", nameText: "text-amber-100" },
+  { name: 'teal', bg: "bg-teal-600/70", text: "text-teal-50", ring: "ring-teal-500", nameText: "text-teal-100" },
+  { name: 'indigo', bg: "bg-indigo-600/70", text: "text-indigo-50", ring: "ring-indigo-500", nameText: "text-indigo-100" },
+  { name: 'fuchsia', bg: "bg-fuchsia-600/70", text: "text-fuchsia-50", ring: "ring-fuchsia-500", nameText: "text-fuchsia-100" },
+];
+
+const simpleHash = (str: string): number => {
+  let hash = 0;
+  if (!str) return 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; 
+  }
+  return Math.abs(hash);
+};
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
   const { sessionId } = props.params;
@@ -430,6 +455,20 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     return "Neu initialisieren";
   };
 
+  const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, name: string, ring: string, nameText: string } => {
+    if (pSenderType === 'bot') {
+      return { bg: "bg-accent/30", text: "text-accent-foreground", name: 'bot', ring: "ring-accent", nameText: "text-accent" };
+    }
+    if (pSenderType === 'admin') { // Should not happen in mirror view for messages, but good for participants
+      return { bg: "bg-destructive/30", text: "text-destructive-foreground", name: 'admin', ring: "ring-destructive", nameText: "text-destructive" };
+    }
+    if (!pUserId) { 
+        return participantColors[0];
+    }
+    const colorIndex = simpleHash(pUserId) % participantColors.length;
+    return participantColors[colorIndex];
+  };
+
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
@@ -483,16 +522,18 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         </Card>
       )}
 
+      {/* Participant Mirror View Section */}
       {showParticipantMirrorView && (
-        <Card className="mt-6">
+        <Card className="mt-6 border-primary/50 shadow-lg">
           <CardHeader>
-            <CardTitle className="flex items-center"><Eye className="mr-2 h-5 w-5 text-primary"/> Vorschau Teilnehmeransicht</CardTitle>
-            <CardDescription>Dies ist eine vereinfachte Live-Vorschau der Chat-Interaktion und Teilnehmer.</CardDescription>
+            <CardTitle className="flex items-center text-primary"><Eye className="mr-2 h-5 w-5"/> Vorschau Teilnehmeransicht</CardTitle>
+            <CardDescription>Dies ist eine Live-Vorschau des Chats und der Teilnehmer, wie sie es sehen würden. Keine Interaktion möglich.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Mirrored Chat History */}
             <div>
               <h3 className="text-lg font-semibold mb-2">Live Chat-Verlauf (Vorschau)</h3>
-              <div className="h-72 bg-muted/30 rounded-md p-4 overflow-y-auto space-y-2 border">
+              <div className="h-80 bg-muted/20 rounded-md p-4 overflow-y-auto space-y-3 border border-border">
                 {isLoadingMessages && <p className="text-sm text-muted-foreground">Chat-Nachrichten werden geladen...</p>}
                 {!isLoadingMessages && chatMessages.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -500,36 +541,71 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                     <p className="text-sm">Noch keine Nachrichten.</p>
                   </div>
                 )}
-                {!isLoadingMessages && chatMessages.map(msg => (
-                  <div key={`mirror-${msg.id}`} className="text-xs p-1.5 rounded bg-card/50 shadow-sm">
-                    <span className={`font-semibold ${msg.senderType === 'bot' ? 'text-accent' : msg.senderType === 'admin' ? 'text-primary' : 'text-foreground/80'}`}>
-                      {msg.senderName}:
-                    </span>
-                    <span className="ml-1">{msg.content}</span>
-                    <span className="text-xs text-muted-foreground/70 float-right pt-0.5">{msg.timestampDisplay}</span>
-                  </div>
-                ))}
+                {!isLoadingMessages && chatMessages.map(msg => {
+                  const isOwnForMirror = msg.senderType === 'admin'; // In this context, admin is "own"
+                  const bubbleColor = isOwnForMirror 
+                    ? { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90" }
+                    : getParticipantColorClasses(msg.senderUserId, msg.senderType);
+
+                  return (
+                    <div key={`mirror-msg-${msg.id}`} className={`flex gap-2.5 ${isOwnForMirror ? "justify-end" : "justify-start"}`}>
+                      {!isOwnForMirror && msg.avatarFallback && (
+                        <Avatar className={cn("h-8 w-8 border self-end", bubbleColor.ring)}>
+                           <AvatarFallback className={cn("text-xs", bubbleColor.bg, bubbleColor.text)}>{msg.avatarFallback}</AvatarFallback>
+                        </Avatar>
+                      )}
+                       <div className={cn("max-w-xs md:max-w-sm rounded-lg shadow", bubbleColor.bg, bubbleColor.text)}>
+                        <div className="p-2.5">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className={cn("text-xs font-semibold", bubbleColor.nameText)}>
+                              {msg.senderName}
+                              {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", isOwnForMirror ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent/50 text-accent")}>BOT</Badge>}
+                            </span>
+                            <span className={`text-[10px] ${isOwnForMirror ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        </div>
+                      </div>
+                      {isOwnForMirror && msg.avatarFallback && (
+                         <Avatar className={cn("h-8 w-8 border self-end", bubbleColor.ring)}>
+                           <AvatarFallback className={cn("text-xs", bubbleColor.bg, bubbleColor.text)}>{msg.avatarFallback || "AD"}</AvatarFallback>
+                        </Avatar>
+                      )}
+                    </div>
+                  );
+                })}
                 <div ref={chatMessagesEndRef} />
               </div>
             </div>
+            {/* Mirrored Participants List */}
             <div>
               <h3 className="text-lg font-semibold mb-2">Teilnehmer (Vorschau)</h3>
-              <div className="max-h-60 overflow-y-auto space-y-3 border p-3 rounded-md bg-muted/30">
+              <div className="max-h-60 overflow-y-auto space-y-2 border p-3 rounded-md bg-muted/20">
                 {isLoadingParticipants && <p className="text-sm text-muted-foreground">Lade Teilnehmer...</p>}
-                {!isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).map(p => (
-                  <div key={`mirror-participant-${p.id || p.userId}`} className="flex items-center justify-between p-1.5 bg-card/50 rounded-md text-xs">
-                    <div>
-                      <p className="font-medium">{p.name} {p.isBot && <Badge variant="secondary" className="ml-1 text-xs">BOT</Badge>}</p>
-                      <p className="text-xs text-muted-foreground">
-                          {p.role} - 
-                          <span className={p.status === "Nicht beigetreten" || p.id.startsWith("student-placeholder") ? "italic text-orange-500" : "text-green-500"}>
-                              {p.id.startsWith("student-placeholder") ? "Nicht beigetreten" : (p.status || "Beigetreten")}
-                          </span>
-                           {p.isMuted && <Badge variant="destructive" className="ml-1 text-xs">Stumm</Badge>}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                {!isLoadingParticipants && displayParticipantsList.map(p => {
+                    const pColor = getParticipantColorClasses(p.userId, p.isBot ? 'bot' : 'user');
+                    return (
+                      <div key={`mirror-participant-${p.id || p.userId}`} 
+                           className="flex items-center gap-3 p-1.5 bg-background/50 rounded-md border border-border/50 text-xs shadow-sm">
+                        <Avatar className={cn("h-7 w-7 border-2", pColor.ring)}>
+                            <AvatarFallback className={`${pColor.bg} ${pColor.text} text-xs`}>{p.avatarFallback}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                        <p className="font-medium text-foreground">
+                            {p.name} 
+                            {p.isBot && <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">BOT</Badge>}
+                            {p.isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1" />}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {p.role} - 
+                            <span className={p.status === "Nicht beigetreten" || p.id.startsWith("student-placeholder") ? "italic text-amber-500" : "text-emerald-500"}>
+                                {p.id.startsWith("student-placeholder") ? "Nicht beigetreten" : (p.status || "Beigetreten")}
+                            </span>
+                        </p>
+                        </div>
+                      </div>
+                    );
+                })}
                 {!isLoadingParticipants && expectedStudentRoles === 0 && sessionParticipants.filter(p => !p.isBot).length === 0 && (
                   <p className="text-xs text-muted-foreground">Keine Teilnehmer für dieses Szenario vorgesehen.</p>
                 )}
@@ -576,9 +652,10 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             </CardContent>
           </Card>
 
+          {/* Original Chat History Card - Can be removed if mirror view is preferred and sufficient */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary" /> Chat-Verlauf (Live-Vorschau)</CardTitle>
+              <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary" /> Chat-Verlauf (Admin-Ansicht)</CardTitle>
               <CardDescription>Beobachten Sie die laufende Diskussion.</CardDescription>
             </CardHeader>
             <CardContent className="h-96 bg-muted/30 rounded-md p-4 overflow-y-auto space-y-2">
