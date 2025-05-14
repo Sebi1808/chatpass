@@ -19,7 +19,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Import Tabs components
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
@@ -33,8 +33,14 @@ interface ChatPageProps {
   params: { sessionId: string };
 }
 
+// Props für ChatPageContent erweitert
 interface ChatPageContentProps {
   sessionId: string;
+  initialUserName?: string;
+  initialUserRole?: string;
+  initialUserId?: string;
+  initialUserAvatarFallback?: string;
+  isAdminView?: boolean;
 }
 
 interface DisplayMessage extends MessageType {
@@ -48,45 +54,52 @@ interface DisplayParticipant extends ParticipantType {
 }
 
 const participantColors = [
-  { name: 'sky', bg: "bg-sky-600/70", text: "text-sky-50", ring: "ring-sky-500", nameText: "text-sky-100" },
-  { name: 'emerald', bg: "bg-emerald-600/70", text: "text-emerald-50", ring: "ring-emerald-500", nameText: "text-emerald-100" },
-  { name: 'violet', bg: "bg-violet-600/70", text: "text-violet-50", ring: "ring-violet-500", nameText: "text-violet-100" },
-  { name: 'rose', bg: "bg-rose-600/70", text: "text-rose-50", ring: "ring-rose-500", nameText: "text-rose-100" },
-  { name: 'amber', bg: "bg-amber-600/70", text: "text-amber-50", ring: "ring-amber-500", nameText: "text-amber-100" },
-  { name: 'teal', bg: "bg-teal-600/70", text: "text-teal-50", ring: "ring-teal-500", nameText: "text-teal-100" },
-  { name: 'indigo', bg: "bg-indigo-600/70", text: "text-indigo-50", ring: "ring-indigo-500", nameText: "text-indigo-100" },
-  { name: 'fuchsia', bg: "bg-fuchsia-600/70", text: "text-fuchsia-50", ring: "ring-fuchsia-500", nameText: "text-fuchsia-100" },
+  { name: 'sky', bg: "bg-sky-500/80", text: "text-sky-50", ring: "ring-sky-400", nameText: "text-sky-100" },
+  { name: 'emerald', bg: "bg-emerald-500/80", text: "text-emerald-50", ring: "ring-emerald-400", nameText: "text-emerald-100" },
+  { name: 'violet', bg: "bg-violet-500/80", text: "text-violet-50", ring: "ring-violet-400", nameText: "text-violet-100" },
+  { name: 'rose', bg: "bg-rose-500/80", text: "text-rose-50", ring: "ring-rose-400", nameText: "text-rose-100" },
+  { name: 'amber', bg: "bg-amber-500/80", text: "text-amber-50", ring: "ring-amber-400", nameText: "text-amber-100" },
+  { name: 'teal', bg: "bg-teal-500/80", text: "text-teal-50", ring: "ring-teal-400", nameText: "text-teal-100" },
+  { name: 'indigo', bg: "bg-indigo-500/80", text: "text-indigo-50", ring: "ring-indigo-400", nameText: "text-indigo-100" },
+  { name: 'fuchsia', bg: "bg-fuchsia-500/80", text: "text-fuchsia-50", ring: "ring-fuchsia-400", nameText: "text-fuchsia-100" },
 ];
 
-// Simple hash function to get a color index consistently for a user
 const simpleHash = (str: string): number => {
   let hash = 0;
   if (!str) return 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = (hash << 5) - hash + char;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0; 
   }
   return Math.abs(hash);
 };
 
 const emojiCategories = [
-  { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠'] },
-  { name: "People", icon: "🧑", emojis: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👣', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👨‍🦰', '👨‍🦱', '👨‍🦳', '👨‍🦲'] },
-  { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐒', '🦍', '🦧', '🐶', '🐕', '🦮', '🐕‍🦺', '🐩', '🐺', '🦊', '🦝', '🐱', '🐈', '🐈‍⬛', '🦁', '🐯', '🐅', '🐆', '🐴', '🐎', '🦄', '🦓', '🦌', '🦬', '🐮', '🐂', '🐃', '🐄', '🐷', '🐖', '🐗', '🐽', '🐏', '🐑', '🐐', '🐪', '🐫', '🦙', '🦒', '🐘', '🦣', '🦏', '🦛', '🐭', '🐁', '🐀', '🐹', '🐰', '🐇', '🐿️', '🦫', '🦔', '🦇', '🐻', '🐻‍❄️', '🐨', '🐼', '🦥', '🦦', '🦨', '🦘', '🦡'] },
-  { name: "Food", icon: "🍔", emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫'] },
-  { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅'] },
+  { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'] },
+  { name: "People", icon: "🧑", emojis: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👣', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👨‍🦰', '👨‍🦱', '👨‍🦳', '👨‍𦲀', '👵', '🧓', '👴', '👲', '👳‍♀️', '👳‍♂️', '🧕', '👮‍♀️', '👮‍♂️', '👷‍♀️', '👷‍♂️', '💂‍♀️', '💂‍♂️', '🕵️‍♀️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤', '👩‍🏫', '👨‍🏫', '👩‍🏭', '👨‍🏭', '👩‍💻', '👨‍💻', '👩‍💼', '👨‍💼', '👩‍🔧', '👨‍🔧', '👩‍🔬', '👨‍🔬', '👩‍🎨', '👨‍🎨', '👩‍🚒', '👨‍🚒', '👩‍✈️', '👨‍✈️', '👩‍🚀', '👨‍🚀', '👩‍⚖️', '👨‍⚖️', '👰‍♀️', '👰‍♂️', '🤵‍♀️', '🤵‍♂️', '👸', '🤴', '🦸‍♀️', '🦸‍♂️', '🦹‍♀️', '🦹‍♂️', '🤶', '🎅', '🧙‍♀️', '🧙‍♂️', '🧝‍♀️', '🧝‍♂️', '🧛‍♀️', '🧛‍♂️', '🧜‍♀️', '🧜‍♂️', '🧚‍♀️', '🧚‍♂️', '👼', '🤰', '🤱', '👩‍🍼', '👨‍🍼', '🙇‍♀️', '🙇‍♂️', '💁‍♀️', '💁‍♂️', '🙅‍♀️', '🙅‍♂️', '🙆‍♀️', '🙆‍♂️', '🙋‍♀️', '🙋‍♂️', '🧏‍♀️', '🧏‍♂️', '🤦‍♀️', '🤦‍♂️', '🤷‍♀️', '🤷‍♂️', '🙎‍♀️', '🙎‍♂️', '🙍‍♀️', '🙍‍♂️', '💇‍♀️', '💇‍♂️', '🚶‍♀️', '🚶‍♂️', '👩‍🚶‍♀️', '👨‍🚶‍♂️', '👩‍🦯', '👨‍🦯', '🧎‍♀️', '🧎‍♂️', '👩‍🦽', '👨‍🦽', '👩‍🦼', '👨‍🦼', '🏃‍♀️', '🏃‍♂️', '💃', '🕺', '🕴️', '👯‍♀️', '👯‍♂️', '🧖‍♀️', '🧖‍♂️', '🧗‍♀️', '🧗‍♂️', '🤺', '🏇', '⛷️', '🏂', '🏌️‍♀️', '🏌️‍♂️', '🏄‍♀️', '🏄‍♂️', '🚣‍♀️', '🚣‍♂️', '🏊‍♀️', '🏊‍♂️', '⛹️‍♀️', '⛹️‍♂️', '🏋️‍♀️', '🏋️‍♂️', '🚴‍♀️', '🚴‍♂️', '🚵‍♀️', '🚵‍♂️', '🤸‍♀️', '🤸‍♂️', '🤼‍♀️', '🤼‍♂️', '🤽‍♀️', '🤽‍♂️', '🤾‍♀️', '🤾‍♂️', '🤹‍♀️', '🤹‍♂️', '🧘‍♀️', '🧘‍♂️', '👩‍❤️‍💋‍👩', '👨‍❤️‍💋‍👨', '👩‍❤️‍👨', '👩‍❤️‍👩', '👨‍❤️‍👨', '👨‍👩‍👦', '👨‍👩‍👧', '👨‍👩‍👧‍👦', '👨‍👩‍👦‍👦', '👨‍👩‍👧‍👧', '👩‍👩‍👦', '👩‍👩‍👧', '👩‍👩‍👧‍👦', '👩‍👩‍👦‍👦', '👩‍👩‍👧‍👧', '👨‍👨‍👦', '👨‍👨‍👧', '👨‍👨‍👧‍👦', '👨‍👨‍👦‍👦', '👨‍👨‍👧‍👧', '🗣️', '👤', '👥', '🫂'] },
+  { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐒', '🦍', '🦧', '🐶', '🐕', '🦮', '🐕‍🦺', '🐩', '🐺', '🦊', '🦝', '🐱', '🐈', '🐈‍⬛', '🦁', '🐯', '🐅', '🐆', '🐴', '🐎', '🦄', '🦓', '🦌', '🦬', '🐮', '🐂', '🐃', '🐄', '🐷', '🐖', '🐗', '🐽', '🐏', '🐑', '🐐', '🐪', '🐫', '🦙', '🦒', '🐘', '🦣', '🦏', '🦛', '🐭', '🐁', '🐀', '🐹', '🐰', '🐇', '🐿️', '🦫', '🦔', '🦇', '🐻', '🐻‍❄️', '🐨', '🐼', '🦥', '🦦', '🦨', '🦘', '🦡', '🐾', '🦃', '🐔', '🐓', '🐣', '🐤', '🐥', '🐦', '🐧', '🕊️', '🦅', '🦆', '🦢', '🦉', '🦤', '🪶', '🐸', '🐊', '🐢', '🦎', '🐍', '🐲', '🐉', '🦕', '🦖', '🐳', '🐋', '🐬', '🦭', '🐟', '🐠', '🐡', '🦈', '🐙', '🐚', '🐌', '🦋', '🐛', '🐜', '🐝', '🪲', '🐞', '🦗', '🪳', '🕷️', '🕸️', '🦂', '🦟', '🪰', '🪱', '🦠'] },
+  { name: "Food", icon: "🍔", emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🦀', '🦞', '🦐', '🦑', '🦪', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🫖', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢', '🍽️', '🍴', '🥄'] },
+  { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚰', '♀️', '♂️', '⚧️', '✖️', '➕', '➖', '➗', '🟰', '♾️', '✔️', '☑️', '🔘', '🔗', '➰', '〰️', '〽️', '⚕️', '💲', ' curvilinee_loop', '🔚', '🔙', '🔛', '🔝', '🔜', '☑️', '🔘', '⚪', '⚫', '🔴', '🔵', '🔸', '🔹', '🔶', '🔷', '🔺', '🔻', '🔳', '🔲', '▪️', '▫️', '◾', '◽', '◼️', '◻️', '🟥', '🟦', '🟧', '🟨', '🟩', '🟪', '⬛', '⬜', '🟫', '⭐', '🌟', '🌠', '࣪', '<seg_82>', ' CHAMPAGNE_GLASS', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢', '🍽️', '🍴', '🥄', '🏺', '🌍', '🌎', '🌏', '🗺️', '🗾', '🧭', '🏔️', '⛰️', '🌋', '🗻', '🏕️', '🏖️', '🏜️', '🏝️', '🏞️', '🏟️', '🏛️', '🏗️', '🧱', '🪨', '🪵', '🛖', '🏘️', '🏚️', '🏠', '🏡', '🏢', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '🏬', '🏭', '🏯', '🏰', '💒', '🗼', '🗽', '⛪', '🕌', '🛕', '🕍', '⛩️', '🕋', '⛲', '⛺', '🌁', '🌃', '🏙️', '🌄', '🌅', '🌆', '🌇', '🌉', '♨️', '🎠', '🎡', '🎢', '💈', '🎪', '🚂', '🚃', '🚄', '🚅', '🚆', '🚇', '🚈', '🚉', '🚊', '🚝', '🚞', '🚋', '🚌', '🚍', '🚎', '🚐', '🚑', '🚒', '🚓', '🚔', '🚕', '🚖', '🚗', '🚘', '🚚', '🚛', '🚜', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚕', '🚎', '🚌', '🚊', '🚉', '🚁', '🛩️', '✈️', '🛫', '🛬', '🚀', '🛰️', '💺', '🛶', '⛵', '🛥️', '🚤', '⛴️', '🚢', '⚓', '⛽', '🚧', '🚦', '🚥', '🚏', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🏕️', '⛺', '🏠', '🏡', '🏘️', '🏚️', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '⛪', '🕌', '🕍', '🛕', '⛩️', '🕋', '♨️', '⛩️', '🎭', '🖼️', '🎨', '🧵', '🪡', '🧶', '🪢', '🧩', '🧸', '🪅', '🪆', '🪁', '🔮', '🪄', '🧿', '🎮', '🕹️', '🎰', '🎲', '🪀', '🎴', '♟️', '🎯', '🎳', '🏈', '🏀', '⚽', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🏓', '🏸', '🥅', '🏒', '🏑', '🥍', '🏏', '🪃', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🏋️‍♀️', '🏋️‍♂️', '🤼‍♀️', '🤼‍♂️', '🤸‍♀️', '🤸‍♂️', '⛹️‍♀️', '⛹️‍♂️', '🤺', '🤾‍♀️', '🤾‍♂️', '🏌️‍♀️', '🏌️‍♂️', '🏇', '🧘‍♀️', '🧘‍♂️', '🏄‍♀️', '🏄‍♂️', '🏊‍♀️', '🏊‍♂️', '🤽‍♀️', '🤽‍♂️', '🚣‍♀️', '🚣‍♂️', '🧗‍♀️', '🧗‍♂️', '🚵‍♀️', '🚵‍♂️', '🚴‍♀️', '🚴‍♂️', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🏵️', '🎗️', '🎫', '🎟️', '🎪', '🤹‍♀️', '🤹‍♂️', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🖼️', '🧩', '♟️', '🧩', '♟️'] },
 ];
 
 
-function ChatPageContent({ sessionId }: ChatPageContentProps) {
+export function ChatPageContent({ 
+  sessionId, 
+  initialUserName, 
+  initialUserRole, 
+  initialUserId, 
+  initialUserAvatarFallback,
+  isAdminView = false 
+}: ChatPageContentProps) {
   const { toast } = useToast();
   const router = useRouter();
 
-  const [userName, setUserName] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userAvatarFallback, setUserAvatarFallback] = useState<string>("??");
+  const [userName, setUserName] = useState<string | null>(initialUserName || null);
+  const [userRole, setUserRole] = useState<string | null>(initialUserRole || null);
+  const [userId, setUserId] = useState<string | null>(initialUserId || null);
+  const [userAvatarFallback, setUserAvatarFallback] = useState<string>(initialUserAvatarFallback || "??");
+  
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [lastMessageSentAt, setLastMessageSentAt] = useState<number>(0);
   const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState<number>(0);
@@ -106,28 +119,28 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
 
 
   useEffect(() => {
-    const nameFromStorage = localStorage.getItem(`chatUser_${sessionId}_name`);
-    const roleFromStorage = localStorage.getItem(`chatUser_${sessionId}_role`);
-    const userIdFromStorage = localStorage.getItem(`chatUser_${sessionId}_userId`);
-    const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${sessionId}_avatarFallback`);
+    if (!isAdminView && (!initialUserName || !initialUserRole || !initialUserId || !initialUserAvatarFallback)) {
+      const nameFromStorage = localStorage.getItem(`chatUser_${sessionId}_name`);
+      const roleFromStorage = localStorage.getItem(`chatUser_${sessionId}_role`);
+      const userIdFromStorage = localStorage.getItem(`chatUser_${sessionId}_userId`);
+      const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${sessionId}_avatarFallback`);
 
-    if (!nameFromStorage || !roleFromStorage || !userIdFromStorage || !avatarFallbackFromStorage) {
-      toast({ variant: "destructive", title: "Fehler", description: "Benutzerdetails nicht gefunden. Bitte treten Sie der Sitzung erneut bei." });
-      router.push(`/join/${sessionId}`);
-      return;
+      if (!nameFromStorage || !roleFromStorage || !userIdFromStorage || !avatarFallbackFromStorage) {
+        toast({ variant: "destructive", title: "Fehler", description: "Benutzerdetails nicht gefunden. Bitte treten Sie der Sitzung erneut bei." });
+        router.push(`/join/${sessionId}`);
+        return;
+      }
+      setUserName(nameFromStorage);
+      setUserRole(roleFromStorage);
+      setUserId(userIdFromStorage);
+      setUserAvatarFallback(avatarFallbackFromStorage);
     }
-
-    setUserName(nameFromStorage);
-    setUserRole(roleFromStorage);
-    setUserId(userIdFromStorage);
-    setUserAvatarFallback(avatarFallbackFromStorage);
 
     const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
 
-  }, [sessionId, toast, router]);
+  }, [sessionId, toast, router, isAdminView, initialUserName, initialUserRole, initialUserId, initialUserAvatarFallback]);
 
-  // Listener for SessionData (status, cooldown)
   useEffect(() => {
     if (!sessionId) return;
     setIsLoading(true);
@@ -136,62 +149,68 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       if (docSnap.exists()) {
         const data = docSnap.data() as SessionData;
         setSessionData(data);
-        if (data.status === "ended") {
+        if (data.status === "ended" && !isAdminView) {
           toast({ variant: "destructive", title: "Sitzung beendet", description: "Diese Sitzung wurde vom Administrator beendet." });
         }
       } else {
-        toast({ variant: "destructive", title: "Fehler", description: "Sitzung nicht gefunden oder wurde gelöscht." });
+        if (!isAdminView) {
+          toast({ variant: "destructive", title: "Fehler", description: "Sitzung nicht gefunden oder wurde gelöscht." });
+          router.push("/");
+        } else {
+          // Im Admin View nicht direkt weiterleiten, nur loggen oder leere Daten anzeigen
+           console.warn("Sitzung nicht gefunden im Admin View für sessionId:", sessionId);
+        }
         setSessionData(null);
-        router.push("/");
       }
       setIsLoading(false);
     }, (error) => {
       console.error("Error listening to session data: ", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Sitzungsstatus konnte nicht geladen werden." });
+      if (!isAdminView) {
+        toast({ variant: "destructive", title: "Fehler", description: "Sitzungsstatus konnte nicht geladen werden." });
+        router.push("/");
+      }
       setIsLoading(false);
-      router.push("/");
     });
     return () => unsubscribeSessionData();
-  }, [sessionId, toast, router]);
+  }, [sessionId, toast, router, isAdminView]);
 
-  // Listener for own participant data (mute status)
   useEffect(() => {
-    if (!sessionId || !userId) return;
+    if (!sessionId || !userId || isAdminView) return; // Mute status nicht für Admin holen/setzen
 
     let unsubscribeParticipant: (() => void) | undefined;
-
     const findParticipantDocAndListen = async () => {
       const participantsColRef = collection(db, "sessions", sessionId, "participants");
       const q = query(participantsColRef, where("userId", "==", userId));
 
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        const userDoc = querySnapshot.docs[0];
-        unsubscribeParticipant = onSnapshot(userDoc.ref, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as ParticipantType;
-            setIsMuted(data.isMuted ?? false);
-          }
-        }, (error) => {
-          console.error("Error listening to own participant data: ", error);
-        });
-      } else {
-        console.warn("Could not find participant document for userId:", userId);
+      try {
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+          const userDoc = querySnapshot.docs[0];
+          unsubscribeParticipant = onSnapshot(userDoc.ref, (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as ParticipantType;
+              setIsMuted(data.isMuted ?? false);
+            }
+          }, (error) => {
+            console.error("Error listening to own participant data: ", error);
+          });
+        } else {
+          console.warn("Could not find participant document for userId:", userId);
+        }
+      } catch (error) {
+         console.error("Error querying for participant document:", error);
       }
     };
 
     findParticipantDocAndListen();
-
     return () => {
       if (unsubscribeParticipant) {
         unsubscribeParticipant();
       }
     };
+  }, [sessionId, userId, isAdminView]);
 
-  }, [sessionId, userId]);
 
-
-  // Fetch all participants from Firestore
   useEffect(() => {
     if (!sessionId) return;
     setIsChatDataLoading(true);
@@ -214,7 +233,6 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     return () => unsubscribe();
   }, [sessionId, toast]);
 
-  // Fetch messages from Firestore
   useEffect(() => {
     if (!sessionId || !userId) return;
     setIsChatDataLoading(true);
@@ -250,10 +268,9 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     return () => unsubscribe();
   }, [sessionId, toast, userId]);
 
-  // Cooldown timer effect
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
-    if (sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && lastMessageSentAt > 0) {
+    if (sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && lastMessageSentAt > 0 && !isAdminView) {
       const cooldownMillis = sessionData.messageCooldownSeconds * 1000;
       const updateRemainingTime = () => {
         const timePassed = Date.now() - lastMessageSentAt;
@@ -265,15 +282,15 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
           if (interval) clearInterval(interval);
         }
       };
-      updateRemainingTime(); // Initial call
+      updateRemainingTime(); 
       interval = setInterval(updateRemainingTime, 1000);
     } else {
-      setCooldownRemainingSeconds(0); // No cooldown active
+      setCooldownRemainingSeconds(0); 
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [lastMessageSentAt, sessionData?.messageCooldownSeconds]);
+  }, [lastMessageSentAt, sessionData?.messageCooldownSeconds, isAdminView]);
 
 
   const scrollToBottom = () => {
@@ -295,7 +312,10 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
-  const getParticipantColorClasses = (pUserId: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, name: string, ring: string, nameText: string } => {
+  const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, name: string, ring: string, nameText: string } => {
+    if (isAdminView && pUserId === userId) { // Special case for Admin's own messages in admin view
+       return { bg: "bg-destructive/70", text: "text-destructive-foreground", name: 'admin-self', ring: "ring-destructive", nameText: "text-destructive-foreground/90" };
+    }
     if (pSenderType === 'bot') {
       return { bg: "bg-accent/30", text: "text-accent-foreground", name: 'bot', ring: "ring-accent", nameText: "text-accent" };
     }
@@ -324,14 +344,14 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       toast({ variant: "destructive", title: "Sitzung pausiert", description: "Nachrichtenversand aktuell nicht möglich." });
       return;
     }
-    if (isMuted) {
+    if (isMuted && !isAdminView) { // Admin kann immer senden
       toast({ variant: "destructive", title: "Stummgeschaltet", description: "Sie wurden vom Admin stummgeschaltet." });
       return;
     }
 
     const now = Date.now();
     const cooldownMillis = (sessionData?.messageCooldownSeconds || 0) * 1000;
-    if (now - lastMessageSentAt < cooldownMillis) {
+    if (now - lastMessageSentAt < cooldownMillis && !isAdminView) { // Admin ignoriert Cooldown
       const timeLeft = Math.ceil((cooldownMillis - (now - lastMessageSentAt)) / 1000);
       toast({
         variant: "default",
@@ -342,12 +362,11 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       return;
     }
 
-
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const messageData: Omit<MessageType, 'id'> = {
       senderUserId: userId,
       senderName: userName,
-      senderType: 'user',
+      senderType: isAdminView ? 'admin' : 'user',
       avatarFallback: userAvatarFallback,
       content: newMessage.trim(),
       timestamp: serverTimestamp(),
@@ -364,7 +383,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       setNewMessage("");
       setReplyingTo(null); 
       setQuotingMessage(null); 
-      setLastMessageSentAt(Date.now());
+      if (!isAdminView) setLastMessageSentAt(Date.now());
       setShowEmojiPicker(false); 
     } catch (error) {
       console.error("Error sending message: ", error);
@@ -401,12 +420,11 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     inputRef.current?.focus();
   };
 
-
   const handleEmojiSelect = (emoji: string) => {
     setNewMessage(prev => prev + emoji);
   };
 
-  if (isLoading || !currentScenario || !userId || !sessionData) {
+  if (isLoading && !isAdminView) { // Im AdminView nicht den vollen Ladebildschirm zeigen, da es eingebettet ist
     return (
       <div className="flex h-screen w-full items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -416,152 +434,158 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       </div>
     );
   }
+  
+  // Ladezustand für Admin-Ansicht, falls SessionData noch nicht da ist
+  if (isAdminView && (!sessionData || !currentScenario)) {
+     return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
+  }
 
-  const isSessionActive = sessionData.status === "active";
-  const canSendBasedOnStatusAndMute = isSessionActive && !isMuted;
-  const canSendMessage = canSendBasedOnStatusAndMute && cooldownRemainingSeconds <= 0;
+
+  const isSessionActive = sessionData?.status === "active";
+  const canSendBasedOnStatusAndMute = isAdminView || (isSessionActive && !isMuted);
+  const canSendMessage = canSendBasedOnStatusAndMute && (isAdminView || cooldownRemainingSeconds <= 0);
 
   let sessionStatusMessage = "";
   let inputPlaceholderText = "Nachricht eingeben...";
 
-  if (sessionData.status === "ended") {
+  if (sessionData?.status === "ended") {
     sessionStatusMessage = "Diese Simulation wurde vom Administrator beendet.";
     inputPlaceholderText = "Simulation beendet";
-  } else if (sessionData.status === "paused") {
+  } else if (sessionData?.status === "paused") {
     sessionStatusMessage = "Die Simulation ist aktuell pausiert.";
     inputPlaceholderText = "Simulation pausiert";
-  } else if (isMuted) {
+  } else if (isMuted && !isAdminView) {
     sessionStatusMessage = "Sie wurden vom Administrator stummgeschaltet.";
     inputPlaceholderText = "Sie sind stummgeschaltet";
-  } else if (cooldownRemainingSeconds > 0) {
+  } else if (cooldownRemainingSeconds > 0 && !isAdminView) {
     inputPlaceholderText = `Nächste Nachricht in ${cooldownRemainingSeconds}s...`;
   }
 
 
   return (
-    <div className="flex h-screen flex-col bg-muted/40">
-      {/* Header */}
-      <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
-        <h1 className="text-lg font-semibold text-primary truncate max-w-[calc(100%-200px)] sm:max-w-none">
-          Simulation: {getScenarioTitle()}
-        </h1>
-        <div className="flex items-center gap-2">
-          <Badge variant={sessionData.status === "active" ? "default" : (sessionData.status === "paused" ? "secondary" : "destructive")}>
-            {sessionData.status === "active" ? "Aktiv" : (sessionData.status === "paused" ? "Pausiert" : "Beendet")}
-          </Badge>
-          {userName && userRole && userId && (
-            <>
-              <Avatar className={cn("h-8 w-8 border hidden sm:flex", getParticipantColorClasses(userId, 'user').ring, "ring-2")}>
-                <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user" />
-                <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
-                  {userAvatarFallback}
-                </AvatarFallback>
-              </Avatar>
-              <span className="text-sm font-medium hidden sm:inline truncate max-w-[100px]">
-                {userName}
-              </span>
-            </>
-          )}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Teilnehmer anzeigen">
-                <Users className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4">
-              <SheetHeader className="mb-4">
-                <SheetTitle>Teilnehmende ({participants.length})</SheetTitle>
-              </SheetHeader>
-              <ScrollArea className="h-[calc(100%-80px)]"> {/* Adjusted height for footer */}
-                <div className="space-y-3">
-                  {participants.map((p) => {
-                    const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
-                    return (
-                      <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                        <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                          <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                          <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium">
-                            {p.name}
-                            {p.isBot && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">BOT</Badge>}
-                            {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{p.role}</p>
+    <div className={cn("flex flex-col bg-muted/40", isAdminView ? "h-full" : "h-screen")}>
+      {!isAdminView && (
+        <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
+          <h1 className="text-lg font-semibold text-primary truncate max-w-[calc(100%-200px)] sm:max-w-none">
+            Simulation: {getScenarioTitle()}
+          </h1>
+          <div className="flex items-center gap-2">
+            <Badge variant={sessionData?.status === "active" ? "default" : (sessionData?.status === "paused" ? "secondary" : "destructive")}>
+              {sessionData?.status === "active" ? "Aktiv" : (sessionData?.status === "paused" ? "Pausiert" : "Beendet")}
+            </Badge>
+            {userName && userRole && userId && (
+              <>
+                <Avatar className={cn("h-8 w-8 border hidden sm:flex", getParticipantColorClasses(userId, 'user').ring, "ring-2")}>
+                  <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user" />
+                  <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
+                    {userAvatarFallback}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium hidden sm:inline truncate max-w-[100px]">
+                  {userName}
+                </span>
+              </>
+            )}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Teilnehmer anzeigen">
+                  <Users className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4">
+                <SheetHeader className="mb-4">
+                  <SheetTitle>Teilnehmende ({participants.length})</SheetTitle>
+                </SheetHeader>
+                <ScrollArea className="h-[calc(100%-80px)]">
+                  <div className="space-y-3">
+                    {participants.map((p) => {
+                      const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
+                      return (
+                        <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
+                          <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
+                            <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
+                            <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">
+                              {p.name}
+                              {p.isBot && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">BOT</Badge>}
+                              {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{p.role}</p>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </SheetContent>
-          </Sheet>
-        </div>
-      </header>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </header>
+      )}
 
-      {/* Main chat area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Participant List (Sidebar) */}
-        <aside className="hidden md:flex md:w-72 lg:w-80 flex-col border-r bg-background p-4 space-y-4">
-          <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
-          <ScrollArea className="flex-1">
-            <div className="space-y-3">
-              {participants.map((p) => {
-                const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
-                return (
-                  <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                     <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                      <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                      <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+        {!isAdminView && (
+          <aside className="hidden md:flex md:w-72 lg:w-80 flex-col border-r bg-background p-4 space-y-4">
+            <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
+            <ScrollArea className="flex-1">
+              <div className="space-y-3">
+                {participants.map((p) => {
+                  const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
+                  return (
+                    <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
+                       <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
+                        <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
+                        <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">
+                          {p.name}
+                          {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
+                          {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{p.role}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+            <Separator />
+            {userRole && currentScenario && userName && userAvatarFallback && userId && (
+              <Card className="mt-auto bg-muted/30">
+                <CardHeader className="p-3">
+                  <div className="flex items-center gap-2">
+                     <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
+                      <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
+                      <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
+                        {userAvatarFallback}
+                      </AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="text-sm font-medium">
-                        {p.name}
-                        {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
-                        {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{p.role}</p>
+                      <CardTitle className="text-base">{userName}</CardTitle>
+                      <p className="text-xs text-muted-foreground">Ihre Rolle: {userRole}</p>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </ScrollArea>
-          <Separator />
-          {userRole && currentScenario && userName && userAvatarFallback && userId && (
-            <Card className="mt-auto bg-muted/30">
-              <CardHeader className="p-3">
-                <div className="flex items-center gap-2">
-                   <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
-                    <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                    <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
-                      {userAvatarFallback}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <CardTitle className="text-base">{userName}</CardTitle>
-                    <p className="text-xs text-muted-foreground">Ihre Rolle: {userRole}</p>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-3 pt-0">
-                <ScrollArea className="h-48 text-xs"> 
-                    <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
-                        {currentScenario.langbeschreibung}
-                    </CardDescription>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          )}
-        </aside>
+                </CardHeader>
+                <CardContent className="p-3 pt-0">
+                  <ScrollArea className="h-48 text-xs"> 
+                      <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
+                          {currentScenario.langbeschreibung}
+                      </CardDescription>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            )}
+          </aside>
+        )}
 
-        {/* Chat messages and input */}
         <main className="flex flex-1 flex-col">
-          <ScrollArea className="flex-1 p-4 md:p-6">
+          <ScrollArea className={cn("flex-1 p-4 md:p-6", isAdminView ? "bg-background" : "")}>
             <div className="space-y-6">
               {messages.map((msg) => {
-                const bubbleColor = msg.isOwn ? { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" } : getParticipantColorClasses(msg.senderUserId, msg.senderType);
+                const bubbleColor = msg.isOwn ? (isAdminView ? getParticipantColorClasses(userId, 'admin') : { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }) : getParticipantColorClasses(msg.senderUserId, msg.senderType);
                 return (
                   <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
                     {!msg.isOwn && (
@@ -614,9 +638,9 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                       </CardContent>
                     </div>
                     {msg.isOwn && userName && userAvatarFallback && userId && (
-                       <Avatar className={cn("h-10 w-10 border-2 self-end", getParticipantColorClasses(userId, 'user').ring)}>
+                       <Avatar className={cn("h-10 w-10 border-2 self-end", isAdminView ? getParticipantColorClasses(userId, 'admin').ring : getParticipantColorClasses(userId, 'user').ring)}>
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                        <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>{userAvatarFallback}</AvatarFallback>
+                        <AvatarFallback className={`${isAdminView ? getParticipantColorClasses(userId, 'admin').bg : getParticipantColorClasses(userId, 'user').bg} ${isAdminView ? getParticipantColorClasses(userId, 'admin').text : getParticipantColorClasses(userId, 'user').text}`}>{userAvatarFallback}</AvatarFallback>
                       </Avatar>
                     )}
                   </div>
@@ -627,7 +651,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 <div className="text-center text-muted-foreground py-8">
                   <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50" />
                   <p>Noch keine Nachrichten in dieser Sitzung.</p>
-                  <p>Sei der Erste, der eine Nachricht sendet!</p>
+                  {!isAdminView && <p>Sei der Erste, der eine Nachricht sendet!</p>}
                 </div>
               )}
               {isChatDataLoading && (
@@ -639,8 +663,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
             </div>
           </ScrollArea>
 
-          {/* Message Input */}
-          <div className="border-t bg-background p-3 md:p-4 relative">
+          <div className={cn("border-t bg-background p-3 md:p-4 relative", isAdminView ? "border-t-0" : "")}>
             {replyingTo && (
               <div className="mb-2 p-2 border rounded-md bg-muted/50 text-sm text-muted-foreground flex justify-between items-center">
                 <div>
@@ -662,10 +685,10 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               </div>
             )}
             {!canSendBasedOnStatusAndMute && sessionStatusMessage && (
-              <Alert variant={sessionData.status === "ended" || isMuted ? "destructive" : "default"} className="mb-2">
-                {sessionData.status === "paused" ? <PauseCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+              <Alert variant={sessionData?.status === "ended" || (isMuted && !isAdminView) ? "destructive" : "default"} className="mb-2">
+                {sessionData?.status === "paused" ? <PauseCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                 <AlertTitle>
-                  {sessionData.status === "ended" ? "Sitzung beendet" : (sessionData.status === "paused" ? "Sitzung pausiert" : (isMuted ? "Stummgeschaltet" : "Hinweis"))}
+                  {sessionData?.status === "ended" ? "Sitzung beendet" : (sessionData?.status === "paused" ? "Sitzung pausiert" : (isMuted && !isAdminView ? "Stummgeschaltet" : "Hinweis"))}
                 </AlertTitle>
                 <AlertDescription>
                   {sessionStatusMessage}
@@ -673,49 +696,53 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               </Alert>
             )}
             <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Anhang (noch nicht implementiert)"})}>
-                <Paperclip className="h-5 w-5" />
-              </Button>
+              {!isAdminView && (
+                <>
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Anhang (noch nicht implementiert)"})}>
+                  <Paperclip className="h-5 w-5" />
+                </Button>
 
-              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading}>
-                    <Smile className="h-5 w-5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
-                  <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-                    <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading}>
+                      <Smile className="h-5 w-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
+                    <Tabs defaultValue={emojiCategories[0].name} className="w-full">
+                      <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                        {emojiCategories.map(category => (
+                          <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
+                            {category.icon}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
                       {emojiCategories.map(category => (
-                        <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
-                          {category.icon}
-                        </TabsTrigger>
+                        <TabsContent key={category.name} value={category.name} className="mt-0">
+                          <ScrollArea className="h-48">
+                            <div className="grid grid-cols-8 gap-0.5 p-2">
+                              {category.emojis.map(emoji => (
+                                <Button
+                                  key={emoji}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-xl p-0 h-8 w-8"
+                                  onClick={() => {
+                                    handleEmojiSelect(emoji);
+                                  }}
+                                >
+                                  {emoji}
+                                </Button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TabsContent>
                       ))}
-                    </TabsList>
-                    {emojiCategories.map(category => (
-                      <TabsContent key={category.name} value={category.name} className="mt-0">
-                        <ScrollArea className="h-48">
-                          <div className="grid grid-cols-8 gap-0.5 p-2">
-                            {category.emojis.map(emoji => (
-                              <Button
-                                key={emoji}
-                                variant="ghost"
-                                size="icon"
-                                className="text-xl p-0 h-8 w-8"
-                                onClick={() => {
-                                  handleEmojiSelect(emoji);
-                                }}
-                              >
-                                {emoji}
-                              </Button>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                </PopoverContent>
-              </Popover>
+                    </Tabs>
+                  </PopoverContent>
+                </Popover>
+                </>
+              )}
 
               <Input
                 ref={inputRef}
@@ -727,17 +754,19 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 onChange={(e) => setNewMessage(e.target.value)}
                 disabled={!canSendMessage || isLoading}
               />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
-                <Mic className="h-5 w-5" />
-              </Button>
+               {!isAdminView && (
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
+                  <Mic className="h-5 w-5" />
+                </Button>
+               )}
               <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!canSendMessage || !newMessage.trim() || isLoading} aria-label="Senden">
                 <Send className="h-5 w-5" />
               </Button>
             </form>
-            {cooldownRemainingSeconds > 0 && canSendBasedOnStatusAndMute && (
+            {cooldownRemainingSeconds > 0 && canSendBasedOnStatusAndMute && !isAdminView &&(
               <p className="text-xs text-muted-foreground mt-1.5 text-right">Nächste Nachricht in {cooldownRemainingSeconds}s</p>
             )}
-            {sessionData.messageCooldownSeconds > 0 && cooldownRemainingSeconds <= 0 && canSendBasedOnStatusAndMute && (
+            {sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && cooldownRemainingSeconds <= 0 && canSendBasedOnStatusAndMute && !isAdminView && (
               <p className="text-xs text-muted-foreground mt-1.5 text-right">Nachrichten Cooldown: {sessionData.messageCooldownSeconds}s</p>
             )}
           </div>
@@ -747,8 +776,10 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   );
 }
 
+// Hauptkomponente, die die Props für ChatPageContent vorbereitet
 export default function ChatPage({ params }: ChatPageProps) {
-  const extractedSessionId = params.sessionId;
+  const sessionId = params.sessionId;
+
   return (
     <Suspense fallback={
       <div className="flex h-screen w-full items-center justify-center p-4">
@@ -758,7 +789,9 @@ export default function ChatPage({ params }: ChatPageProps) {
         </Card>
       </div>
     }>
-      <ChatPageContent sessionId={extractedSessionId} />
+      <ChatPageContent sessionId={sessionId} />
     </Suspense>
   );
 }
+
+    
