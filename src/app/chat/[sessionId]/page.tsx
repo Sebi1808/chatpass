@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings } from "lucide-react";
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare } from "lucide-react"; // Added Users, MessageSquare
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSearchParams } from "next/navigation";
@@ -41,8 +41,8 @@ interface DisplayParticipant extends ParticipantType {
 }
 
 
-function ChatPageContent({ params: pageParams }: ChatPageProps) {
-  const { sessionId } = pageParams;
+function ChatPageContent({ params }: ChatPageProps) { // Destructure params directly
+  const { sessionId } = params; // Use destructured sessionId
   const searchParams = useSearchParams(); // Not used for user details anymore, kept for potential future use
   const { toast } = useToast();
 
@@ -80,7 +80,7 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
 
     const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
-    setIsLoading(false); // Basic info loaded
+    // setIsLoading(false); // Basic info loaded - will be set to false after data fetching
 
   }, [sessionId, toast]);
 
@@ -97,7 +97,7 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
         fetchedParticipants.push({ id: doc.id, ...doc.data() } as DisplayParticipant);
       });
       setParticipants(fetchedParticipants);
-      setIsLoading(false);
+      // setIsLoading(false); // Set loading to false after all initial data is fetched
     }, (error) => {
       console.error("Error fetching participants: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnten nicht geladen werden." });
@@ -117,17 +117,23 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedMessages: DisplayMessage[] = [];
       querySnapshot.forEach((doc) => {
-        const data = doc.data() as MessageType;
+        const data = doc.data() as MessageType; // Explicitly type data
         const timestamp = data.timestamp as Timestamp | null; // Firestore Timestamp
         fetchedMessages.push({
           ...data,
           id: doc.id,
+          senderUserId: data.senderUserId, // ensure these are explicitly mapped
+          senderName: data.senderName,
+          senderType: data.senderType,
+          avatarFallback: data.avatarFallback,
+          content: data.content,
+          timestamp: data.timestamp, // Keep original timestamp for sorting/logic if needed
           isOwn: data.senderUserId === userId,
           timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
         });
       });
       setMessages(fetchedMessages);
-      setIsLoading(false);
+      setIsLoading(false); // All initial data loaded
     }, (error) => {
       console.error("Error fetching messages: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Nachrichten konnten nicht geladen werden." });
@@ -171,7 +177,7 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
     }
   };
   
-  if (isLoading && !currentScenario) { // Show loading indicator if essential data isn't ready
+  if (isLoading || !currentScenario || !userId) { // Show loading indicator if essential data isn't ready
     return <div className="flex h-screen w-full items-center justify-center"><p>Chat wird geladen...</p></div>;
   }
 
@@ -290,7 +296,7 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                       </CardContent>
                     </Card>
-                    {msg.isOwn && userName && ( 
+                    {msg.isOwn && userName && userAvatarFallback && ( 
                       <Avatar className="h-10 w-10 border">
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
                         <AvatarFallback>{userAvatarFallback}</AvatarFallback>
@@ -324,12 +330,12 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
                 className="flex-1 text-base"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                disabled={!userId}
+                disabled={!userId || isLoading}
               />
               <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe">
                 <Mic className="h-5 w-5" />
               </Button>
-              <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!userId || !newMessage.trim()} aria-label="Senden">
+              <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!userId || !newMessage.trim() || isLoading} aria-label="Senden">
                 <Send className="h-5 w-5" />
               </Button>
             </form>
@@ -348,3 +354,5 @@ export default function ChatPage(props: ChatPageProps) {
     </Suspense>
   );
 }
+
+    
