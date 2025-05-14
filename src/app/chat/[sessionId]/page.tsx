@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote } from "lucide-react";
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
@@ -19,6 +19,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Import Tabs components
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
@@ -69,7 +70,13 @@ const simpleHash = (str: string): number => {
   return Math.abs(hash);
 };
 
-const basicEmojis = ['😀', '😂', '👍', '❤️', '🙏', '😢', '😮', '🤔', '🎉', '🔥', '😊', '💯', '👋', '👀', '👉', '👈', '🤷', '✨', '🙌', '😕', '🥳', '🤯', '😱', '😅', '🥺'];
+const emojiCategories = [
+  { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠'] },
+  { name: "People", icon: "🧑", emojis: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👣', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👨‍🦰', '👨‍🦱', '👨‍🦳', '👨‍🦲'] },
+  { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐒', '🦍', '🦧', '🐶', '🐕', '🦮', '🐕‍🦺', '🐩', '🐺', '🦊', '🦝', '🐱', '🐈', '🐈‍⬛', '🦁', '🐯', '🐅', '🐆', '🐴', '🐎', '🦄', '🦓', '🦌', '🦬', '🐮', '🐂', '🐃', '🐄', '🐷', '🐖', '🐗', '🐽', '🐏', '🐑', '🐐', '🐪', '🐫', '🦙', '🦒', '🐘', '🦣', '🦏', '🦛', '🐭', '🐁', '🐀', '🐹', '🐰', '🐇', '🐿️', '🦫', '🦔', '🦇', '🐻', '🐻‍❄️', '🐨', '🐼', '🦥', '🦦', '🦨', '🦘', '🦡'] },
+  { name: "Food", icon: "🍔", emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫'] },
+  { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅'] },
+];
 
 
 function ChatPageContent({ sessionId }: ChatPageContentProps) {
@@ -277,7 +284,6 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     const messageElement = document.getElementById(`msg-${messageId}`);
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Optional: Add a temporary highlight effect
       messageElement.classList.add('ring-2', 'ring-primary', 'transition-all', 'duration-1000');
       setTimeout(() => {
         messageElement.classList.remove('ring-2', 'ring-primary', 'transition-all', 'duration-1000');
@@ -296,7 +302,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     if (pSenderType === 'admin') {
       return { bg: "bg-destructive/30", text: "text-destructive-foreground", name: 'admin', ring: "ring-destructive", nameText: "text-destructive" };
     }
-    if (!pUserId) { // Fallback for safety
+    if (!pUserId) { 
         return participantColors[0];
     }
     const colorIndex = simpleHash(pUserId) % participantColors.length;
@@ -352,15 +358,14 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       messageData.replyToMessageContentSnippet = replyingTo.content.substring(0, 70) + (replyingTo.content.length > 70 ? "..." : "");
       messageData.replyToMessageSenderName = replyingTo.senderName;
     }
-    // Quoting message is handled by pre-filling the newMessage state
-
+    
     try {
       await addDoc(messagesColRef, messageData);
       setNewMessage("");
-      setReplyingTo(null); // Clear reply state
-      setQuotingMessage(null); // Clear quote state
+      setReplyingTo(null); 
+      setQuotingMessage(null); 
       setLastMessageSentAt(Date.now());
-      setShowEmojiPicker(false); // Close emoji picker after sending
+      setShowEmojiPicker(false); 
     } catch (error) {
       console.error("Error sending message: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Nachricht konnte nicht gesendet werden." });
@@ -368,7 +373,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   };
 
   const handleSetReply = (message: DisplayMessage) => {
-    setQuotingMessage(null); // Cancel any active quote
+    setQuotingMessage(null); 
     setReplyingTo(message);
     inputRef.current?.focus();
   };
@@ -378,17 +383,17 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   };
 
   const handleSetQuote = (message: DisplayMessage) => {
-    setReplyingTo(null); // Cancel any active reply
+    setReplyingTo(null); 
     setQuotingMessage(message);
     setNewMessage(`> ${message.senderName} schrieb:\n> "${message.content}"\n\n`);
     inputRef.current?.focus();
   };
 
   const handleCancelQuote = () => {
-    setQuotingMessage(null);
-    if (newMessage.startsWith(`> ${quotingMessage?.senderName} schrieb:\n> "${quotingMessage?.content}"\n\n`)) {
-        setNewMessage("");
+    if (quotingMessage && newMessage.startsWith(`> ${quotingMessage?.senderName} schrieb:\n> "${quotingMessage?.content}"\n\n`)) {
+        setNewMessage(newMessage.replace(`> ${quotingMessage?.senderName} schrieb:\n> "${quotingMessage?.content}"\n\n`, ""));
     }
+    setQuotingMessage(null);
   };
 
   const handleMentionUser = (name: string) => {
@@ -467,7 +472,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               <SheetHeader className="mb-4">
                 <SheetTitle>Teilnehmende ({participants.length})</SheetTitle>
               </SheetHeader>
-              <ScrollArea className="h-[calc(100%-60px)]">
+              <ScrollArea className="h-[calc(100%-80px)]"> {/* Adjusted height for footer */}
                 <div className="space-y-3">
                   {participants.map((p) => {
                     const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
@@ -541,7 +546,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 </div>
               </CardHeader>
               <CardContent className="p-3 pt-0">
-                <ScrollArea className="h-40 text-xs"> {/* Increased height for role description */}
+                <ScrollArea className="h-48 text-xs"> 
                     <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                         {currentScenario.langbeschreibung}
                     </CardDescription>
@@ -574,7 +579,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                             disabled={msg.isOwn}
                           >
                             {msg.senderName}
-                            {msg.senderType === 'bot' && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
+                            {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent/50 text-accent")}>BOT</Badge>}
                           </button>
                           <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
                         </div>
@@ -678,22 +683,37 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                     <Smile className="h-5 w-5" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-2 mb-1" side="top" align="start">
-                  <div className="grid grid-cols-5 gap-1">
-                    {basicEmojis.map(emoji => (
-                      <Button
-                        key={emoji}
-                        variant="ghost"
-                        size="icon"
-                        className="text-xl p-1 h-8 w-8"
-                        onClick={() => {
-                          handleEmojiSelect(emoji);
-                        }}
-                      >
-                        {emoji}
-                      </Button>
+                <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
+                  <Tabs defaultValue={emojiCategories[0].name} className="w-full">
+                    <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                      {emojiCategories.map(category => (
+                        <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
+                          {category.icon}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                    {emojiCategories.map(category => (
+                      <TabsContent key={category.name} value={category.name} className="mt-0">
+                        <ScrollArea className="h-48">
+                          <div className="grid grid-cols-8 gap-0.5 p-2">
+                            {category.emojis.map(emoji => (
+                              <Button
+                                key={emoji}
+                                variant="ghost"
+                                size="icon"
+                                className="text-xl p-0 h-8 w-8"
+                                onClick={() => {
+                                  handleEmojiSelect(emoji);
+                                }}
+                              >
+                                {emoji}
+                              </Button>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </TabsContent>
                     ))}
-                  </div>
+                  </Tabs>
                 </PopoverContent>
               </Popover>
 
@@ -742,4 +762,3 @@ export default function ChatPage({ params }: ChatPageProps) {
     </Suspense>
   );
 }
-

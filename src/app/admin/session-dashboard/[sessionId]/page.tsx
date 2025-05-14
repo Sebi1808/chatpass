@@ -7,12 +7,12 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData } from "@/lib/types";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/firebase";
@@ -44,11 +44,10 @@ const DEFAULT_COOLDOWN = 0; // Default 0 seconds cooldown
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
-  const sessionId = props.params.sessionId;
+  const { sessionId } = props.params;
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
-  // invitationLink state is removed, derived from sessionData now
   const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
   const [chatMessages, setChatMessages] = useState<AdminDashboardMessage[]>([]);
   
@@ -59,8 +58,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const [isStartingOrRestartingSession, setIsStartingOrRestartingSession] = useState(false);
   const [isResettingSession, setIsResettingSession] = useState(false);
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [showParticipantMirrorView, setShowParticipantMirrorView] = useState(false);
 
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
+  const chatMessagesEndRef = useRef<null | HTMLDivElement>(null);
+
 
   const displayedInvitationLink = sessionData?.invitationLink && sessionData.invitationToken 
     ? `${sessionData.invitationLink}?token=${sessionData.invitationToken}` 
@@ -87,13 +89,12 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             const newSessionData: SessionData = {
               scenarioId: sessionId,
               createdAt: serverTimestamp(),
-              invitationLink: baseLink, // Store base link
-              invitationToken: newSessionToken, // Store token
+              invitationLink: baseLink, 
+              invitationToken: newSessionToken,
               status: "active", 
               messageCooldownSeconds: DEFAULT_COOLDOWN,
             };
             await setDoc(sessionDocRef, newSessionData);
-            // setSessionData(newSessionData); // Will be set by onSnapshot
             setPaceValue(DEFAULT_COOLDOWN);
           } else {
             const existingData = docSnap.data() as SessionData;
@@ -111,10 +112,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             
             if (needsDbUpdate) {
               await updateDoc(sessionDocRef, updates);
-              // Data will refresh via onSnapshot
             } else {
-              // If no DB update needed, set local sessionData if not already set by onSnapshot
-              // This ensures UI updates if onSnapshot hasn't fired yet for initial load.
               if (!sessionData || sessionData.scenarioId !== existingData.scenarioId) {
                 setSessionData(existingData); 
               }
@@ -131,16 +129,15 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setupSession();
     } else {
       setIsLoadingSessionData(false);
-      setSessionData(null); // Reset sessionData if scenario not found
+      setSessionData(null); 
     }
-  }, [sessionId, toast]); // sessionData removed from dependencies to avoid loop on initial setup
+  }, [sessionId, toast]);
 
 
   // Effect for listening to SessionData changes (status, cooldown, token)
   useEffect(() => {
     if (!sessionId) return;
     const sessionDocRef = doc(db, "sessions", sessionId);
-    // setIsLoadingSessionData(true); // Potentially set loading true before snapshot
     const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as SessionData;
@@ -149,13 +146,13 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       } else {
         setSessionData(null); 
       }
-      setIsLoadingSessionData(false); // Set loading false after data received
+      setIsLoadingSessionData(false); 
     }, (error) => {
       console.error("Error listening to session data: ", error);
       setIsLoadingSessionData(false);
     });
     return () => unsubscribeSessionData();
-  }, [sessionId]); // Removed toast from deps
+  }, [sessionId]);
 
 
   // Effect for Participants
@@ -204,6 +201,12 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     return () => unsubscribeMessages();
   }, [sessionId]);
 
+  useEffect(() => {
+    if (showParticipantMirrorView && chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, showParticipantMirrorView]);
+
 
   const copyToClipboard = () => {
     if (displayedInvitationLink && !displayedInvitationLink.includes("Wird generiert...")) {
@@ -237,7 +240,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     if (!sessionId) return;
     setIsStartingOrRestartingSession(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
-    let baseLink = sessionData?.invitationLink || ""; // Keep existing base link if available
+    let baseLink = sessionData?.invitationLink || "";
     if (typeof window !== "undefined" && !baseLink) {
         baseLink = `${window.location.origin}/join/${sessionId}`;
     }
@@ -251,7 +254,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         invitationToken: newSessionToken,
     };
 
-    if (!sessionData || sessionData.status === "ended" || sessionData.status === "paused") { // Also for paused, new token
+    if (!sessionData || sessionData.status === "ended" || sessionData.status === "paused") {
         sessionUpdateData.createdAt = serverTimestamp(); 
     }
 
@@ -438,6 +441,14 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           <p className="text-muted-foreground">Sitzungs-ID: {sessionId}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button 
+            variant="default"
+            onClick={() => setShowParticipantMirrorView(!showParticipantMirrorView)}
+            className="bg-primary hover:bg-primary/90"
+          >
+            <Eye className="mr-2 h-4 w-4" /> 
+            {showParticipantMirrorView ? "Teilnehmeransicht ausblenden" : "Teilnehmeransicht einblenden"}
+          </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" disabled={isEndingSession || !isSessionActive && !isSessionPaused}>
@@ -469,6 +480,65 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Sitzung Beendet</CardTitle>
             <CardDescription className="text-destructive/80">Diese Sitzung wurde beendet. Sie können sie unten neu starten oder zurücksetzen.</CardDescription>
           </CardHeader>
+        </Card>
+      )}
+
+      {showParticipantMirrorView && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center"><Eye className="mr-2 h-5 w-5 text-primary"/> Vorschau Teilnehmeransicht</CardTitle>
+            <CardDescription>Dies ist eine vereinfachte Live-Vorschau der Chat-Interaktion und Teilnehmer.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Live Chat-Verlauf (Vorschau)</h3>
+              <div className="h-72 bg-muted/30 rounded-md p-4 overflow-y-auto space-y-2 border">
+                {isLoadingMessages && <p className="text-sm text-muted-foreground">Chat-Nachrichten werden geladen...</p>}
+                {!isLoadingMessages && chatMessages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                    <MessageCircleIcon className="w-10 h-10 mb-2 opacity-50" />
+                    <p className="text-sm">Noch keine Nachrichten.</p>
+                  </div>
+                )}
+                {!isLoadingMessages && chatMessages.map(msg => (
+                  <div key={`mirror-${msg.id}`} className="text-xs p-1.5 rounded bg-card/50 shadow-sm">
+                    <span className={`font-semibold ${msg.senderType === 'bot' ? 'text-accent' : msg.senderType === 'admin' ? 'text-primary' : 'text-foreground/80'}`}>
+                      {msg.senderName}:
+                    </span>
+                    <span className="ml-1">{msg.content}</span>
+                    <span className="text-xs text-muted-foreground/70 float-right pt-0.5">{msg.timestampDisplay}</span>
+                  </div>
+                ))}
+                <div ref={chatMessagesEndRef} />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Teilnehmer (Vorschau)</h3>
+              <div className="max-h-60 overflow-y-auto space-y-3 border p-3 rounded-md bg-muted/30">
+                {isLoadingParticipants && <p className="text-sm text-muted-foreground">Lade Teilnehmer...</p>}
+                {!isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).map(p => (
+                  <div key={`mirror-participant-${p.id || p.userId}`} className="flex items-center justify-between p-1.5 bg-card/50 rounded-md text-xs">
+                    <div>
+                      <p className="font-medium">{p.name} {p.isBot && <Badge variant="secondary" className="ml-1 text-xs">BOT</Badge>}</p>
+                      <p className="text-xs text-muted-foreground">
+                          {p.role} - 
+                          <span className={p.status === "Nicht beigetreten" || p.id.startsWith("student-placeholder") ? "italic text-orange-500" : "text-green-500"}>
+                              {p.id.startsWith("student-placeholder") ? "Nicht beigetreten" : (p.status || "Beigetreten")}
+                          </span>
+                           {p.isMuted && <Badge variant="destructive" className="ml-1 text-xs">Stumm</Badge>}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {!isLoadingParticipants && expectedStudentRoles === 0 && sessionParticipants.filter(p => !p.isBot).length === 0 && (
+                  <p className="text-xs text-muted-foreground">Keine Teilnehmer für dieses Szenario vorgesehen.</p>
+                )}
+                 {!isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).length === 0 && expectedStudentRoles > 0 && (
+                   <p className="text-xs text-muted-foreground">Noch keine Teilnehmer beigetreten.</p>
+                 )}
+              </div>
+            </div>
+          </CardContent>
         </Card>
       )}
 
@@ -706,3 +776,4 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
+
