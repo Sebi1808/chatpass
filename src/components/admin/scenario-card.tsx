@@ -1,7 +1,22 @@
 import type { Scenario } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Users, Bot, Tag, Info, PlayCircle } from 'lucide-react';
+import { 
+  Users, 
+  Bot, 
+  Info, 
+  PlayCircle,
+  ShieldAlert,
+  Code2,
+  MessageSquare,
+  Annoyed,
+  Zap,
+  Film,
+  ShoppingBag,
+  Lock,
+  BotMessageSquare,
+  type LucideIcon
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface ScenarioCardProps {
@@ -9,15 +24,28 @@ interface ScenarioCardProps {
   onStartSimulation: (scenarioId: string) => void;
 }
 
+const iconMap: Record<string, LucideIcon> = {
+  ShieldAlert,
+  Code2,
+  MessageSquare,
+  Annoyed,
+  Zap,
+  Users,
+  Film,
+  ShoppingBag,
+  Lock,
+  BotMessageSquare,
+};
+
 export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps) {
-  const IconComponent = scenario.icon;
+  const IconComponent = iconMap[scenario.iconName];
 
   return (
     <Card className="flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300">
       <CardHeader className="pb-4">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-xl font-semibold leading-tight flex items-center">
-            {typeof IconComponent === 'function' && <IconComponent className="h-6 w-6 mr-3 text-primary shrink-0" />}
+            {IconComponent && <IconComponent className="h-6 w-6 mr-3 text-primary shrink-0" />}
             {scenario.title}
           </CardTitle>
           {/* Potentially a small action button or badge here */}

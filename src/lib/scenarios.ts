@@ -1,5 +1,5 @@
 import type { Scenario } from './types';
-import { ShieldAlert, Code2, MessageSquare, Annoyed, Zap, Users, Film, ShoppingBag, Lock, BotMessageSquare } from 'lucide-react';
+// Lucide icons will be imported directly in the component that renders them.
 
 export const scenarios: Scenario[] = [
   {
@@ -9,7 +9,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'In diesem Szenario wird ein Online-Diskurs simuliert, der durch Hate-Speech, persönliche Angriffe und verbale Grenzüberschreitungen gekennzeichnet ist. Teilnehmende lernen, solche Situationen zu erkennen, darauf zu reagieren und Strategien zur Deeskalation oder Meldung zu entwickeln.',
     defaultBots: 2,
     standardRollen: 8,
-    icon: ShieldAlert,
+    iconName: 'ShieldAlert',
     tags: ['Konflikt', 'Respekt', 'Online-Sicherheit']
   },
   {
@@ -19,7 +19,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Dieses Szenario thematisiert die Verbreitung rechtsextremer Ideologien im digitalen Raum. Teilnehmende werden mit codierten Symbolen, subtiler Propaganda und extremistischen Narrativen konfrontiert, um Sensibilität und kritisches Denken zu fördern.',
     defaultBots: 2,
     standardRollen: 10,
-    icon: Code2,
+    iconName: 'Code2',
     tags: ['Extremismus', 'Propaganda', 'Medienkompetenz']
   },
   {
@@ -29,7 +29,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Simuliert eine typische Diskussion in einem Klassenchat. Themen können von Hausaufgaben bis zu Freizeitaktivitäten reichen, wobei auch Gruppendruck, Missverständnisse und soziale Ausgrenzung eine Rolle spielen können.',
     defaultBots: 1,
     standardRollen: 12,
-    icon: Users,
+    iconName: 'Users',
     tags: ['Soziale Dynamik', 'Kommunikation', 'Alltag']
   },
   {
@@ -39,7 +39,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Teilnehmende werden mit viralen Falschmeldungen und Desinformation konfrontiert. Ziel ist es, die Mechanismen von Fake News zu verstehen, Quellenkritik zu üben und Strategien zur Verifizierung von Informationen zu erlernen.',
     defaultBots: 1,
     standardRollen: 10,
-    icon: Annoyed, // Lucide doesn't have a perfect "Fake News" icon, Annoyed can represent reaction
+    iconName: 'Annoyed',
     tags: ['Desinformation', 'Medienkritik', 'Quellenprüfung']
   },
   {
@@ -49,7 +49,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Dieses Szenario setzt sich mit der Verbreitung und Wirkung von Verschwörungstheorien auseinander. Teilnehmende analysieren deren typische Merkmale und lernen, kritisch mit solchen Narrativen umzugehen.',
     defaultBots: 1,
     standardRollen: 10,
-    icon: Zap, // Zap can represent sudden, shocking "revelations"
+    iconName: 'Zap',
     tags: ['Verschwörung', 'Kritisches Denken', 'Manipulation']
   },
   {
@@ -59,7 +59,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Simuliert eine Situation von Cybermobbing, bei der eine Person online ausgegrenzt, beleidigt oder bedroht wird. Fokus liegt auf Empathie, Zivilcourage und Hilfsangeboten für Betroffene und Beobachtende.',
     defaultBots: 2,
     standardRollen: 9,
-    icon: MessageSquare, // Represents chat where mobbing can occur
+    iconName: 'MessageSquare',
     tags: ['Mobbing', 'Soziale Verantwortung', 'Hilfe']
   },
   {
@@ -69,7 +69,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Konfrontiert Teilnehmende mit scheinbar harmlosen Kurzvideos oder Memes, die extremistische, insbesondere faschistische, Inhalte transportieren. Ziel ist die Schulung der Wahrnehmung für subtile Propaganda in sozialen Medien.',
     defaultBots: 2,
     standardRollen: 8,
-    icon: Film,
+    iconName: 'Film',
     tags: ['Extremismus', 'Social Media', 'Propaganda']
   },
   {
@@ -79,7 +79,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Teilnehmende analysieren Posts von Influencern, die (Schleich-)Werbung und fragwürdige Gewinnspiele enthalten. Es geht um die kritische Auseinandersetzung mit kommerziellen Interessen auf Social Media.',
     defaultBots: 1,
     standardRollen: 10,
-    icon: ShoppingBag,
+    iconName: 'ShoppingBag',
     tags: ['Werbung', 'Konsumkritik', 'Social Media']
   },
   {
@@ -89,7 +89,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Dieses ernste Szenario simuliert Anbahnungsversuche (Grooming) und Erpressung mit intimen Bildern oder Videos (Sextortion). Es soll für Gefahren sensibilisieren und Handlungsoptionen aufzeigen.',
     defaultBots: 2,
     standardRollen: 8,
-    icon: Lock,
+    iconName: 'Lock',
     tags: ['Sexuelle Gewalt', 'Erpressung', 'Prävention']
   },
   {
@@ -99,7 +99,7 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Teilnehmende werden mit KI-generierten Deepfakes (manipulierte Bilder/Videos) konfrontiert. Das Szenario thematisiert die technologischen Möglichkeiten, die Gefahren der Manipulation und den kritischen Umgang mit visuellen Medien.',
     defaultBots: 1,
     standardRollen: 10,
-    icon: BotMessageSquare,
+    iconName: 'BotMessageSquare',
     tags: ['Künstliche Intelligenz', 'Manipulation', 'Medienkompetenz']
   },
 ];

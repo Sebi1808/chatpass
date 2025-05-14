@@ -7,6 +7,6 @@ export interface Scenario {
   langbeschreibung: string;
   defaultBots: number;
   standardRollen: number;
-  icon: LucideIcon | ((props: React.ComponentProps<'svg'>) => JSX.Element); // Allow LucideIcon or custom SVG component
+  iconName: string; // Changed from 'icon' to 'iconName' and type to string
   tags: string[];
 }
