@@ -1,3 +1,6 @@
+
+"use client"; // hinzugefügt
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -7,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, LinkIcon, MessageSquare, Play, Pause, QrCode, Users, Settings, Zap, Volume2, VolumeX } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge"; // Added import for Badge
+import { Badge } from "@/components/ui/badge";
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
