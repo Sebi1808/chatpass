@@ -22,7 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { db, storage } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction, arrayUnion, arrayRemove, FieldValue } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -83,7 +83,7 @@ const simpleHash = (str: string): number => {
 };
 
 const emojiCategories = [
-    { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾','🫶', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸'] },
+    { name: "Smileys", icon: "😀", emojis: ['👍', '❤️', '😂', '🤔', '😠', '👏', '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾','🫶', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👎', '✊', '👊', '🤛', '🤜', '🙌', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸'] },
     { name: "People", icon: "🧑", emojis: ['🧑', '👧', '🧒', '👦', '👩', '🧑‍🦱', '👨‍🦱', '👩‍🦱', '🧑‍🦰', '👨‍🦰', '👩‍🦰', '👱‍♀️', '👱', '👱‍♂️', '🧑‍🦳', '👨‍🦳', '👩‍🦳', '🧑‍🦲', '👨‍🦲', '👩‍🦲', '🧔‍♀️', '🧔', '🧔‍♂️', '👵', '🧓', '👴', '👲', '👳‍♀️', '👳', '👳‍♂️', '🧕', '👮‍♀️', '👮', '👮‍♂️', '👷‍♀️', '👷', '👷‍♂️', '💂‍♀️', '💂', '💂‍♂️', '🕵️‍♀️', '🕵️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤', '👩‍🏫', '👨‍🏫', '👩‍🏭', '👨‍🏭', '👩‍💻', '👨‍💻', '👩‍💼', '👨‍💼', '👩‍🔧', '👨‍🔧', '👩‍🔬', '👨‍🔬', '👩‍🎨', '👨‍🎨', '👩‍🚒', '👨‍🚒', '👩‍✈️', '👨‍✈️', '👩‍🚀', '👨‍🚀', '👩‍⚖️', '👨‍⚖️', '👰‍♀️', '👰', '👰‍♂️', '🤵‍♀️', '🤵', '🤵‍♂️', '👸', '🤴', '🥷', '🦸‍♀️', '🦸', '🦸‍♂️', '🦹‍♀️', '🦹', '🦹‍♂️', '🤶', '🧑‍🎄', '🎅', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️', '👼', '🤰', '🤱', '👩‍🍼', '🧑‍🍼', '👨‍🍼', '🙇‍♀️', '🙇', '🙇‍♂️', '💁‍♀️', '💁', '💁‍♂️', '🙅‍♀️', '🙅', '🙅‍♂️', '🙆‍♀️', '🙆', '🙆‍♂️', '🙋‍♀️', '🙋', '🙋‍♂️', '🧏‍♀️', '🧏', '🧏‍♂️', '🤦‍♀️', '🤦', '🤦‍♂️', '🤷‍♀️', '🤷', '🤷‍♂️', '🙎‍♀️', '🙎', '🙎‍♂️', '🙍‍♀️', '🙍', '🙍‍♂️', '💇‍♀️', '💇', '💇‍♂️', '💆‍♀️', '💆', '💆‍♂️', '🧖‍♀️', '🧖', '🧖‍♂️', '👯‍♀️', '👯', '👯‍♂️', '🕺', '💃', '🕴️', '👩‍🦽', '🧑‍🦽', '👨‍🦽', '👩‍🦼', '🧑‍🦼', '👨‍🦼', '🚶‍♀️', '🚶', '🚶‍♂️', '👩‍🦯', '🧑‍🦯', '👨‍🦯', '🧎‍♀️', '🧎', '🧎‍♂️', '🏃‍♀️', '🏃', '🏃‍♂️', '🧍‍♀️', '🧍', '🧍‍♂️', '🗣️', '🫂'] },
     { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐺', '🦊', '🦝', '🐱', '🐶', '🦁', '🐯', '🐴', '🦄', '🐮', '🐷', '🐗', '🐭', '🐹', '🐰', '🐻', '🐻‍❄️', '🐨', '🐼', '🐸', '🦓', '🦒', '🐘', '🦣', '🦏', ' Hippo', '🐪', '🐫', '🦙', ' कंगारू', '🦘', '🦥', '🦦', '🦨', '🦡', '🦔', '🦇', '🦅', '🦉', '🐔', '🐧', '🐦', '🐤', '🐥', '🦆', '🦢', '🕊️', '🦩', '🦚', '🦜', '🐸', '🐊', '🐢', '🦎', '🐍', '🐲', '🐉', '🦕', '🦖', '🐳', '🐋', '🐬', '🦭', '🐟', '🐠', '🐡', '🦐', '🦑', '🐙', '🦞', '🦀', '🐌', '🦋', '🐛', '🐜', '🐝', '🪲', '🐞', '🦗', '🕷️', '🕸️', '🦂', '🦟', '🪰', '🪱', '🦠'] },
     { name: "Food", icon: "🍔", emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🫖', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢'] },
@@ -119,14 +119,21 @@ export function ChatPageContent({
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isChatDataLoading, setIsChatDataLoading] = useState(true);
+  
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
+  
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
+  
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  
   const [imageForModal, setImageForModal] = useState<string | null>(null);
+  const [imageFileNameForModal, setImageFileNameForModal] = useState<string | null>(null);
+
 
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
@@ -530,7 +537,6 @@ export function ChatPageContent({
 
     } catch (error) {
       console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
-      // Avoid double-toasting if already handled by upload error
       if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("Bild-URL Abruf fehlgeschlagen") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
       }
@@ -574,17 +580,61 @@ export function ChatPageContent({
   };
 
   const handleEmojiSelect = (emoji: string) => {
-    setNewMessage(prev => prev + emoji);
-    // setShowEmojiPicker(false); // Keep picker open for multiple emojis
+    if (reactingToMessageId) {
+      handleReaction(reactingToMessageId, emoji);
+      setReactingToMessageId(null); 
+    } else {
+      setNewMessage(prev => prev + emoji);
+    }
+    setShowEmojiPicker(false);
   };
 
-  const handleReaction = (emoji: string, messageId: string) => {
-    // For now, just show a toast. Full implementation later.
-    toast({
-        title: "Reaktion (Demnächst!)",
-        description: `Du hast mit ${emoji} auf eine Nachricht reagiert. Diese Funktion wird bald vollständig implementiert.`,
-    });
-    setShowEmojiPicker(false); // Close picker after reaction attempt
+  const handleReaction = async (messageId: string, emoji: string) => {
+    if (!userId || !sessionId) return;
+
+    const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const messageDoc = await transaction.get(messageRef);
+        if (!messageDoc.exists()) {
+          throw "Document does not exist!";
+        }
+
+        const currentData = messageDoc.data();
+        const currentReactions = currentData.reactions || {};
+        const usersWhoReactedWithEmoji: string[] = currentReactions[emoji] || [];
+        
+        let newReactions = { ...currentReactions };
+
+        if (usersWhoReactedWithEmoji.includes(userId)) {
+          // User already reacted with this emoji, so remove reaction
+          const updatedUserList = usersWhoReactedWithEmoji.filter(uid => uid !== userId);
+          if (updatedUserList.length === 0) {
+            delete newReactions[emoji]; // Remove emoji if no users left
+          } else {
+            newReactions[emoji] = updatedUserList;
+          }
+        } else {
+          // User has not reacted with this emoji, so add reaction
+          newReactions[emoji] = [...usersWhoReactedWithEmoji, userId];
+        }
+        transaction.update(messageRef, { reactions: newReactions });
+      });
+      toast({ title: "Reaktion verarbeitet", description: `Deine Reaktion ${emoji} wurde gespeichert.` });
+    } catch (error) {
+      console.error("Error processing reaction: ", error);
+      toast({
+        variant: "destructive",
+        title: "Reaktion fehlgeschlagen",
+        description: "Ihre Reaktion konnte nicht gespeichert werden.",
+      });
+    }
+  };
+
+  const openReactionPicker = (messageId: string) => {
+    setReactingToMessageId(messageId);
+    setShowEmojiPicker(true); // Open the main emoji picker, now it knows it's for reacting
   };
 
 
@@ -626,7 +676,7 @@ export function ChatPageContent({
 
 
   return (
-    <Dialog> {/* Root Dialog for image modal */}
+    <Dialog open={!!imageForModal} onOpenChange={(isOpen) => { if (!isOpen) setImageForModal(null); }}>
       <div className={cn("flex flex-col bg-muted/40", isAdminView ? "h-full" : "h-screen")}>
         {!isAdminView && (
           <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
@@ -770,7 +820,7 @@ export function ChatPageContent({
                             >
                               {msg.senderName}
                               {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent text-accent bg-accent/10")}>BOT</Badge>}
-                              {msg.senderType === 'admin' && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1 py-0")}>ADMIN</Badge>}
+                              {msg.senderType === 'admin' && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>ADMIN</Badge>}
                             </button>
                             <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
                           </div>
@@ -788,12 +838,19 @@ export function ChatPageContent({
                           )}
                           {msg.imageUrl && (
                              <DialogTrigger asChild>
-                               <div className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-[3/2] rounded-md overflow-hidden cursor-pointer group" onClick={() => setImageForModal(msg.imageUrl || null)}>
+                               <div 
+                                className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-[3/2] rounded-md overflow-hidden cursor-pointer group" 
+                                onClick={() => {
+                                  setImageForModal(msg.imageUrl || null);
+                                  setImageFileNameForModal(msg.imageFileName || "Bild");
+                                }}
+                               >
                                 <Image
                                   src={msg.imageUrl}
                                   alt={msg.imageFileName || "Hochgeladenes Bild"}
-                                  layout="fill"
-                                  objectFit="cover"
+                                  fill // Changed from layout="fill"
+                                  sizes="(max-width: 640px) 250px, 300px" // Added for responsiveness with fill
+                                  style={{objectFit: "cover"}} // Changed from objectFit="cover"
                                   className="transition-transform duration-300 group-hover:scale-105"
                                   data-ai-hint="chat image"
                                 />
@@ -805,6 +862,35 @@ export function ChatPageContent({
                           )}
                            {msg.imageFileName && !msg.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {msg.imageFileName}</p>}
                           {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
+                          
+                          {/* Reactions Display */}
+                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {Object.entries(msg.reactions).map(([emoji, reactedUserIds]) => {
+                                if (!Array.isArray(reactedUserIds) || reactedUserIds.length === 0) return null;
+                                const currentUserReacted = reactedUserIds.includes(userId!);
+                                return (
+                                  <Button
+                                    key={emoji}
+                                    variant={currentUserReacted ? "secondary" : "ghost"}
+                                    size="sm"
+                                    className={cn(
+                                      "h-auto px-1.5 py-0.5 rounded-full text-xs",
+                                      currentUserReacted 
+                                        ? `border ${bubbleColor.text === 'text-primary-foreground' ? 'border-primary-foreground/50 bg-black/30' : 'border-current bg-black/20'} ${bubbleColor.text}`
+                                        : `${bubbleColor.text} hover:bg-black/10`
+                                    )}
+                                    onClick={() => handleReaction(msg.id, emoji)}
+                                  >
+                                    <span className="text-sm mr-0.5">{emoji}</span>
+                                    <span>{reactedUserIds.length}</span>
+                                  </Button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Action Buttons */}
                           <div className="flex items-center gap-1 mt-1.5">
                             {!msg.isOwn && (
                               <>
@@ -816,43 +902,9 @@ export function ChatPageContent({
                                 </Button>
                               </>
                             )}
-                             <Popover>
-                                <PopoverTrigger asChild>
-                                    <Button variant="ghost" size="icon" className={`h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} aria-label="Reagieren">
-                                        <SmilePlus className="h-4 w-4" />
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
-                                     <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-                                        <TabsList className="grid w-full grid-cols-5 h-auto p-1">
-                                        {emojiCategories.map(category => (
-                                            <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
-                                            {category.icon}
-                                            </TabsTrigger>
-                                        ))}
-                                        </TabsList>
-                                        {emojiCategories.map(category => (
-                                        <TabsContent key={category.name} value={category.name} className="mt-0">
-                                            <ScrollArea className="h-48">
-                                            <div className="grid grid-cols-8 gap-0.5 p-2">
-                                                {category.emojis.map(emoji => (
-                                                <Button
-                                                    key={emoji}
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="text-xl p-0 h-8 w-8"
-                                                    onClick={() => handleReaction(emoji, msg.id)}
-                                                >
-                                                    {emoji}
-                                                </Button>
-                                                ))}
-                                            </div>
-                                            </ScrollArea>
-                                        </TabsContent>
-                                        ))}
-                                    </Tabs>
-                                </PopoverContent>
-                             </Popover>
+                             <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => openReactionPicker(msg.id)} aria-label="Reagieren">
+                                <SmilePlus className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reagieren</span>
+                            </Button>
                           </div>
                         </CardContent>
                       </div>
@@ -907,7 +959,9 @@ export function ChatPageContent({
               )}
               {imagePreviewUrl && (
                 <div className="mb-2 p-2 border rounded-md bg-muted/50 flex items-center gap-2">
-                  <Image src={imagePreviewUrl} alt="Vorschau" width={60} height={60} className="rounded-md object-cover" data-ai-hint="image preview"/>
+                  <div className="relative w-[60px] h-[60px] rounded-md overflow-hidden">
+                    <Image src={imagePreviewUrl} alt="Vorschau" fill style={{objectFit:"cover"}} data-ai-hint="image preview"/>
+                  </div>
                   <div className="flex-1 text-sm text-muted-foreground">
                     <p className="font-semibold">{selectedImageFile?.name}</p>
                     <p>{selectedImageFile ? (selectedImageFile.size / 1024).toFixed(1) : 0} KB</p>
@@ -943,13 +997,16 @@ export function ChatPageContent({
               )}
               <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
                 <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!canTryToSend || isSendingMessage || isLoading} />
-                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading || (isAdminView && !selectedImageFile)} onClick={() => fileInputRef.current?.click()}>
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => fileInputRef.current?.click()}>
                   <Paperclip className="h-5 w-5" />
                 </Button>
 
-                <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <Popover open={showEmojiPicker} onOpenChange={(open) => {
+                  setShowEmojiPicker(open);
+                  if (!open) setReactingToMessageId(null); // Reset if picker is closed
+                }}>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView}>
+                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading}>
                       <Smile className="h-5 w-5" />
                     </Button>
                   </PopoverTrigger>
@@ -972,9 +1029,7 @@ export function ChatPageContent({
                                   variant="ghost"
                                   size="icon"
                                   className="text-xl p-0 h-8 w-8"
-                                  onClick={() => {
-                                    handleEmojiSelect(emoji);
-                                  }}
+                                  onClick={() => handleEmojiSelect(emoji)}
                                 >
                                   {emoji}
                                 </Button>
@@ -997,7 +1052,7 @@ export function ChatPageContent({
                   onChange={(e) => setNewMessage(e.target.value)}
                   disabled={!canTryToSend || isSendingMessage || isLoading}
                 />
-                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
                   <Mic className="h-5 w-5" />
                 </Button>
                 <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
@@ -1015,28 +1070,31 @@ export function ChatPageContent({
         </div>
       </div>
       {/* Dialog for Image Modal */}
-      <DialogContent className="p-0 max-w-3xl w-auto bg-transparent border-0 shadow-none">
+      <DialogContent className="p-2 sm:p-4 max-w-5xl w-[90vw] md:w-[70vw] lg:w-[60vw] h-auto max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-md shadow-2xl rounded-xl">
+        <DialogHeader className="flex-shrink-0">
+          <DialogTitle className="text-foreground/90 truncate pr-10">
+            {imageFileNameForModal || "Bildvorschau"}
+          </DialogTitle>
+           {/* ShadCN DialogContent's default X button will be used. Ensure DialogClose is not needed here if using default.*/}
+        </DialogHeader>
         {imageForModal && (
-          <div className="relative aspect-video w-full">
+          <div className="relative flex-grow w-full h-auto min-h-[300px] my-auto overflow-hidden flex items-center justify-center">
             <Image
               src={imageForModal}
-              alt="Vollbild-Vorschau"
-              layout="fill"
-              objectFit="contain"
-              className="rounded-lg"
+              alt={imageFileNameForModal || "Vollbild-Vorschau"}
+              width={1200} // Provide large intrinsic width
+              height={800} // Provide large intrinsic height
+              sizes="(max-width: 768px) 90vw, (max-width: 1200px) 70vw, 60vw"
+              style={{
+                objectFit: "contain",
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+              }}
+              className="rounded-md"
               data-ai-hint="image modal"
             />
-             <DialogClose asChild>
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white h-8 w-8"
-                    onClick={() => setImageForModal(null)}
-                    aria-label="Schließen"
-                >
-                    <XCircle className="h-5 w-5" />
-                </Button>
-            </DialogClose>
           </div>
         )}
       </DialogContent>
@@ -1045,7 +1103,7 @@ export function ChatPageContent({
 }
 
 export default function ChatPage({ params }: ChatPageProps) {
-  const { sessionId } = params;
+  const { sessionId } = params; // Destructure here if ChatPage is a Server Component
 
   return (
     <Suspense fallback={
@@ -1060,3 +1118,4 @@ export default function ChatPage({ params }: ChatPageProps) {
     </Suspense>
   );
 }
+

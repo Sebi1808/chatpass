@@ -57,6 +57,7 @@ export interface Message {
   replyToMessageContentSnippet?: string;
   replyToMessageSenderName?: string;
   botFlag?: boolean; 
-  imageUrl?: string; // Added for image uploads
-  imageFileName?: string; // Added for image uploads
+  imageUrl?: string; 
+  imageFileName?: string;
+  reactions?: { [emoji: string]: string[] }; // Array of userIds for each emoji
 }
