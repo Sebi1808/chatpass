@@ -60,14 +60,14 @@ interface DisplayParticipant extends ParticipantType {
 }
 
 const participantColors = [
-  { name: 'sky', bg: "bg-sky-500/80", text: "text-sky-50", ring: "ring-sky-400", nameText: "text-sky-100" },
-  { name: 'emerald', bg: "bg-emerald-500/80", text: "text-emerald-50", ring: "ring-emerald-400", nameText: "text-emerald-100" },
-  { name: 'violet', bg: "bg-violet-500/80", text: "text-violet-50", ring: "ring-violet-400", nameText: "text-violet-100" },
-  { name: 'rose', bg: "bg-rose-500/80", text: "text-rose-50", ring: "ring-rose-400", nameText: "text-rose-100" },
-  { name: 'amber', bg: "bg-amber-500/80", text: "text-amber-50", ring: "ring-amber-400", nameText: "text-amber-100" },
-  { name: 'teal', bg: "bg-teal-500/80", text: "text-teal-50", ring: "ring-teal-400", nameText: "text-teal-100" },
-  { name: 'indigo', bg: "bg-indigo-500/80", text: "text-indigo-50", ring: "ring-indigo-400", nameText: "text-indigo-100" },
-  { name: 'fuchsia', bg: "bg-fuchsia-500/80", text: "text-fuchsia-50", ring: "ring-fuchsia-400", nameText: "text-fuchsia-100" },
+  { name: 'sky', bg: "bg-sky-400/90", text: "text-sky-50", nameText: "text-sky-50", ring: "ring-sky-400" },
+  { name: 'emerald', bg: "bg-emerald-400/90", text: "text-emerald-50", nameText: "text-emerald-50", ring: "ring-emerald-400" },
+  { name: 'violet', bg: "bg-violet-400/90", text: "text-violet-50", nameText: "text-violet-50", ring: "ring-violet-400" },
+  { name: 'rose', bg: "bg-rose-400/90", text: "text-rose-50", nameText: "text-rose-50", ring: "ring-rose-400" },
+  { name: 'amber', bg: "bg-amber-400/90", text: "text-amber-50", nameText: "text-amber-50", ring: "ring-amber-400" },
+  { name: 'teal', bg: "bg-teal-400/90", text: "text-teal-50", nameText: "text-teal-50", ring: "ring-teal-400" },
+  { name: 'indigo', bg: "bg-indigo-400/90", text: "text-indigo-50", nameText: "text-indigo-50", ring: "ring-indigo-400" },
+  { name: 'fuchsia', bg: "bg-fuchsia-400/90", text: "text-fuchsia-50", nameText: "text-fuchsia-50", ring: "ring-fuchsia-400" },
 ];
 
 const simpleHash = (str: string): number => {
@@ -318,7 +318,7 @@ export function ChatPageContent({
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
   const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, nameText: string, ring: string } => {
-    if (isAdminView && pUserId === userId) { 
+    if (isAdminView && pUserId === userId && pSenderType === 'admin') { 
        return { bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
     if (pSenderType === 'admin') { 
@@ -738,7 +738,7 @@ export function ChatPageContent({
           <ScrollArea className={cn("flex-1 p-4 md:p-6", isAdminView ? "bg-background" : "")}>
             <div className="space-y-6">
               {messages.map((msg) => {
-                const bubbleColor = msg.isOwn ? (isAdminView ? getParticipantColorClasses(userId, 'admin') : { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }) : getParticipantColorClasses(msg.senderUserId, msg.senderType);
+                const bubbleColor = msg.isOwn ? (isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin') : { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }) : getParticipantColorClasses(msg.senderUserId, msg.senderType);
                 return (
                   <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
                     {!msg.isOwn && (
@@ -774,19 +774,19 @@ export function ChatPageContent({
                           </div>
                         )}
                         {msg.imageUrl && (
-                          <div className="my-2">
+                           <div className="my-2 relative w-full max-w-[300px] aspect-[3/2] rounded-md overflow-hidden">
                             <Image
                               src={msg.imageUrl}
                               alt={msg.imageFileName || "Hochgeladenes Bild"}
-                              width={300}
-                              height={200}
-                              className="rounded-md object-cover cursor-pointer"
+                              layout="fill"
+                              objectFit="cover"
+                              className="cursor-pointer"
                               onClick={() => window.open(msg.imageUrl, '_blank')}
                               data-ai-hint="chat image"
                             />
-                             {msg.imageFileName && <p className="text-xs opacity-70 mt-1">{msg.imageFileName}</p>}
-                          </div>
+                           </div>
                         )}
+                         {msg.imageFileName && !msg.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {msg.imageFileName}</p>}
                         {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
                         <div className="flex items-center gap-1 mt-1.5">
                           {!msg.isOwn && (
@@ -892,13 +892,13 @@ export function ChatPageContent({
             )}
             <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
               <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!canTryToSend || isSendingMessage || isLoading} />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => fileInputRef.current?.click()}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView} onClick={() => fileInputRef.current?.click()}>
                 <Paperclip className="h-5 w-5" />
               </Button>
 
               <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading}>
+                  <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView}>
                     <Smile className="h-5 w-5" />
                   </Button>
                 </PopoverTrigger>
@@ -946,7 +946,7 @@ export function ChatPageContent({
                 onChange={(e) => setNewMessage(e.target.value)}
                 disabled={!canTryToSend || isSendingMessage || isLoading}
               />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
                 <Mic className="h-5 w-5" />
               </Button>
               <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
