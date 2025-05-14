@@ -20,19 +20,20 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { db, storage } from "@/lib/firebase"; // Import storage
+import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc } from "firebase/firestore";
-import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage"; // Firebase Storage functions
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from '@/lib/utils';
-import Image from 'next/image'; // For displaying uploaded images
+import Image from 'next/image';
+import { Progress } from "@/components/ui/progress";
 
 
 interface ChatPageProps {
-  sessionId: string; // Changed to directly pass sessionId
+  sessionId: string;
 }
 
 interface ChatPageContentProps {
@@ -71,27 +72,27 @@ const simpleHash = (str: string): number => {
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = (hash << 5) - hash + char;
-    hash |= 0; 
+    hash |= 0;
   }
   return Math.abs(hash);
 };
 
 const emojiCategories = [
-  { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '👍', '👎', '❤️', '💔', '💯', '🔥', '🎉', '✨'] },
-  { name: "People", icon: "🧑", emojis: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝', '💅', '🤳', '💪', '🦾', '👀', '👁️', '🧠', '🧑', '👨', '👩', '🧑‍🦰', '👨‍🦰', '👩‍🦰', '🧑‍🦱', '👨‍🦱', '👩‍🦱', '🧑‍🦳', '👨‍🦳', '👩‍🦳'] },
-  { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐶', '🐺', '🐱', '🦁', '🐯', '🐴', '🦄', '🐮', '🐷', '🐭', '🐰', '🐻', '🐼', '🐸', '🐧', '🐦', '🦋', '🐞'] },
-  { name: "Food", icon: "🍔", emojis: ['🍇', '🍉', '🍌', '🍎', '🍓', '🍕', '🍔', '🍟', '🍩', '🎂', '☕', '🍺'] },
-  { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '✅', '❌', '❓', '❗', '⚠️'] },
+    { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾','🫶', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸'] },
+    { name: "People", icon: "🧑", emojis: ['🧑', '👧', '🧒', '👦', '👩', '🧑‍🦱', '👨‍🦱', '👩‍🦱', '🧑‍🦰', '👨‍🦰', '👩‍🦰', '👱‍♀️', '👱', '👱‍♂️', '🧑‍🦳', '👨‍🦳', '👩‍🦳', '🧑‍🦲', '👨‍🦲', '👩‍🦲', '🧔‍♀️', '🧔', '🧔‍♂️', '👵', '🧓', '👴', '👲', '👳‍♀️', '👳', '👳‍♂️', '🧕', '👮‍♀️', '👮', '👮‍♂️', '👷‍♀️', '👷', '👷‍♂️', '💂‍♀️', '💂', '💂‍♂️', '🕵️‍♀️', '🕵️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤', '👩‍🏫', '👨‍🏫', '👩‍🏭', '👨‍🏭', '👩‍💻', '👨‍💻', '👩‍💼', '👨‍💼', '👩‍🔧', '👨‍🔧', '👩‍🔬', '👨‍🔬', '👩‍🎨', '👨‍🎨', '👩‍🚒', '👨‍🚒', '👩‍✈️', '👨‍✈️', '👩‍🚀', '👨‍🚀', '👩‍⚖️', '👨‍⚖️', '👰‍♀️', '👰', '👰‍♂️', '🤵‍♀️', '🤵', '🤵‍♂️', '👸', '🤴', '🥷', '🦸‍♀️', '🦸', '🦸‍♂️', '🦹‍♀️', '🦹', '🦹‍♂️', '🤶', '🧑‍🎄', '🎅', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️', '👼', '🤰', '🤱', '👩‍🍼', '🧑‍🍼', '👨‍🍼', '🙇‍♀️', '🙇', '🙇‍♂️', '💁‍♀️', '💁', '💁‍♂️', '🙅‍♀️', '🙅', '🙅‍♂️', '🙆‍♀️', '🙆', '🙆‍♂️', '🙋‍♀️', '🙋', '🙋‍♂️', '🧏‍♀️', '🧏', '🧏‍♂️', '🤦‍♀️', '🤦', '🤦‍♂️', '🤷‍♀️', '🤷', '🤷‍♂️', '🙎‍♀️', '🙎', '🙎‍♂️', '🙍‍♀️', '🙍', '🙍‍♂️', '💇‍♀️', '💇', '💇‍♂️', '💆‍♀️', '💆', '💆‍♂️', '🧖‍♀️', '🧖', '🧖‍♂️', '👯‍♀️', '👯', '👯‍♂️', '🕺', '💃', '🕴️', '👩‍🦽', '🧑‍🦽', '👨‍🦽', '👩‍🦼', '🧑‍🦼', '👨‍🦼', '🚶‍♀️', '🚶', '🚶‍♂️', '👩‍🦯', '🧑‍🦯', '👨‍🦯', '🧎‍♀️', '🧎', '🧎‍♂️', '🏃‍♀️', '🏃', '🏃‍♂️', '🧍‍♀️', '🧍', '🧍‍♂️', '🗣️', '🫂'] },
+    { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐺', '🦊', '🦝', '🐱', '🐶', '🦁', '🐯', '🐴', '🦄', '🐮', '🐷', '🐗', '🐭', '🐹', '🐰', '🐻', '🐻‍❄️', '🐨', '🐼', '🐸', '🦓', '🦒', '🐘', '🦣', '🦏', ' Hippo', '🐪', '🐫', '🦙', ' कंगारू', '🦘', '🦥', '🦦', '🦨', '🦡', '🦔', '🦇', '🦅', '🦉', '🐔', '🐧', '🐦', '🐤', '🐥', '🦆', '🦢', '🕊️', '🦩', '🦚', '🦜', '🐸', '🐊', '🐢', '🦎', '🐍', '🐲', '🐉', '🦕', '🦖', '🐳', '🐋', '🐬', '🦭', '🐟', '🐠', '🐡', '🦐', '🦑', '🐙', '🦞', '🦀', '🐌', '🦋', '🐛', '🐜', '🐝', '🪲', '🐞', '🦗', '🕷️', '🕸️', '🦂', '🦟', '🪰', '🪱', '🦠'] },
+    { name: "Food", icon: "🍔", emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🫖', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢'] },
+    { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚰', '🚹', '♂️', '🚺', '♀️', '⚧️', '🚼', '🚻', '🚮', '🎦', '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '#️⃣', '*️⃣', '⏏️', '▶️', '⏸️', '⏯️', '⏹️', '⏺️', '⏭️', '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️', '🔀', '🔁', '🔂', '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗', '✖️', '🟰', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️', '➰', '➿', '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '◼️', '◻️', '◾', '◽', '▪️', '▫️', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '⬛', '⬜', '🟫', '🔶', '🔷', '🔸', '🔹', '🔳', '🔲', '▪', '▫', '▲', '▼'] },
 ];
 
 
-export function ChatPageContent({ 
-  sessionId, 
-  initialUserName, 
-  initialUserRole, 
-  initialUserId, 
+export function ChatPageContent({
+  sessionId,
+  initialUserName,
+  initialUserRole,
+  initialUserId,
   initialUserAvatarFallback,
-  isAdminView = false 
+  isAdminView = false
 }: ChatPageContentProps) {
   const { toast } = useToast();
   const router = useRouter();
@@ -100,7 +101,7 @@ export function ChatPageContent({
   const [userRole, setUserRole] = useState<string | null>(initialUserRole || null);
   const [userId, setUserId] = useState<string | null>(initialUserId || null);
   const [userAvatarFallback, setUserAvatarFallback] = useState<string>(initialUserAvatarFallback || "??");
-  
+
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [lastMessageSentAt, setLastMessageSentAt] = useState<number>(0);
   const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState<number>(0);
@@ -117,10 +118,12 @@ export function ChatPageContent({
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // For image upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
 
 
   useEffect(() => {
@@ -179,7 +182,7 @@ export function ChatPageContent({
   }, [sessionId, toast, router, isAdminView]);
 
   useEffect(() => {
-    if (!sessionId || !userId || isAdminView) return; 
+    if (!sessionId || !userId || isAdminView) return;
 
     let unsubscribeParticipant: (() => void) | undefined;
     const findParticipantDocAndListen = async () => {
@@ -280,10 +283,10 @@ export function ChatPageContent({
           if (interval) clearInterval(interval);
         }
       };
-      updateRemainingTime(); 
+      updateRemainingTime();
       interval = setInterval(updateRemainingTime, 1000);
     } else {
-      setCooldownRemainingSeconds(0); 
+      setCooldownRemainingSeconds(0);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -310,22 +313,23 @@ export function ChatPageContent({
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
-  const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, name: string, ring: string, nameText: string } => {
-    if (isAdminView && pUserId === userId) { 
-       return { bg: "bg-destructive/80", text: "text-destructive-foreground", name: 'admin-self', ring: "ring-destructive", nameText: "text-destructive-foreground/90" };
+  const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, nameText: string, ring: string } => {
+    if (isAdminView && pUserId === userId) { // Admin sending message in admin view
+       return { bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
-    if (pSenderType === 'admin') { // Admin messages seen by others
-      return { bg: "bg-destructive/70", text: "text-destructive-foreground", name: 'admin', ring: "ring-destructive", nameText: "text-destructive-foreground" };
+    if (pSenderType === 'admin') { // Admin messages seen by others OR by admin in their own bubble if they sent it
+      return { bg: "bg-destructive/70", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
     }
     if (pSenderType === 'bot') {
-      return { bg: "bg-accent/60", text: "text-accent-foreground", name: 'bot', ring: "ring-accent", nameText: "text-accent-foreground/90" };
+      return { bg: "bg-accent/60", text: "text-accent-foreground", nameText: "text-accent-foreground/90", ring: "ring-accent" };
     }
-    if (!pUserId) { 
-        return participantColors[0];
+    if (!pUserId) {
+        return { ...participantColors[0], ring: participantColors[0].ring || "ring-gray-400" }; // Fallback ring
     }
     const colorIndex = simpleHash(pUserId) % participantColors.length;
-    return participantColors[colorIndex];
+    return { ...participantColors[colorIndex], ring: participantColors[colorIndex].ring || `ring-${participantColors[colorIndex].name}-400`};
   };
+
 
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
@@ -336,6 +340,7 @@ export function ChatPageContent({
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
+      setImageUploadProgress(null); // Reset progress if a new file is selected
     }
   };
 
@@ -346,8 +351,9 @@ export function ChatPageContent({
       setImagePreviewUrl(null);
     }
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Reset file input
+      fileInputRef.current.value = "";
     }
+    setImageUploadProgress(null); // Reset progress when image is removed
   };
 
   const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
@@ -364,14 +370,14 @@ export function ChatPageContent({
       toast({ variant: "destructive", title: "Sitzung pausiert", description: "Nachrichtenversand aktuell nicht möglich." });
       return;
     }
-    if (isMuted && !isAdminView) { 
+    if (isMuted && !isAdminView) {
       toast({ variant: "destructive", title: "Stummgeschaltet", description: "Sie wurden vom Admin stummgeschaltet." });
       return;
     }
 
     const now = Date.now();
     const cooldownMillis = (sessionData?.messageCooldownSeconds || 0) * 1000;
-    if (now - lastMessageSentAt < cooldownMillis && !isAdminView && !selectedImageFile) { // Cooldown doesn't apply if sending image only
+    if (now - lastMessageSentAt < cooldownMillis && !isAdminView ) {
       const timeLeft = Math.ceil((cooldownMillis - (now - lastMessageSentAt)) / 1000);
       toast({
         variant: "default",
@@ -382,69 +388,88 @@ export function ChatPageContent({
       return;
     }
 
-    setIsUploadingImage(true); // Set uploading state
+    setIsSendingMessage(true);
+    if (selectedImageFile) {
+      setImageUploadProgress(0); 
+    }
 
     let uploadedImageUrl: string | undefined = undefined;
     let uploadedImageFileName: string | undefined = undefined;
 
-    if (selectedImageFile) {
-      const file = selectedImageFile;
-      const imageFileName = `${file.name}_${Date.now()}`;
-      const imagePath = `chat_images/${sessionId}/${imageFileName}`;
-      const sRef = storageRef(storage, imagePath);
-
-      try {
-        const uploadTask = uploadBytesResumable(sRef, file);
-        
-        // It's better to await the upload completion directly
-        await uploadTask; 
-        uploadedImageUrl = await getDownloadURL(uploadTask.snapshot.ref);
-        uploadedImageFileName = file.name;
-
-      } catch (error) {
-        console.error("Error uploading image: ", error);
-        toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: "Das Bild konnte nicht hochgeladen werden." });
-        setIsUploadingImage(false);
-        return;
-      }
-    }
-
-    const messagesColRef = collection(db, "sessions", sessionId, "messages");
-    const messageData: Omit<MessageType, 'id'> = {
-      senderUserId: userId,
-      senderName: userName,
-      senderType: isAdminView ? 'admin' : 'user',
-      avatarFallback: userAvatarFallback,
-      content: newMessage.trim(),
-      timestamp: serverTimestamp(),
-      ...(uploadedImageUrl && { imageUrl: uploadedImageUrl }),
-      ...(uploadedImageFileName && { imageFileName: uploadedImageFileName }),
-    };
-
-    if (replyingTo) {
-      messageData.replyToMessageId = replyingTo.id;
-      messageData.replyToMessageContentSnippet = replyingTo.content.substring(0, 70) + (replyingTo.content.length > 70 ? "..." : "");
-      messageData.replyToMessageSenderName = replyingTo.senderName;
-    }
-    
     try {
+      if (selectedImageFile) {
+        const file = selectedImageFile;
+        const imageFileName = `${file.name}_${Date.now()}`;
+        const imagePath = `chat_images/${sessionId}/${imageFileName}`;
+        const sRef = storageRef(storage, imagePath);
+        const uploadTask = uploadBytesResumable(sRef, file);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on('state_changed',
+            (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setImageUploadProgress(progress);
+            },
+            (error) => { 
+              console.error("Error uploading image: ", error);
+              toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: "Das Bild konnte nicht hochgeladen werden." });
+              reject(error);
+            },
+            async () => { 
+              try {
+                uploadedImageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+                uploadedImageFileName = file.name;
+                resolve();
+              } catch (getUrlError) {
+                console.error("Error getting download URL: ", getUrlError);
+                toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: "URL konnte nicht abgerufen werden." });
+                reject(getUrlError);
+              }
+            }
+          );
+        });
+      }
+
+      const messagesColRef = collection(db, "sessions", sessionId, "messages");
+      const messageData: Omit<MessageType, 'id'> = {
+        senderUserId: userId,
+        senderName: userName,
+        senderType: isAdminView ? 'admin' : 'user',
+        avatarFallback: userAvatarFallback,
+        content: newMessage.trim(),
+        timestamp: serverTimestamp(),
+      };
+
+      if (uploadedImageUrl) messageData.imageUrl = uploadedImageUrl;
+      if (uploadedImageFileName) messageData.imageFileName = uploadedImageFileName;
+      
+      if (replyingTo) {
+        messageData.replyToMessageId = replyingTo.id;
+        messageData.replyToMessageContentSnippet = replyingTo.content.substring(0, 70) + (replyingTo.content.length > 70 ? "..." : "");
+        messageData.replyToMessageSenderName = replyingTo.senderName;
+      }
+      
       await addDoc(messagesColRef, messageData);
+      
       setNewMessage("");
-      setReplyingTo(null); 
-      setQuotingMessage(null); 
-      handleRemoveSelectedImage(); // Clear image selection after sending
+      setReplyingTo(null);
+      setQuotingMessage(null);
+      handleRemoveSelectedImage(); 
       if (!isAdminView) setLastMessageSentAt(Date.now());
-      setShowEmojiPicker(false); 
+      setShowEmojiPicker(false);
+
     } catch (error) {
-      console.error("Error sending message: ", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Nachricht konnte nicht gesendet werden." });
+      // Error handling for upload or Firestore add is done within their respective blocks or this catch
+      console.error("Error sending message or uploading image: ", error);
+      // If not already toasted, a general toast could be added, but specific toasts are preferred
     } finally {
-      setIsUploadingImage(false);
+      setIsSendingMessage(false);
+      setImageUploadProgress(null); 
     }
   };
 
   const handleSetReply = (message: DisplayMessage) => {
-    setQuotingMessage(null); 
+    setQuotingMessage(null);
     setReplyingTo(message);
     inputRef.current?.focus();
   };
@@ -454,15 +479,18 @@ export function ChatPageContent({
   };
 
   const handleSetQuote = (message: DisplayMessage) => {
-    setReplyingTo(null); 
+    setReplyingTo(null);
+    const quotedText = `> ${message.senderName} schrieb:\n> "${message.content.replace(/\n/g, '\n> ')}"\n\n`;
+    setNewMessage(prev => quotedText + prev);
     setQuotingMessage(message);
-    setNewMessage(`> ${message.senderName} schrieb:\n> "${message.content}"\n\n`);
     inputRef.current?.focus();
   };
 
   const handleCancelQuote = () => {
-    if (quotingMessage && newMessage.startsWith(`> ${quotingMessage?.senderName} schrieb:\n> "${quotingMessage?.content}"\n\n`)) {
-        setNewMessage(newMessage.replace(`> ${quotingMessage?.senderName} schrieb:\n> "${quotingMessage?.content}"\n\n`, ""));
+     if (quotingMessage) {
+        const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\n\\n`;
+        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g'); // Make whitespace flexible
+        setNewMessage(prev => prev.replace(regex, ""));
     }
     setQuotingMessage(null);
   };
@@ -474,9 +502,10 @@ export function ChatPageContent({
 
   const handleEmojiSelect = (emoji: string) => {
     setNewMessage(prev => prev + emoji);
+    setShowEmojiPicker(false); // Close picker after selection
   };
 
-  if (isLoading && !isAdminView) { 
+  if (isLoading && !isAdminView) {
     return (
       <div className="flex h-screen w-full items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -486,30 +515,31 @@ export function ChatPageContent({
       </div>
     );
   }
-  
+
   if (isAdminView && (!sessionData || !currentScenario)) {
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
 
   const isSessionActive = sessionData?.status === "active";
   const canSendBasedOnStatusAndMute = isAdminView || (isSessionActive && !isMuted);
-  const canSendMessage = canSendBasedOnStatusAndMute && (isAdminView || cooldownRemainingSeconds <= 0) && !isUploadingImage;
+  const canTryToSend = canSendBasedOnStatusAndMute && (isAdminView || cooldownRemainingSeconds <= 0);
 
-  let sessionStatusMessage = "";
-  let inputPlaceholderText = isUploadingImage ? "Bild wird hochgeladen..." : "Nachricht eingeben...";
-
-  if (sessionData?.status === "ended") {
-    sessionStatusMessage = "Diese Simulation wurde vom Administrator beendet.";
+  let inputPlaceholderText = "Nachricht eingeben...";
+  if (isSendingMessage && selectedImageFile) {
+    inputPlaceholderText = `Bild wird hochgeladen (${imageUploadProgress !== null ? imageUploadProgress.toFixed(0) : '0'}%)...`;
+  } else if (isSendingMessage) {
+    inputPlaceholderText = "Nachricht wird gesendet...";
+  } else if (sessionData?.status === "ended") {
     inputPlaceholderText = "Simulation beendet";
   } else if (sessionData?.status === "paused") {
-    sessionStatusMessage = "Die Simulation ist aktuell pausiert.";
     inputPlaceholderText = "Simulation pausiert";
   } else if (isMuted && !isAdminView) {
-    sessionStatusMessage = "Sie wurden vom Administrator stummgeschaltet.";
     inputPlaceholderText = "Sie sind stummgeschaltet";
   } else if (cooldownRemainingSeconds > 0 && !isAdminView) {
     inputPlaceholderText = `Nächste Nachricht in ${cooldownRemainingSeconds}s...`;
   }
+  
+  const isSendButtonDisabled = !canTryToSend || (!newMessage.trim() && !selectedImageFile) || isSendingMessage || isLoading;
 
 
   return (
@@ -559,8 +589,8 @@ export function ChatPageContent({
                           <div>
                             <p className="text-sm font-medium">
                               {p.name}
-                              {p.isBot && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">BOT</Badge>}
-                               {(p.userId === initialUserId && isAdminView) && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
+                              {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0 border-accent text-accent">BOT</Badge>}
+                              {(p.userId === initialUserId && isAdminView) && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
                               {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                             </p>
                             <p className="text-xs text-muted-foreground">{p.role}</p>
@@ -594,6 +624,7 @@ export function ChatPageContent({
                         <p className="text-sm font-medium">
                           {p.name}
                           {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
+                           {(p.userId === initialUserId && isAdminView) && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
                           {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                         </p>
                         <p className="text-xs text-muted-foreground">{p.role}</p>
@@ -621,7 +652,7 @@ export function ChatPageContent({
                   </div>
                 </CardHeader>
                 <CardContent className="p-3 pt-0">
-                  <ScrollArea className="h-60 text-xs"> 
+                  <ScrollArea className="h-60 text-xs">
                       <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                           {currentScenario.langbeschreibung}
                       </CardDescription>
@@ -655,12 +686,12 @@ export function ChatPageContent({
                           >
                             {msg.senderName}
                             {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent/50 text-accent")}>BOT</Badge>}
-                            {msg.senderType === 'admin' && !msg.isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1 py-0")}>ADMIN</Badge>}
+                            {msg.senderType === 'admin' && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1 py-0")}>ADMIN</Badge>}
                           </button>
                           <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
                         </div>
                         {msg.replyToMessageId && msg.replyToMessageSenderName && msg.replyToMessageContentSnippet && (
-                          <div 
+                          <div
                             className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-black/20" : "bg-black/10"} opacity-80 cursor-pointer hover:opacity-100`}
                             onClick={() => scrollToMessage(msg.replyToMessageId as string)}
                             title="Zum Original springen"
@@ -673,11 +704,11 @@ export function ChatPageContent({
                         )}
                         {msg.imageUrl && (
                           <div className="my-2">
-                            <Image 
-                              src={msg.imageUrl} 
-                              alt={msg.imageFileName || "Hochgeladenes Bild"} 
-                              width={300} 
-                              height={200} 
+                            <Image
+                              src={msg.imageUrl}
+                              alt={msg.imageFileName || "Hochgeladenes Bild"}
+                              width={300}
+                              height={200}
                               className="rounded-md object-cover cursor-pointer"
                               onClick={() => window.open(msg.imageUrl, '_blank')}
                               data-ai-hint="chat image"
@@ -759,31 +790,44 @@ export function ChatPageContent({
                   <p className="font-semibold">{selectedImageFile?.name}</p>
                   <p>{selectedImageFile ? (selectedImageFile.size / 1024).toFixed(1) : 0} KB</p>
                 </div>
-                <Button variant="ghost" size="icon" onClick={handleRemoveSelectedImage} className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10">
+                <Button variant="ghost" size="icon" onClick={handleRemoveSelectedImage} className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10" disabled={isSendingMessage}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             )}
-            {!canSendBasedOnStatusAndMute && sessionStatusMessage && (
-              <Alert variant={sessionData?.status === "ended" || (isMuted && !isAdminView) ? "destructive" : "default"} className="mb-2">
-                {sessionData?.status === "paused" ? <PauseCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            {selectedImageFile && isSendingMessage && imageUploadProgress !== null && imageUploadProgress < 100 && (
+              <div className="mt-1 mb-2">
+                <Progress value={imageUploadProgress} className="h-2 w-full" />
+                <p className="text-xs text-muted-foreground text-right mt-0.5">{imageUploadProgress.toFixed(0)}% hochgeladen</p>
+              </div>
+            )}
+            {!canTryToSend && sessionData?.status !== "active" && (
+              <Alert variant={sessionData?.status === "ended" ? "destructive" : "default"} className="mb-2">
+                {sessionData?.status === "paused" ? <PauseCircle className="h-4 w-4" /> : (sessionData?.status === "ended" ? <AlertTriangle className="h-4 w-4" /> : null)}
                 <AlertTitle>
-                  {sessionData?.status === "ended" ? "Sitzung beendet" : (sessionData?.status === "paused" ? "Sitzung pausiert" : (isMuted && !isAdminView ? "Stummgeschaltet" : "Hinweis"))}
+                  {sessionData?.status === "ended" ? "Sitzung beendet" : (sessionData?.status === "paused" ? "Sitzung pausiert" : "Hinweis")}
                 </AlertTitle>
                 <AlertDescription>
-                  {sessionStatusMessage}
+                  {sessionData?.status === "ended" ? "Diese Simulation wurde vom Administrator beendet." : "Die Simulation ist aktuell pausiert."}
                 </AlertDescription>
               </Alert>
             )}
+             {isMuted && !isAdminView && sessionData?.status === "active" && (
+                 <Alert variant="destructive" className="mb-2">
+                    <VolumeX className="h-4 w-4" />
+                    <AlertTitle>Stummgeschaltet</AlertTitle>
+                    <AlertDescription>Sie wurden vom Administrator stummgeschaltet.</AlertDescription>
+                </Alert>
+            )}
             <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
-              <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading || isUploadingImage} onClick={() => fileInputRef.current?.click()}>
+              <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!canTryToSend || isSendingMessage || isLoading} />
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => fileInputRef.current?.click()}>
                 <Paperclip className="h-5 w-5" />
               </Button>
 
               <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading || isUploadingImage}>
+                  <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading}>
                     <Smile className="h-5 w-5" />
                   </Button>
                 </PopoverTrigger>
@@ -820,7 +864,7 @@ export function ChatPageContent({
                   </Tabs>
                 </PopoverContent>
               </Popover>
-              
+
               <Input
                 ref={inputRef}
                 id="message-input"
@@ -829,19 +873,19 @@ export function ChatPageContent({
                 className="flex-1 text-base"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                disabled={!canSendMessage || isLoading || isUploadingImage}
+                disabled={!canTryToSend || isSendingMessage || isLoading}
               />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading || isUploadingImage} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
                 <Mic className="h-5 w-5" />
               </Button>
-              <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!canSendMessage || (!newMessage.trim() && !selectedImageFile) || isLoading || isUploadingImage} aria-label="Senden">
-                {isUploadingImage ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
+              <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
+                {isSendingMessage && selectedImageFile ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
               </Button>
             </form>
-            {cooldownRemainingSeconds > 0 && canSendBasedOnStatusAndMute && !isAdminView &&(
+            {cooldownRemainingSeconds > 0 && canTryToSend && !isAdminView && sessionData?.status === "active" && !isMuted && (
               <p className="text-xs text-muted-foreground mt-1.5 text-right">Nächste Nachricht in {cooldownRemainingSeconds}s</p>
             )}
-            {sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && cooldownRemainingSeconds <= 0 && canSendBasedOnStatusAndMute && !isAdminView && (
+            {sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && cooldownRemainingSeconds <= 0 && canTryToSend && !isAdminView && sessionData?.status === "active" && !isMuted &&(
               <p className="text-xs text-muted-foreground mt-1.5 text-right">Nachrichten Cooldown: {sessionData.messageCooldownSeconds}s</p>
             )}
           </div>
@@ -867,3 +911,5 @@ export default function ChatPage({ params }: { params: ChatPageProps }) {
     </Suspense>
   );
 }
+
+    
