@@ -11,74 +11,113 @@ import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
-import type { Scenario, BotConfig } from "@/lib/types"; // Added BotConfig
+import type { Scenario, BotConfig, Participant } from "@/lib/types";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
+import { db } from "@/lib/firebase";
+import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query } from "firebase/firestore";
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
 }
 
-interface DisplayParticipant {
-  id: string;
-  name: string;
-  role: string; // e.g. "Teilnehmer A", "Bot Provokateur"
-  isMuted?: boolean;
-  isBot: boolean;
-  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
-  escalation?: number;
-  avatarFallback?: string;
-}
-
-
 export default function AdminSessionDashboardPage({ params }: AdminSessionDashboardPageProps) {
   const { sessionId } = params;
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
-  const [invitationLink, setInvitationLink] = useState<string>("");
-  const [displayParticipants, setDisplayParticipants] = useState<DisplayParticipant[]>([]);
+  const [invitationLink, setInvitationLink] = useState<string>("Wird generiert...");
+  const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
+  const [isLoadingLink, setIsLoadingLink] = useState(true);
+
 
   useEffect(() => {
     const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
 
     if (scenario) {
-      if (typeof window !== "undefined") {
-        setInvitationLink(`${window.location.origin}/join/${sessionId}`);
-      }
+      const sessionDocRef = doc(db, "sessions", sessionId);
+      const generateLink = async () => {
+        setIsLoadingLink(true);
+        try {
+          const docSnap = await getDoc(sessionDocRef);
+          let link = "";
+          if (typeof window !== "undefined") {
+            link = `${window.location.origin}/join/${sessionId}`;
+          }
 
-      const studentPlaceholders: DisplayParticipant[] = [];
-      const numStudentRoles = scenario.standardRollen - scenario.defaultBots;
-      for (let i = 0; i < numStudentRoles; i++) {
-        studentPlaceholders.push({
-          id: `student-placeholder-${i + 1}`,
-          name: `Teilnehmer ${String.fromCharCode(65 + i)}`, // Teilnehmer A, B, C...
-          role: `Teilnehmer ${String.fromCharCode(65 + i)}`,
-          isBot: false,
-          status: "Nicht beigetreten",
-          avatarFallback: `T${String.fromCharCode(65 + i)}`,
+          if (!docSnap.exists()) {
+            await setDoc(sessionDocRef, {
+              scenarioId: sessionId,
+              createdAt: serverTimestamp(),
+              invitationLink: link,
+              status: "active" // Initial status
+            });
+            setInvitationLink(link);
+            toast({ title: "Neue Sitzung erstellt", description: `Sitzung ${sessionId} wurde in Firestore angelegt.` });
+          } else {
+            const existingData = docSnap.data();
+            // Ensure link is up-to-date if window.location.origin changed (e.g. dev vs prod)
+            // or if it wasn't stored before
+            if (existingData.invitationLink !== link && link) {
+                 await setDoc(sessionDocRef, { invitationLink: link }, { merge: true });
+                 setInvitationLink(link);
+            } else {
+                setInvitationLink(existingData.invitationLink || link);
+            }
+          }
+        } catch (error) {
+          console.error("Error managing session document: ", error);
+          toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzung konnte nicht erstellt/geladen werden." });
+          if (typeof window !== "undefined") {
+            setInvitationLink(`${window.location.origin}/join/${sessionId}`); // Fallback
+          }
+        } finally {
+          setIsLoadingLink(false);
+        }
+      };
+      generateLink();
+
+      // Listen for participants
+      const participantsColRef = collection(db, "sessions", sessionId, "participants");
+      const q = query(participantsColRef);
+      const unsubscribeParticipants = onSnapshot(q, (querySnapshot) => {
+        const fetchedParticipants: Participant[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedParticipants.push({ id: doc.id, ...doc.data() } as Participant);
         });
-      }
-      // For now, actual joined students are not tracked here. This will require backend integration.
-      setDisplayParticipants(studentPlaceholders);
+        setSessionParticipants(fetchedParticipants);
+      }, (error) => {
+        console.error("Error fetching participants: ", error);
+        toast({ variant: "destructive", title: "Firestore Fehler", description: "Teilnehmer konnten nicht geladen werden." });
+      });
+
+      return () => {
+        unsubscribeParticipants();
+      };
 
     } else {
-      // Handle scenario not found
-      setDisplayParticipants([]);
+      setInvitationLink("Szenario nicht gefunden");
+      setIsLoadingLink(false);
+      setSessionParticipants([]);
     }
-  }, [sessionId]);
+  }, [sessionId, toast]);
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(invitationLink).then(() => {
-      toast({ title: "Link kopiert!", description: "Der Einladungslink wurde in die Zwischenablage kopiert." });
-    }).catch(err => {
-      toast({ variant: "destructive", title: "Fehler", description: "Link konnte nicht kopiert werden." });
-      console.error('Failed to copy: ', err);
-    });
+    if (invitationLink && invitationLink !== "Wird generiert..." && invitationLink !== "Szenario nicht gefunden") {
+      navigator.clipboard.writeText(invitationLink).then(() => {
+        toast({ title: "Link kopiert!", description: "Der Einladungslink wurde in die Zwischenablage kopiert." });
+      }).catch(err => {
+        toast({ variant: "destructive", title: "Fehler", description: "Link konnte nicht kopiert werden." });
+        console.error('Failed to copy: ', err);
+      });
+    } else {
+        toast({ variant: "destructive", title: "Fehler", description: "Einladungslink ist noch nicht bereit."});
+    }
   };
 
   const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
+  const expectedStudentRoles = currentScenario ? currentScenario.standardRollen - currentScenario.defaultBots : 0;
 
   const getBotDisplayName = (botConfig: BotConfig, index: number): string => {
     switch (botConfig.personality) {
@@ -88,6 +127,27 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       default: return `Bot ${index + 1} (${botConfig.personality || 'Standard'})`;
     }
   };
+  
+  // Create placeholder participants if scenario expects them and real participants haven't joined yet
+  const displayParticipantsList: Participant[] = [...sessionParticipants];
+  if (currentScenario && sessionParticipants.length < expectedStudentRoles) {
+    const joinedUserIds = new Set(sessionParticipants.map(p => p.userId));
+    for (let i = 0; i < expectedStudentRoles; i++) {
+        const placeholderId = `student-placeholder-${i + 1}`;
+        // This check is simplistic, assumes student roles are not pre-added to DB with this ID scheme
+        if (!joinedUserIds.has(placeholderId) && displayParticipantsList.length < expectedStudentRoles ) {
+             displayParticipantsList.push({
+                id: placeholderId,
+                userId: placeholderId,
+                name: `Teilnehmer ${String.fromCharCode(65 + i)}`,
+                role: `Teilnehmer ${String.fromCharCode(65 + i)}`,
+                isBot: false,
+                status: "Nicht beigetreten",
+                avatarFallback: `T${String.fromCharCode(65 + i)}`,
+            });
+        }
+    }
+  }
 
 
   return (
@@ -118,14 +178,14 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               <div>
                 <Label className="font-semibold">Vordefinierte Rollen für dieses Szenario:</Label>
                 <p className="text-sm text-muted-foreground">
-                  {currentScenario ? `${currentScenario.standardRollen - currentScenario.defaultBots} Teilnehmer, ${currentScenario.defaultBots} Bot(s)` : 'Laden...'}
+                  {currentScenario ? `${expectedStudentRoles} Teilnehmer, ${currentScenario.defaultBots} Bot(s)` : 'Laden...'}
                 </p>
               </div>
               <div>
                 <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <Input id="invitation-link" type="text" value={invitationLink} readOnly className="bg-muted" />
-                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren">
+                  <Input id="invitation-link" type="text" value={isLoadingLink ? "Wird geladen..." : invitationLink} readOnly className="bg-muted" />
+                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingLink}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
@@ -142,11 +202,8 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               <CardDescription>Beobachten Sie die laufende Diskussion.</CardDescription>
             </CardHeader>
             <CardContent className="h-96 bg-muted/30 rounded-md p-4 overflow-y-auto">
-              <p className="text-sm text-muted-foreground">[Simulierte Chat-Nachrichten hier]</p>
-              <div className="mt-2 p-2 border border-dashed rounded">
-                <p className="text-xs"><strong>Bot Provokateur:</strong> Das ist doch alles übertrieben!</p>
-                <p className="text-xs"><strong>Schüler Max:</strong> Finde ich nicht, das verletzt Gefühle.</p>
-              </div>
+              <p className="text-sm text-muted-foreground">[Live Chat-Nachrichten aus Firestore werden hier angezeigt]</p>
+              {/* Placeholder for actual chat messages from Firestore */}
             </CardContent>
           </Card>
 
@@ -177,15 +234,20 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Users className="mr-2 h-5 w-5 text-primary" /> 
-                Teilnehmende ({currentScenario ? currentScenario.standardRollen - currentScenario.defaultBots : 0})
+                Teilnehmende ({sessionParticipants.filter(p => !p.isBot).length} / {expectedStudentRoles})
               </CardTitle>
             </CardHeader>
-            <CardContent className="max-h-64 overflow-y-auto space-y-3">
-              {displayParticipants.filter(p => !p.isBot).map(p => (
-                <div key={p.id} className="flex items-center justify-between p-2 bg-muted/20 rounded-md">
+            <CardContent className="max-h-96 overflow-y-auto space-y-3">
+              {displayParticipantsList.filter(p => !p.isBot).map(p => (
+                <div key={p.id || p.userId} className="flex items-center justify-between p-2 bg-muted/20 rounded-md">
                   <div>
                     <p className="font-medium">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{p.role} - <span className={p.status === "Nicht beigetreten" ? "italic text-orange-500" : ""}>{p.status}</span></p>
+                    <p className="text-xs text-muted-foreground">
+                        {p.role} - 
+                        <span className={p.status === "Nicht beigetreten" ? "italic text-orange-500" : (p.id.startsWith("student-placeholder") ? "italic text-orange-500" : "text-green-500")}>
+                            {p.id.startsWith("student-placeholder") ? "Nicht beigetreten" : (p.status || "Beigetreten")}
+                        </span>
+                    </p>
                   </div>
                   <Button variant={p.isMuted ? "secondary" : "outline"} size="sm" onClick={() => alert(`Stummschalten/Entstummen für ${p.name} (noch nicht implementiert)`)}>
                     {p.isMuted ? <VolumeX className="mr-1 h-4 w-4" /> : <Volume2 className="mr-1 h-4 w-4" />}
@@ -193,8 +255,8 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                   </Button>
                 </div>
               ))}
-              {displayParticipants.filter(p => !p.isBot).length === 0 && currentScenario && (
-                <p className="text-sm text-muted-foreground">Noch keine Teilnehmer für dieses Szenario erwartet oder beigetreten.</p>
+              {expectedStudentRoles === 0 && sessionParticipants.filter(p => !p.isBot).length === 0 && (
+                <p className="text-sm text-muted-foreground">Keine Teilnehmer für dieses Szenario vorgesehen.</p>
               )}
             </CardContent>
           </Card>
@@ -207,8 +269,8 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               {currentScenario?.defaultBotsConfig?.map((botConfig, index) => {
                  const botName = getBotDisplayName(botConfig, index);
                  // Placeholder status and escalation, should come from dynamic state
-                 const botStatus = index === 0 ? "Aktiv" : "Inaktiv"; 
-                 const botEscalation = index === 0 ? 2 : 0;
+                 const botStatus = "Aktiv"; // Placeholder, bot state needs separate management
+                 const botEscalation = 0; // Placeholder
 
                 return (
                   <div key={`bot-${index}`} className="p-3 border rounded-lg space-y-3">
