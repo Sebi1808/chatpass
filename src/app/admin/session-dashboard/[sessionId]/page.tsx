@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
@@ -16,7 +16,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query, orderBy, Timestamp, updateDoc, writeBatch, getDocs, where } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query, orderBy, Timestamp, updateDoc, writeBatch, getDocs, where, deleteDoc } from "firebase/firestore";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,6 +53,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
   const [isLoadingSessionData, setIsLoadingSessionData] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
+  const [isEndingSession, setIsEndingSession] = useState(false);
+  const [isStartingOrRestartingSession, setIsStartingOrRestartingSession] = useState(false);
+  const [isResettingSession, setIsResettingSession] = useState(false);
 
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
 
@@ -79,14 +82,14 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               scenarioId: sessionId,
               createdAt: serverTimestamp(),
               invitationLink: link,
-              status: "active",
+              status: "active", // Start new sessions as active
               messageCooldownSeconds: DEFAULT_COOLDOWN,
             };
             await setDoc(sessionDocRef, newSessionData);
             setSessionData(newSessionData);
             setInvitationLink(link);
             setPaceValue(DEFAULT_COOLDOWN);
-            toast({ title: "Neue Sitzung erstellt", description: `Sitzung ${sessionId} wurde in Firestore angelegt.` });
+            // toast({ title: "Neue Sitzung erstellt", description: `Sitzung ${sessionId} wurde in Firestore angelegt.` });
           } else {
             const existingData = docSnap.data() as SessionData;
             setSessionData(existingData);
@@ -96,7 +99,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
             } else {
                 setInvitationLink(existingData.invitationLink || link);
             }
-            setPaceValue(existingData.messageCooldownSeconds || DEFAULT_COOLDOWN);
+            setPaceValue(existingData.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
           }
         } catch (error) {
           console.error("Error managing session document: ", error);
@@ -128,12 +131,11 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         setSessionData(data);
         setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
       } else {
-        // Session might have been deleted or not yet created
-        setSessionData(null);
+        setSessionData(null); // Session might have been deleted
       }
     }, (error) => {
       console.error("Error listening to session data: ", error);
-      toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzungsdaten konnten nicht synchronisiert werden." });
+      // toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzungsdaten konnten nicht synchronisiert werden." });
     });
     return () => unsubscribeSessionData();
   }, [sessionId, toast]);
@@ -154,7 +156,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       setIsLoadingParticipants(false);
     }, (error) => {
       console.error("Error fetching participants: ", error);
-      toast({ variant: "destructive", title: "Firestore Fehler", description: "Teilnehmer konnten nicht geladen werden." });
+      // toast({ variant: "destructive", title: "Firestore Fehler", description: "Teilnehmer konnten nicht geladen werden." });
       setIsLoadingParticipants(false);
     });
     return () => unsubscribeParticipants();
@@ -181,7 +183,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       setIsLoadingMessages(false);
     }, (error) => {
       console.error("Error fetching messages: ", error);
-      toast({ variant: "destructive", title: "Firestore Fehler", description: "Nachrichten konnten nicht geladen werden." });
+      // toast({ variant: "destructive", title: "Firestore Fehler", description: "Nachrichten konnten nicht geladen werden." });
       setIsLoadingMessages(false);
     });
     return () => unsubscribeMessages();
@@ -200,8 +202,84 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     }
   };
 
+  const handleStartRestartSession = async () => {
+    if (!sessionId) return;
+    setIsStartingOrRestartingSession(true);
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    let link = invitationLink;
+    if (typeof window !== "undefined" && (!link || link === "Wird generiert..." || link === "Szenario nicht gefunden")) {
+        link = `${window.location.origin}/join/${sessionId}`;
+    }
+
+    const sessionUpdateData: Partial<SessionData> = {
+        status: "active",
+        messageCooldownSeconds: DEFAULT_COOLDOWN,
+        scenarioId: sessionId,
+        invitationLink: link,
+    };
+
+    if (!sessionData || sessionData.status === "ended") {
+        sessionUpdateData.createdAt = serverTimestamp(); // New or fully restarted session
+    }
+
+    try {
+        await setDoc(sessionDocRef, sessionUpdateData, { merge: true }); // Use setDoc with merge to create or update
+        toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv mit Standardeinstellungen." });
+    } catch (error) {
+        console.error("Error starting/restarting session: ", error);
+        toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht gestartet/aktualisiert werden." });
+    } finally {
+        setIsStartingOrRestartingSession(false);
+    }
+  };
+
+  const handleResetSession = async () => {
+    if (!sessionId) return;
+    setIsResettingSession(true);
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    const participantsColRef = collection(db, "sessions", sessionId, "participants");
+    const messagesColRef = collection(db, "sessions", sessionId, "messages");
+
+    try {
+      const batch = writeBatch(db);
+
+      // Delete participants
+      const participantsSnap = await getDocs(participantsColRef);
+      participantsSnap.forEach(doc => batch.delete(doc.ref));
+
+      // Delete messages
+      const messagesSnap = await getDocs(messagesColRef);
+      messagesSnap.forEach(doc => batch.delete(doc.ref));
+
+      await batch.commit();
+
+      // Re-initialize session document
+      let link = "";
+      if (typeof window !== "undefined") {
+        link = `${window.location.origin}/join/${sessionId}`;
+      }
+      const newSessionData: SessionData = {
+        scenarioId: sessionId,
+        createdAt: serverTimestamp(),
+        invitationLink: link,
+        status: "active",
+        messageCooldownSeconds: DEFAULT_COOLDOWN,
+      };
+      await setDoc(sessionDocRef, newSessionData); // Overwrite with new session data
+
+      toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Die Sitzung wurde neu gestartet." });
+    } catch (error) {
+      console.error("Error resetting session: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht zurückgesetzt werden." });
+    } finally {
+      setIsResettingSession(false);
+    }
+  };
+
+
   const handleEndSession = async () => {
     if (!sessionId) return;
+    setIsEndingSession(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { status: "ended" });
@@ -209,6 +287,8 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     } catch (error) {
       console.error("Error ending session: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht beendet werden." });
+    } finally {
+        setIsEndingSession(false);
     }
   };
 
@@ -274,7 +354,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
   const expectedStudentRoles = currentScenario ? currentScenario.standardRollen - currentScenario.defaultBots : 0;
 
   const getBotDisplayName = (botConfig: BotConfig, index: number): string => {
-    // Use botConfig.name if available, otherwise generate
     if (botConfig.name) return botConfig.name;
     switch (botConfig.personality) {
       case 'provokateur': return 'Bot Provokateur';
@@ -292,14 +371,13 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     let placeholderIndex = 0;
     for (let i = 0; i < expectedStudentRoles && placeholderIndex < placeholdersToAdd; i++) {
         const potentialPlaceholderId = `student-placeholder-${String.fromCharCode(65 + i)}`;
-        // Check if a real participant already took this letter, or if placeholder already exists
         const isRoleTakenByRealUser = sessionParticipants.some(p => !p.isBot && p.role === `Teilnehmer ${String.fromCharCode(65 + i)}`);
         const isPlaceholderNeeded = !displayParticipantsList.some(dp => dp.userId === potentialPlaceholderId && dp.isBot === false)
 
         if (!isRoleTakenByRealUser && isPlaceholderNeeded) {
              displayParticipantsList.push({
-                id: potentialPlaceholderId, // Use a consistent ID format
-                userId: potentialPlaceholderId, // For consistency
+                id: potentialPlaceholderId, 
+                userId: potentialPlaceholderId, 
                 name: `Teilnehmer ${String.fromCharCode(65 + i)}`,
                 role: `Teilnehmer ${String.fromCharCode(65 + i)}`,
                 isBot: false,
@@ -313,7 +391,14 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
 
   const isSessionEnded = sessionData?.status === "ended";
   const isSessionPaused = sessionData?.status === "paused";
-  const isSessionInteractable = !isSessionEnded;
+  const isSessionActive = sessionData?.status === "active";
+  const isSessionInteractable = !isSessionEnded; // Used to disable many controls
+
+  const getStartRestartButtonText = () => {
+    if (!sessionData || sessionData.status === 'ended') return "Sitzung starten";
+    if (sessionData.status === 'paused') return "Fortsetzen & Initialisieren";
+    return "Neu initialisieren";
+  };
 
 
   return (
@@ -328,7 +413,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         <div className="flex items-center gap-2">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isSessionEnded}>
+              <Button variant="destructive" disabled={isEndingSession || !isSessionActive && !isSessionPaused}>
                 <Power className="mr-2 h-4 w-4" /> Sitzung beenden
               </Button>
             </AlertDialogTrigger>
@@ -336,12 +421,14 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               <AlertDialogHeader>
                 <AlertDialogTitle>Sitzung wirklich beenden?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Wenn Sie die Sitzung beenden, können keine weiteren Nachrichten gesendet werden. Die Daten bleiben erhalten.
+                  Wenn Sie die Sitzung beenden, können keine weiteren Nachrichten gesendet werden und niemand kann mehr beitreten. Die Daten bleiben erhalten.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-                <AlertDialogAction onClick={handleEndSession}>Beenden</AlertDialogAction>
+                <AlertDialogAction onClick={handleEndSession} disabled={isEndingSession}>
+                  {isEndingSession ? "Wird beendet..." : "Beenden"}
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -353,7 +440,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         <Card className="border-destructive bg-destructive/10">
           <CardHeader>
             <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Sitzung Beendet</CardTitle>
-            <CardDescription className="text-destructive/80">Diese Sitzung wurde beendet und ist nicht mehr aktiv.</CardDescription>
+            <CardDescription className="text-destructive/80">Diese Sitzung wurde beendet. Sie können sie unten neu starten oder zurücksetzen.</CardDescription>
           </CardHeader>
         </Card>
       )}
@@ -375,13 +462,13 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               <div>
                 <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <Input id="invitation-link" type="text" value={isLoadingLink || isLoadingSessionData ? "Wird geladen..." : invitationLink} readOnly className="bg-muted" />
-                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingLink || isLoadingSessionData || !isSessionInteractable}>
+                  <Input id="invitation-link" type="text" value={isLoadingLink || isLoadingSessionData || !invitationLink || invitationLink === "Wird generiert..." ? "Wird geladen..." : invitationLink} readOnly className="bg-muted" />
+                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingLink || isLoadingSessionData || !invitationLink || invitationLink === "Wird generiert..."}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-              <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={!isSessionInteractable}>
+              <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={!invitationLink || invitationLink === "Wird generiert..."}>
                 <QrCode className="mr-2 h-4 w-4" /> QR-Code anzeigen
               </Button>
             </CardContent>
@@ -398,6 +485,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <MessageCircleIcon className="w-12 h-12 mb-2 opacity-50" />
                   <p>Noch keine Nachrichten in dieser Sitzung.</p>
+                  {isSessionEnded && <p className="mt-1 text-xs">Die Sitzung ist beendet.</p>}
                 </div>
               )}
               {!isLoadingMessages && chatMessages.map(msg => (
@@ -417,6 +505,41 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                 <CardTitle className="flex items-center"><Settings className="mr-2 h-5 w-5 text-primary" /> Pace & Allgemeine Steuerung</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Button 
+                        onClick={handleStartRestartSession} 
+                        disabled={isStartingOrRestartingSession || isResettingSession}
+                        variant={(!sessionData || sessionData.status === 'ended' || sessionData.status === 'paused') ? "default" : "outline"}
+                    >
+                        {isStartingOrRestartingSession ? "Wird ausgeführt..." : 
+                            ((!sessionData || sessionData.status === 'ended' || sessionData.status === 'paused') ? 
+                            <Play className="mr-2 h-4 w-4" /> : <RefreshCw className="mr-2 h-4 w-4" />)
+                        }
+                        {getStartRestartButtonText()}
+                    </Button>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="destructive" disabled={isStartingOrRestartingSession || isResettingSession || isLoadingSessionData} className="bg-red-700 hover:bg-red-800">
+                                <RotateCcw className="mr-2 h-4 w-4" /> Sitzung zurücksetzen
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Sitzung wirklich komplett zurücksetzen?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                            Alle Teilnehmer und Nachrichten dieser Sitzung werden dauerhaft gelöscht. Die Sitzung wird mit Standardeinstellungen neu gestartet. Diese Aktion kann nicht rückgängig gemacht werden.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel disabled={isResettingSession}>Abbrechen</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleResetSession} disabled={isResettingSession} className="bg-destructive hover:bg-destructive/90">
+                                {isResettingSession ? "Wird zurückgesetzt..." : "Ja, zurücksetzen"}
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </div>
+                <Separator />
                 <div>
                     <Label htmlFor="pace-slider" className="mb-2 block">
                       Nachrichten Cooldown (Verzögerung): <span className="font-bold text-primary">{paceValue}s</span>
@@ -425,9 +548,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                         value={[paceValue]} 
                         max={30} step={1} 
                         id="pace-slider" 
-                        onValueChange={(value) => setPaceValue(value[0])} // Update display optimistically
-                        onValueCommit={handlePaceChange} // Update Firestore on commit
-                        disabled={!isSessionInteractable}
+                        onValueChange={(value) => setPaceValue(value[0])} 
+                        onValueCommit={handlePaceChange} 
+                        disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}
                     />
                 </div>
                 <div className="flex items-center justify-between">
@@ -438,11 +561,11 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                         id="simulation-active" 
                         checked={sessionData?.status === "active"} 
                         onCheckedChange={handleToggleSimulationActive}
-                        disabled={!isSessionInteractable || sessionData?.status === 'ended'} // Disable if ended
+                        disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}
                     />
                 </div>
                  <div className="flex items-center space-x-2">
-                    <Button variant="destructive" onClick={handleMuteAllUsers} disabled={!isSessionInteractable}>
+                    <Button variant="outline" onClick={handleMuteAllUsers} disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}>
                         <VolumeX className="mr-2 h-4 w-4" /> Alle Stummschalten
                     </Button>
                 </div>
@@ -476,7 +599,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                     variant={p.isMuted ? "secondary" : "outline"} 
                     size="sm" 
                     onClick={() => handleToggleMuteParticipant(p.id, p.isMuted)}
-                    disabled={!isSessionInteractable || p.id.startsWith("student-placeholder")}
+                    disabled={!isSessionInteractable || p.id.startsWith("student-placeholder") || isStartingOrRestartingSession || isResettingSession}
                   >
                     {p.isMuted ? <Volume2 className="mr-1 h-4 w-4" /> : <VolumeX className="mr-1 h-4 w-4" />}
                     {p.isMuted ? "Freischalten" : "Stummschalten"}
@@ -498,10 +621,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
             </CardHeader>
             <CardContent className="space-y-4">
               {currentScenario?.defaultBotsConfig?.map((botConfig, index) => {
-                 // Find the corresponding participant bot if it has joined
                  const participantBot = sessionParticipants.find(p => p.isBot && p.name === getBotDisplayName(botConfig, index));
                  const botName = getBotDisplayName(botConfig, index);
-                 const botIsActive = participantBot?.botConfig?.isActive ?? botConfig.isActive ?? true; // Default to true if not set
+                 const botIsActive = participantBot?.botConfig?.isActive ?? botConfig.isActive ?? true; 
                  const botEscalation = participantBot?.botConfig?.currentEscalation ?? botConfig.currentEscalation ?? 0;
                  const botAutoTimer = participantBot?.botConfig?.autoTimerEnabled ?? botConfig.autoTimerEnabled ?? false;
 
@@ -512,7 +634,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                       <Switch 
                         checked={botIsActive} 
                         onCheckedChange={() => alert(`Toggle Bot ${botName} (noch nicht implementiert)`)} 
-                        disabled={!isSessionInteractable}
+                        disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}
                       />
                     </div>
                     <div className="space-y-1">
@@ -520,13 +642,13 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                       <Progress value={botEscalation * 33.33} className="h-2" />
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => alert(`Eskalieren ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable}><ChevronUp className="h-4 w-4" /></Button>
-                      <Button variant="outline" size="sm" onClick={() => alert(`Deeskalieren ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable}><ChevronDown className="h-4 w-4" /></Button>
-                      <Button variant="secondary" size="sm" className="flex-1" onClick={() => alert(`Manuell Posten ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable}>Posten</Button>
+                      <Button variant="outline" size="sm" onClick={() => alert(`Eskalieren ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}><ChevronUp className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="sm" onClick={() => alert(`Deeskalieren ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}><ChevronDown className="h-4 w-4" /></Button>
+                      <Button variant="secondary" size="sm" className="flex-1" onClick={() => alert(`Manuell Posten ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}>Posten</Button>
                     </div>
                     <div className="flex items-center space-x-2 pt-1">
                       <Label htmlFor={`autotimer-bot-${index}`} className="text-xs">Auto-Timer</Label>
-                      <Switch id={`autotimer-bot-${index}`} checked={botAutoTimer} disabled={!isSessionInteractable} onCheckedChange={() => alert("Auto-Timer für Bot (noch nicht implementiert)")}/>
+                      <Switch id={`autotimer-bot-${index}`} checked={botAutoTimer} disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession} onCheckedChange={() => alert("Auto-Timer für Bot (noch nicht implementiert)")}/>
                     </div>
                   </div>
                 );
@@ -552,3 +674,4 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     </div>
   );
 }
+
