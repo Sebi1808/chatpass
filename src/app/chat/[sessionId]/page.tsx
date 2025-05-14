@@ -31,6 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { Progress } from "@/components/ui/progress";
+import { participantColors, emojiCategories } from '@/lib/config';
 
 
 interface ChatPageUrlParams {
@@ -60,17 +61,6 @@ interface DisplayParticipant extends ParticipantType {
   id: string;
 }
 
-const participantColors = [
-  { name: 'sky', bg: "bg-sky-500/90", text: "text-sky-50", nameText: "text-sky-100", ring: "ring-sky-500" },
-  { name: 'emerald', bg: "bg-emerald-500/90", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-500" },
-  { name: 'violet', bg: "bg-violet-500/90", text: "text-violet-50", nameText: "text-violet-100", ring: "ring-violet-500" },
-  { name: 'rose', bg: "bg-rose-500/90", text: "text-rose-50", nameText: "text-rose-100", ring: "ring-rose-500" },
-  { name: 'amber', bg: "bg-amber-500/90", text: "text-amber-50", nameText: "text-amber-100", ring: "ring-amber-500" },
-  { name: 'teal', bg: "bg-teal-500/90", text: "text-teal-50", nameText: "text-teal-100", ring: "ring-teal-500" },
-  { name: 'indigo', bg: "bg-indigo-500/90", text: "text-indigo-50", nameText: "text-indigo-100", ring: "ring-indigo-500" },
-  { name: 'fuchsia', bg: "bg-fuchsia-500/90", text: "text-fuchsia-50", nameText: "text-fuchsia-100", ring: "ring-fuchsia-500" },
-];
-
 const simpleHash = (str: string): number => {
   let hash = 0;
   if (!str) return 0;
@@ -81,14 +71,6 @@ const simpleHash = (str: string): number => {
   }
   return Math.abs(hash);
 };
-
-const emojiCategories = [
-    { name: "Smileys", icon: "😀", emojis: ['👍', '❤️', '😂', '🤔', '😠', '👏', '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾','🫶', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👎', '✊', '👊', '🤛', '🤜', '🙌', '👐', '🤲', '🙏', '✍️', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸'] },
-    { name: "People", icon: "🧑", emojis: ['🧑', '👧', '🧒', '👦', '👩', '🧑‍🦱', '👨‍🦱', '👩‍🦱', '🧑‍🦰', '👨‍🦰', '👩‍🦰', '👱‍♀️', '👱', '👱‍♂️', '🧑‍🦳', '👨‍🦳', '👩‍🦳', '🧑‍🦲', '👨‍🦲', '👩‍🦲', '🧔‍♀️', '🧔', '🧔‍♂️', '👵', '🧓', '👴', '👲', '👳‍♀️', '👳', '👳‍♂️', '🧕', '👮‍♀️', '👮', '👮‍♂️', '👷‍♀️', '👷', '👷‍♂️', '💂‍♀️', '💂', '💂‍♂️', '🕵️‍♀️', '🕵️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤', '👩‍🏫', '👨‍🏫', '👩‍🏭', '👨‍🏭', '👩‍💻', '👨‍💻', '👩‍💼', '👨‍💼', '👩‍🔧', '👨‍🔧', '👩‍🔬', '👨‍🔬', '👩‍🎨', '👨‍🎨', '👩‍🚒', '👨‍🚒', '👩‍✈️', '👨‍✈️', '👩‍🚀', '👨‍🚀', '👩‍⚖️', '👨‍⚖️', '👰‍♀️', '👰', '👰‍♂️', '🤵‍♀️', '🤵', '🤵‍♂️', '👸', '🤴', '🥷', '🦸‍♀️', '🦸', '🦸‍♂️', '🦹‍♀️', '🦹', '🦹‍♂️', '🤶', '🧑‍🎄', '🎅', '🧙‍♀️', '🧙', '🧙‍♂️', '🧝‍♀️', '🧝', '🧝‍♂️', '🧛‍♀️', '🧛', '🧛‍♂️', '🧟‍♀️', '🧟', '🧟‍♂️', '🧞‍♀️', '🧞', '🧞‍♂️', '🧜‍♀️', '🧜', '🧜‍♂️', '🧚‍♀️', '🧚', '🧚‍♂️', '👼', '🤰', '🤱', '👩‍🍼', '🧑‍🍼', '👨‍🍼', '🙇‍♀️', '🙇', '🙇‍♂️', '💁‍♀️', '💁', '💁‍♂️', '🙅‍♀️', '🙅', '🙅‍♂️', '🙆‍♀️', '🙆', '🙆‍♂️', '🙋‍♀️', '🙋', '🙋‍♂️', '🧏‍♀️', '🧏', '🧏‍♂️', '🤦‍♀️', '🤦', '🤦‍♂️', '🤷‍♀️', '🤷', '🤷‍♂️', '🙎‍♀️', '🙎', '🙎‍♂️', '🙍‍♀️', '🙍', '🙍‍♂️', '💇‍♀️', '💇', '💇‍♂️', '💆‍♀️', '💆', '💆‍♂️', '🧖‍♀️', '🧖', '🧖‍♂️', '👯‍♀️', '👯', '👯‍♂️', '🕺', '💃', '🕴️', '👩‍🦽', '🧑‍🦽', '👨‍🦽', '👩‍🦼', '🧑‍🦼', '👨‍🦼', '🚶‍♀️', '🚶', '🚶‍♂️', '👩‍🦯', '🧑‍🦯', '👨‍🦯', '🧎‍♀️', '🧎', '🧎‍♂️', '🏃‍♀️', '🏃', '🏃‍♂️', '🧍‍♀️', '🧍', '🧍‍♂️', '🗣️', '🫂'] },
-    { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐺', '🦊', '🦝', '🐱', '🐶', '🦁', '🐯', '🐴', '🦄', '🐮', '🐷', '🐗', '🐭', '🐹', '🐰', '🐻', '🐻‍❄️', '🐨', '🐼', '🐸', '🦓', '🦒', '🐘', '🦣', '🦏', ' Hippo', '🐪', '🐫', '🦙', ' कंगारू', '🦘', '🦥', '🦦', '🦨', '🦡', '🦔', '🦇', '🦅', '🦉', '🐔', '🐧', '🐦', '🐤', '🐥', '🦆', '🦢', '🕊️', '🦩', '🦚', '🦜', '🐸', '🐊', '🐢', '🦎', '🐍', '🐲', '🐉', '🦕', '🦖', '🐳', '🐋', '🐬', '🦭', '🐟', '🐠', '🐡', '🦐', '🦑', '🐙', '🦞', '🦀', '🐌', '🦋', '🐛', '🐜', '🐝', '🪲', '🐞', '🦗', '🕷️', '🕸️', '🦂', '🦟', '🪰', '🪱', '🦠'] },
-    { name: "Food", icon: "🍔", emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🫖', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢'] },
-    { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚰', '🚹', '♂️', '🚺', '♀️', '⚧️', '🚼', '🚻', '🚮', '🎦', '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '#️⃣', '*️⃣', '⏏️', '▶️', '⏸️', '⏯️', '⏹️', '⏺️', '⏭️', '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️', '🔀', '🔁', '🔂', '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗', '✖️', '🟰', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️', '➰', '➿', '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '◼️', '◻️', '◾', '◽', '▪️', '▫️', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '⬛', '⬜', '🟫', '🔶', '🔷', '🔸', '🔹', '🔳', '🔲', '▪', '▫', '▲', '▼'] },
-];
 
 
 export function ChatPageContent({
@@ -347,13 +329,13 @@ export function ChatPageContent({
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUploadProgress(null);
+      setImageUploadProgress(null); // Reset progress for new file
     }
   };
 
@@ -364,7 +346,7 @@ export function ChatPageContent({
       setImagePreviewUrl(null);
     }
     if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      fileInputRef.current.value = ""; // Reset file input
     }
     setImageUploadProgress(null);
   };
@@ -531,19 +513,20 @@ export function ChatPageContent({
       setNewMessage("");
       setReplyingTo(null);
       setQuotingMessage(null);
-      handleRemoveSelectedImage();
+      handleRemoveSelectedImage(); // Resets image preview and file input
       if (!isAdminView) setLastMessageSentAt(Date.now());
       setShowEmojiPicker(false);
 
     } catch (error) {
       console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
+      // Avoid double-toasting if the error was already handled by the upload promise
       if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("Bild-URL Abruf fehlgeschlagen") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
       }
     } finally {
       console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
-      setImageUploadProgress(null);
+      setImageUploadProgress(null); // Ensure progress is cleared
     }
   };
 
@@ -561,14 +544,15 @@ export function ChatPageContent({
     setReplyingTo(null);
     const quotedText = `> ${message.senderName} schrieb:\n> "${message.content.replace(/\n/g, '\n> ')}"\n\n`;
     setNewMessage(prev => quotedText + prev);
-    setQuotingMessage(message);
+    setQuotingMessage(message); // Keep track of what's being quoted
     inputRef.current?.focus();
   };
 
   const handleCancelQuote = () => {
+     // Remove the quoted text if it's still at the beginning of the message
      if (quotingMessage) {
         const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\n\\n`;
-        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g');
+        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g'); // Make spaces flexible for textarea newlines
         setNewMessage(prev => prev.replace(regex, ""));
     }
     setQuotingMessage(null);
@@ -582,7 +566,7 @@ export function ChatPageContent({
   const handleEmojiSelect = (emoji: string) => {
     if (reactingToMessageId) {
       handleReaction(reactingToMessageId, emoji);
-      setReactingToMessageId(null); 
+      setReactingToMessageId(null); // Reset after processing reaction
     } else {
       setNewMessage(prev => prev + emoji);
     }
@@ -601,7 +585,7 @@ export function ChatPageContent({
           throw "Document does not exist!";
         }
 
-        const currentData = messageDoc.data();
+        const currentData = messageDoc.data() as MessageType; // Ensure it's cast to MessageType
         const currentReactions = currentData.reactions || {};
         const usersWhoReactedWithEmoji: string[] = currentReactions[emoji] || [];
         
@@ -621,7 +605,8 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-      toast({ title: "Reaktion verarbeitet", description: `Deine Reaktion ${emoji} wurde gespeichert.` });
+      // Optional: Toast for successful reaction (can be noisy)
+      // toast({ title: "Reaktion verarbeitet", description: `Deine Reaktion ${emoji} wurde gespeichert.` });
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -650,6 +635,7 @@ export function ChatPageContent({
   }
 
   if (isAdminView && (!sessionData || !currentScenario)) {
+     // Simplified loading for admin view to avoid full screen takeover
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
 
@@ -820,7 +806,9 @@ export function ChatPageContent({
                             >
                               {msg.senderName}
                               {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent text-accent bg-accent/10")}>BOT</Badge>}
-                              {msg.senderType === 'admin' && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>ADMIN</Badge>}
+                              {msg.senderType === 'admin' && !msg.isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>ADMIN</Badge>}
+                              {msg.senderType === 'admin' && msg.isOwn && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 border-primary-foreground/70 text-primary-foreground/80")}>ADMIN (Du)</Badge>}
+
                             </button>
                             <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
                           </div>
@@ -839,7 +827,7 @@ export function ChatPageContent({
                           {msg.imageUrl && (
                              <DialogTrigger asChild>
                                <div 
-                                className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-[3/2] rounded-md overflow-hidden cursor-pointer group" 
+                                className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-auto rounded-md overflow-hidden cursor-pointer group"
                                 onClick={() => {
                                   setImageForModal(msg.imageUrl || null);
                                   setImageFileNameForModal(msg.imageFileName || "Bild");
@@ -848,9 +836,14 @@ export function ChatPageContent({
                                 <Image
                                   src={msg.imageUrl}
                                   alt={msg.imageFileName || "Hochgeladenes Bild"}
-                                  fill // Changed from layout="fill"
-                                  sizes="(max-width: 640px) 250px, 300px" // Added for responsiveness with fill
-                                  style={{objectFit: "cover"}} // Changed from objectFit="cover"
+                                  width={300} // Provide a base width, height will adjust
+                                  height={200} // Provide a base height, width will adjust
+                                  style={{ 
+                                    maxWidth: "100%", 
+                                    height: "auto", 
+                                    objectFit: "contain", // Ensure the whole image is visible
+                                    display: "block" // Prevents extra space below image
+                                  }}
                                   className="transition-transform duration-300 group-hover:scale-105"
                                   data-ai-hint="chat image"
                                 />
@@ -996,8 +989,8 @@ export function ChatPageContent({
                   </Alert>
               )}
               <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
-                <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!canTryToSend || isSendingMessage || isLoading} />
-                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => fileInputRef.current?.click()}>
+                <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!canTryToSend || isSendingMessage || isLoading || (isAdminView && !isSessionActive)} />
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading || (isAdminView && !isSessionActive)} onClick={() => fileInputRef.current?.click()}>
                   <Paperclip className="h-5 w-5" />
                 </Button>
 
@@ -1006,7 +999,7 @@ export function ChatPageContent({
                   if (!open) setReactingToMessageId(null); // Reset if picker is closed
                 }}>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading}>
+                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading || (isAdminView && !isSessionActive)}>
                       <Smile className="h-5 w-5" />
                     </Button>
                   </PopoverTrigger>
@@ -1050,12 +1043,12 @@ export function ChatPageContent({
                   className="flex-1 text-base"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  disabled={!canTryToSend || isSendingMessage || isLoading}
+                  disabled={!canTryToSend || isSendingMessage || isLoading || (isAdminView && !isSessionActive && sessionData?.status !== 'ended')}
                 />
-                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading || (isAdminView && !isSessionActive)} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
                   <Mic className="h-5 w-5" />
                 </Button>
-                <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
+                <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled || (isAdminView && !isSessionActive && sessionData?.status !== 'ended')} aria-label="Senden">
                   {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
                 </Button>
               </form>
