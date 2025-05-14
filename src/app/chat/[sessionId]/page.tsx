@@ -32,12 +32,16 @@ import Image from 'next/image';
 import { Progress } from "@/components/ui/progress";
 
 
+interface ChatPageUrlParams { 
+  sessionId: string; 
+}
+
 interface ChatPageProps {
-  params: { sessionId: string }; // For ChatPage component
+  params: ChatPageUrlParams; 
 }
 
 interface ChatPageContentProps {
-  sessionId: string; // Passed directly to ChatPageContent
+  sessionId: string; 
   initialUserName?: string;
   initialUserRole?: string;
   initialUserId?: string;
@@ -429,11 +433,32 @@ export function ChatPageContent({
               if (error.message) errorMessage += ` - ${error.message}`;
               switch (error.code) {
                 case 'storage/unauthorized':
-                  errorMessage = "Fehler: Keine Berechtigung zum Hochladen. Bitte Admin kontaktieren oder Storage-Regeln prüfen.";
+                  errorMessage = "Fehler: Keine Berechtigung zum Hochladen. Storage-Regeln oder CORS prüfen.";
                   break;
                 case 'storage/canceled':
                   errorMessage = "Upload abgebrochen.";
                   break;
+                case 'storage/object-not-found':
+                    errorMessage = "Fehler: Objekt nicht gefunden. Pfad oder Bucket überprüfen.";
+                    break;
+                case 'storage/bucket-not-found':
+                    errorMessage = "Fehler: Storage Bucket nicht gefunden.";
+                    break;
+                case 'storage/project-not-found':
+                    errorMessage = "Fehler: Firebase Projekt nicht gefunden.";
+                    break;
+                case 'storage/quota-exceeded':
+                    errorMessage = "Fehler: Speicher-Quota überschritten.";
+                    break;
+                case 'storage/unauthenticated':
+                    errorMessage = "Fehler: Nicht authentifiziert. Anmeldung erforderlich oder Regeln prüfen.";
+                    break;
+                case 'storage/retry-limit-exceeded':
+                    errorMessage = "Fehler: Zeitlimit für Upload überschritten. Netzwerk prüfen.";
+                    break;
+                case 'storage/invalid-checksum':
+                     errorMessage = "Fehler: Prüfsumme der Datei stimmt nicht überein. Datei erneut versuchen.";
+                     break;
                 case 'storage/unknown':
                   errorMessage = "Unbekannter Fehler beim Upload. Server-Antwort prüfen.";
                   break;
@@ -442,7 +467,7 @@ export function ChatPageContent({
                   break;
               }
               toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: errorMessage });
-              reject(error);
+              reject(new Error(errorMessage)); 
             },
             async () => { 
               console.log('Upload successful, getting download URL...');
@@ -453,9 +478,10 @@ export function ChatPageContent({
                 uploadedImageFileName = file.name; 
                 resolve(); 
               } catch (getUrlError) {
-                console.error("Error getting download URL: ", getUrlError);
-                toast({ variant: "destructive", title: "Bild-URL Abruf fehlgeschlagen", description: "URL konnte nicht abgerufen werden." });
-                reject(getUrlError); 
+                const getUrlErrorTyped = getUrlError as Error;
+                console.error("Error getting download URL: ", getUrlErrorTyped);
+                toast({ variant: "destructive", title: "Bild-URL Abruf fehlgeschlagen", description: `URL konnte nicht abgerufen werden: ${getUrlErrorTyped.message}` });
+                reject(getUrlErrorTyped); 
               }
             }
           );
@@ -502,7 +528,8 @@ export function ChatPageContent({
 
     } catch (error) {
       console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
-      if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("URL konnte nicht abgerufen werden") || error.message.includes("Ungültige Datei")))) {
+      // Avoid double-toasting if already handled by upload error
+      if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("Bild-URL Abruf fehlgeschlagen") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
       }
     } finally {
@@ -696,7 +723,7 @@ export function ChatPageContent({
                   </div>
                 </CardHeader>
                 <CardContent className="p-3 pt-0">
-                  <ScrollArea className="h-[200px] text-xs"> {/* Adjusted height */}
+                  <ScrollArea className="h-[200px] text-xs"> 
                       <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                           {currentScenario.langbeschreibung}
                       </CardDescription>
@@ -939,8 +966,8 @@ export function ChatPageContent({
   );
 }
 
-export default function ChatPage({ params }: { params: ChatPageProps }) {
-  const { sessionId } = params; 
+export default function ChatPage({ params: routeParams }: ChatPageProps) { 
+  const { sessionId } = routeParams; 
 
   return (
     <Suspense fallback={
@@ -955,3 +982,5 @@ export default function ChatPage({ params }: { params: ChatPageProps }) {
     </Suspense>
   );
 }
+
+    

@@ -44,7 +44,7 @@ const DEFAULT_COOLDOWN = 0;
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
-  const { sessionId } = props.params; // Destructure sessionId from props.params
+  const { sessionId } = props.params; // sessionId aus props.params extrahieren
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
@@ -130,7 +130,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingSessionData(false);
       setSessionData(null); 
     }
-  }, [sessionId, toast]); // Use destructured sessionId
+  }, [sessionId, toast]); 
 
 
   useEffect(() => {
@@ -150,7 +150,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingSessionData(false);
     });
     return () => unsubscribeSessionData();
-  }, [sessionId]); // Use destructured sessionId
+  }, [sessionId]); 
 
 
   useEffect(() => {
@@ -170,7 +170,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingParticipants(false);
     });
     return () => unsubscribeParticipants();
-  }, [sessionId]); // Use destructured sessionId
+  }, [sessionId]); 
 
   useEffect(() => {
     if (!sessionId || showParticipantMirrorView) { 
@@ -201,8 +201,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId, showParticipantMirrorView]);
 
   useEffect(() => {
-    if (showParticipantMirrorView && chatMessagesEndRef.current) { 
-      // chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" }); 
+    if (chatMessagesEndRef.current) { 
+      chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" }); 
     }
   }, [chatMessages, showParticipantMirrorView]);
 
@@ -742,3 +742,5 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
+
+    
