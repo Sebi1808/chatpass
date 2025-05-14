@@ -7,31 +7,33 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, LinkIcon, MessageSquare, Play, Pause, QrCode, Users, Settings, Zap, Volume2, VolumeX, Copy } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario } from "@/lib/types";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
 }
 
 export default function AdminSessionDashboardPage({ params }: AdminSessionDashboardPageProps) {
+  const { sessionId } = params; // Destructure sessionId
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [invitationLink, setInvitationLink] = useState<string>("");
 
   useEffect(() => {
-    const scenario = scenarios.find(s => s.id === params.sessionId);
+    // Use the destructured sessionId
+    const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
     if (typeof window !== "undefined") {
-      setInvitationLink(`${window.location.origin}/join/${params.sessionId}`);
+      setInvitationLink(`${window.location.origin}/join/${sessionId}`);
     }
-  }, [params.sessionId]);
+  }, [sessionId]); // Depend on the destructured sessionId
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(invitationLink).then(() => {
@@ -74,7 +76,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           <h1 className="text-2xl md:text-3xl font-bold text-primary">
             Live Dashboard: <span className="text-foreground">{scenarioTitle}</span>
           </h1>
-          <p className="text-muted-foreground">Sitzungs-ID: {params.sessionId}</p>
+          <p className="text-muted-foreground">Sitzungs-ID: {sessionId}</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Buttons moved to the "Sitzungseinstellungen & Einladung" card */}
@@ -223,4 +225,3 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     </div>
   );
 }
-
