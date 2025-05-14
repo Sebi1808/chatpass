@@ -18,7 +18,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger } from "@/components/ui/dialog"; // Added DialogTrigger
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -30,13 +30,14 @@ import Image from 'next/image';
 import { participantColors, emojiCategories, type ParticipantColor } from '@/lib/config';
 import { MessageInputBar } from '@/components/chat/message-input-bar';
 import { MessageList } from '@/components/chat/message-list';
+import { ChatSidebar } from '@/components/chat/chat-sidebar';
 
 
 interface ChatPageUrlParams {
   sessionId: string;
 }
 
-interface ChatPageProps {
+interface ChatPageOuterProps {
   params: ChatPageUrlParams;
 }
 
@@ -62,7 +63,7 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: currentSessionId,
+  sessionId: currentSessionIdFromProps, // Renamed to avoid conflict with state/local var
   initialUserName,
   initialUserRole,
   initialUserId,
@@ -71,6 +72,7 @@ export function ChatPageContent({
 }: ChatPageContentProps) {
   const { toast } = useToast();
   const router = useRouter();
+  const sessionId = currentSessionIdFromProps; // Use the prop
 
   const [userName, setUserName] = useState<string | null>(initialUserName || null);
   const [userRole, setUserRole] = useState<string | null>(initialUserRole || null);
@@ -112,14 +114,14 @@ export function ChatPageContent({
 
   useEffect(() => {
     if (!isAdminView && (!initialUserName || !initialUserRole || !initialUserId || !initialUserAvatarFallback)) {
-      const nameFromStorage = localStorage.getItem(`chatUser_${currentSessionId}_name`);
-      const roleFromStorage = localStorage.getItem(`chatUser_${currentSessionId}_role`);
-      const userIdFromStorage = localStorage.getItem(`chatUser_${currentSessionId}_userId`);
-      const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${currentSessionId}_avatarFallback`);
+      const nameFromStorage = localStorage.getItem(`chatUser_${sessionId}_name`);
+      const roleFromStorage = localStorage.getItem(`chatUser_${sessionId}_role`);
+      const userIdFromStorage = localStorage.getItem(`chatUser_${sessionId}_userId`);
+      const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${sessionId}_avatarFallback`);
 
       if (!nameFromStorage || !roleFromStorage || !userIdFromStorage || !avatarFallbackFromStorage) {
         toast({ variant: "destructive", title: "Fehler", description: "Benutzerdetails nicht gefunden. Bitte treten Sie der Sitzung erneut bei." });
-        router.push(`/join/${currentSessionId}`);
+        router.push(`/join/${sessionId}`);
         return;
       }
       setUserName(nameFromStorage);
@@ -128,15 +130,15 @@ export function ChatPageContent({
       setUserAvatarFallback(avatarFallbackFromStorage);
     }
 
-    const scenario = scenarios.find(s => s.id === currentSessionId);
+    const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
 
-  }, [currentSessionId, toast, router, isAdminView, initialUserName, initialUserRole, initialUserId, initialUserAvatarFallback]);
+  }, [sessionId, toast, router, isAdminView, initialUserName, initialUserRole, initialUserId, initialUserAvatarFallback]);
 
   useEffect(() => {
-    if (!currentSessionId) return;
+    if (!sessionId) return;
     setIsLoading(true);
-    const sessionDocRef = doc(db, "sessions", currentSessionId);
+    const sessionDocRef = doc(db, "sessions", sessionId);
     const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as SessionData;
@@ -149,7 +151,7 @@ export function ChatPageContent({
           toast({ variant: "destructive", title: "Fehler", description: "Sitzung nicht gefunden oder wurde gelöscht." });
           router.push("/");
         } else {
-           console.warn("Sitzung nicht gefunden im Admin View für sessionId:", currentSessionId);
+           console.warn("Sitzung nicht gefunden im Admin View für sessionId:", sessionId);
         }
         setSessionData(null);
       }
@@ -163,14 +165,14 @@ export function ChatPageContent({
       setIsLoading(false);
     });
     return () => unsubscribeSessionData();
-  }, [currentSessionId, toast, router, isAdminView]);
+  }, [sessionId, toast, router, isAdminView]);
 
   useEffect(() => {
-    if (!currentSessionId || !userId || isAdminView) return;
+    if (!sessionId || !userId || isAdminView) return;
 
     let unsubscribeParticipant: (() => void) | undefined;
     const findParticipantDocAndListen = async () => {
-      const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
+      const participantsColRef = collection(db, "sessions", sessionId, "participants");
       const q = query(participantsColRef, where("userId", "==", userId));
 
       try {
@@ -199,13 +201,13 @@ export function ChatPageContent({
         unsubscribeParticipant();
       }
     };
-  }, [currentSessionId, userId, isAdminView]);
+  }, [sessionId, userId, isAdminView]);
 
 
   useEffect(() => {
-    if (!currentSessionId) return;
+    if (!sessionId) return;
     setIsChatDataLoading(true);
-    const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
+    const participantsColRef = collection(db, "sessions", sessionId, "participants");
     const q_participants = query(participantsColRef, orderBy("joinedAt", "asc"));
 
     const unsubscribe = onSnapshot(q_participants, (querySnapshot) => {
@@ -222,12 +224,12 @@ export function ChatPageContent({
     });
 
     return () => unsubscribe();
-  }, [currentSessionId, toast]);
+  }, [sessionId, toast]);
 
   useEffect(() => {
-    if (!currentSessionId || !userId) return;
+    if (!sessionId || !userId) return;
     setIsChatDataLoading(true);
-    const messagesColRef = collection(db, "sessions", currentSessionId, "messages");
+    const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
 
     const unsubscribe = onSnapshot(q_msg, (querySnapshot) => {
@@ -251,7 +253,7 @@ export function ChatPageContent({
     });
 
     return () => unsubscribe();
-  }, [currentSessionId, toast, userId]);
+  }, [sessionId, toast, userId]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -386,7 +388,7 @@ export function ChatPageContent({
       if (selectedImageFile && selectedImageFile instanceof File) {
         const file = selectedImageFile;
         const imageFileName = `${file.name}_${Date.now()}`;
-        const imagePath = `chat_images/${currentSessionId}/${imageFileName}`;
+        const imagePath = `chat_images/${sessionId}/${imageFileName}`;
         const sRef = storageRef(storage, imagePath);
 
         console.log(`Attempting to upload ${file.name} to ${imagePath}`);
@@ -478,15 +480,16 @@ export function ChatPageContent({
       }
 
 
-      const messagesColRef = collection(db, "sessions", currentSessionId, "messages");
-      const messageData: Omit<MessageType, 'id'> = {
+      const messagesColRef = collection(db, "sessions", sessionId, "messages");
+      const messageData: MessageType = {
+        id: '', // Firestore generates ID, but type expects it
         senderUserId: userId,
         senderName: userName,
         senderType: isAdminView ? 'admin' : 'user',
         avatarFallback: userAvatarFallback,
         content: newMessage.trim(),
         timestamp: serverTimestamp(),
-        reactions: {}, // Initialize with empty reactions
+        reactions: {}, 
       };
 
       if (uploadedImageUrl) messageData.imageUrl = uploadedImageUrl;
@@ -556,7 +559,7 @@ export function ChatPageContent({
   const handleEmojiSelect = (emoji: string) => {
     if (reactingToMessageId) {
       handleReaction(reactingToMessageId, emoji);
-      setReactingToMessageId(null);
+      setReactingToMessageId(null); // Reset after reaction
     } else {
       setNewMessage(prev => prev + emoji);
     }
@@ -564,9 +567,9 @@ export function ChatPageContent({
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
-    if (!userId || !currentSessionId) return;
+    if (!userId || !sessionId) return;
 
-    const messageRef = doc(db, "sessions", currentSessionId, "messages", messageId);
+    const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -593,8 +596,6 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-      // Removed toast for successful reaction to avoid clutter
-      // toast({ title: "Reaktion verarbeitet", description: `Ihre Reaktion "${emoji}" wurde gespeichert.` });
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -664,33 +665,17 @@ export function ChatPageContent({
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4">
-                  <SheetHeader className="mb-4">
-                    <SheetTitle>Teilnehmende ({participants.length})</SheetTitle>
-                  </SheetHeader>
-                  <ScrollArea className="h-[calc(100%-80px)]">
-                    <div className="space-y-3">
-                      {participants.map((p) => {
-                        const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
-                        return (
-                          <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                            <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                              <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                              <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="text-sm font-medium">
-                                {p.name}
-                                {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0 border-accent text-accent">BOT</Badge>}
-                                {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
-                                {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
-                              </p>
-                              <p className="text-xs text-muted-foreground">{p.role}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
+                   <ChatSidebar
+                    participants={participants}
+                    currentUserId={userId}
+                    userName={userName}
+                    userRole={userRole}
+                    userAvatarFallback={userAvatarFallback}
+                    currentScenario={currentScenario}
+                    isMuted={isMuted}
+                    getParticipantColorClasses={getParticipantColorClasses}
+                    isAdminView={isAdminView}
+                  />
                 </SheetContent>
               </Sheet>
             </div>
@@ -700,57 +685,17 @@ export function ChatPageContent({
         <div className="flex flex-1 overflow-hidden">
           {!isAdminView && (
             <aside className="hidden md:flex md:w-72 lg:w-80 flex-col border-r bg-background p-4 space-y-4">
-              <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
-              <ScrollArea className="flex-1">
-                <div className="space-y-3">
-                  {participants.map((p) => {
-                    const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
-                    return (
-                      <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                         <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                          <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                          <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium">
-                            {p.name}
-                            {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
-                             {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
-                            {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{p.role}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-              <Separator />
-              {userRole && currentScenario && userName && userAvatarFallback && userId && (
-                <Card className="mt-auto bg-muted/30">
-                  <CardHeader className="p-3">
-                    <div className="flex items-center gap-2">
-                       <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
-                        <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                        <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
-                          {userAvatarFallback}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <CardTitle className="text-base">{userName}</CardTitle>
-                        <p className="text-xs text-muted-foreground">Ihre Rolle: {userRole}</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-3 pt-0">
-                    <ScrollArea className="h-[150px] text-xs"> {/* Adjusted height */}
-                        <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
-                            {currentScenario.langbeschreibung}
-                        </CardDescription>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              )}
+               <ChatSidebar
+                participants={participants}
+                currentUserId={userId}
+                userName={userName}
+                userRole={userRole}
+                userAvatarFallback={userAvatarFallback}
+                currentScenario={currentScenario}
+                isMuted={isMuted}
+                getParticipantColorClasses={getParticipantColorClasses}
+                isAdminView={isAdminView}
+              />
             </aside>
           )}
 
@@ -804,28 +749,21 @@ export function ChatPageContent({
           </main>
         </div>
       </div>
-      <DialogContent className="p-0 sm:p-0 max-w-5xl w-[90vw] md:w-[70vw] lg:w-[60vw] h-auto max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-md shadow-2xl rounded-xl">
+      <DialogContent className="p-0 sm:p-0 max-w-5xl w-auto md:w-auto lg:w-auto h-auto max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-md shadow-2xl rounded-xl">
         <DialogHeader className="p-3 sm:p-4 flex-shrink-0 border-b">
           <DialogTitle className="text-foreground/90 truncate pr-10">
             {imageFileNameForModal || "Bildvorschau"}
           </DialogTitle>
+          <DialogClose className="absolute right-2 top-2 sm:right-3 sm:top-3" />
         </DialogHeader>
         {imageForModal && (
-          <div className="relative flex-1 w-full min-h-0 flex items-center justify-center p-1 sm:p-2 md:p-4">
+           <div className="relative flex-1 w-full h-full min-h-0 p-1 sm:p-2 md:p-4 flex items-center justify-center overflow-hidden">
             <Image
               src={imageForModal}
               alt={imageFileNameForModal || "Vollbild-Vorschau"}
-              width={1200}
-              height={800}
-              sizes="(max-width: 768px) 80vw, (max-width: 1200px) 60vw, 50vw"
-              style={{
-                objectFit: "contain",
-                maxWidth: '100%',
-                maxHeight: '100%',
-                width: 'auto',
-                height: 'auto'
-              }}
-              className="block rounded-md"
+              layout="fill"
+              objectFit="contain"
+              className="rounded-md"
               data-ai-hint="image modal"
             />
           </div>
@@ -835,11 +773,12 @@ export function ChatPageContent({
   );
 }
 
-interface ChatPageOuterProps {
+
+interface ChatPageProps { // Changed name to avoid conflict
   params: { sessionId: string };
 }
 
-export default function ChatPage({ params: pageParams }: ChatPageOuterProps) {
+export default function ChatPage({ params: pageParams }: ChatPageProps) { // Use new name
   const { sessionId } = pageParams;
 
   return (
@@ -855,3 +794,5 @@ export default function ChatPage({ params: pageParams }: ChatPageOuterProps) {
     </Suspense>
   );
 }
+
+    
