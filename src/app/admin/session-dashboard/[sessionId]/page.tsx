@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, LinkIcon, MessageSquare, Play, Pause, QrCode, Users, Settings, Zap, Volume2, VolumeX } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
+import { Badge } from "@/components/ui/badge"; // Added import for Badge
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
