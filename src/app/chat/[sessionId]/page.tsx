@@ -5,10 +5,10 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle } from "lucide-react"; 
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX } from "lucide-react"; 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useRouter } from "next/navigation"; // useRouter for redirect
+import { useRouter } from "next/navigation"; 
 import { useEffect, useState, Suspense, useRef, type FormEvent } from "react";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario, Participant as ParticipantType, Message as MessageType, SessionData } from "@/lib/types"; 
@@ -20,13 +20,17 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
 interface ChatPageProps {
   params: { sessionId: string };
+}
+
+interface ChatPageContentProps { // Changed to accept sessionId directly
+  sessionId: string;
 }
 
 interface DisplayMessage extends MessageType {
@@ -40,8 +44,7 @@ interface DisplayParticipant extends ParticipantType {
 }
 
 
-function ChatPageContent({ params: pageParams }: ChatPageProps) { 
-  const { sessionId } = pageParams; 
+function ChatPageContent({ sessionId }: ChatPageContentProps) { // sessionId directly from props
   const { toast } = useToast();
   const router = useRouter();
 
@@ -51,6 +54,7 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
   const [userAvatarFallback, setUserAvatarFallback] = useState<string>("??");
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [lastMessageSentAt, setLastMessageSentAt] = useState<number>(0);
+  const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState<number>(0);
 
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
@@ -58,8 +62,8 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
-  const [isLoading, setIsLoading] = useState(true); // General loading state for initial setup
-  const [isChatDataLoading, setIsChatDataLoading] = useState(true); // Specific for messages and participants
+  const [isLoading, setIsLoading] = useState(true); 
+  const [isChatDataLoading, setIsChatDataLoading] = useState(true);
 
 
   useEffect(() => {
@@ -87,7 +91,7 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
   // Listener for SessionData (status, cooldown)
   useEffect(() => {
     if (!sessionId) return;
-    setIsLoading(true); // Start general loading
+    setIsLoading(true); 
     const sessionDocRef = doc(db, "sessions", sessionId);
     const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -97,12 +101,11 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
             toast({variant: "destructive", title: "Sitzung beendet", description: "Diese Sitzung wurde vom Administrator beendet."});
         }
       } else {
-        // Session might have been deleted
         toast({ variant: "destructive", title: "Fehler", description: "Sitzung nicht gefunden oder wurde gelöscht." });
         setSessionData(null);
         router.push("/");
       }
-      setIsLoading(false); // General loading finished after session data fetch
+      setIsLoading(false); 
     }, (error) => {
       console.error("Error listening to session data: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Sitzungsstatus konnte nicht geladen werden." });
@@ -115,21 +118,30 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
   // Listener for own participant data (mute status)
   useEffect(() => {
     if (!sessionId || !userId) return;
-    const participantDocRef = doc(db, "sessions", sessionId, "participants", userId);
-    // Check if the document reference is actually for this user (userId might be the auto-generated doc ID)
-    // This effect should ideally fetch the participant doc using the userId stored in localStorage.
-    // For now, assuming `userId` from localStorage is the document ID. This needs refinement if userId isn't the doc ID.
-    // A better approach: query participants collection where `userId` field matches `userId` from localStorage.
-    // However, `addDoc` generates random IDs. So, `userId` from localStorage *is* the doc ID if it was set correctly during join.
+    
+    let unsubscribeParticipant: (() => void) | undefined;
 
-    // Re-fetch the participant based on userId to ensure we get the correct doc ID
     const findParticipantDocAndListen = async () => {
         const participantsColRef = collection(db, "sessions", sessionId, "participants");
+        // Assuming userId from localStorage is the unique identifier for the participant document.
+        // If userId is a field *within* the participant document, and the document ID is different,
+        // you'd query like this:
         const q = query(participantsColRef, where("userId", "==", userId));
+        
+        // However, in the join page, we use addDoc which auto-generates an ID.
+        // The localStorage `userId` is intended to be this auto-generated ID.
+        // So, we should use `doc(db, "sessions", sessionId, "participants", userId)` IF userId *is* the doc ID.
+        // The current code tries to query based on a field `userId`.
+        // Let's clarify if `localStorage.getItem(chatUser_${sessionId}_userId)` stores the Firestore document ID or a custom ID.
+        // Based on join/[sessionId]/page.tsx, `userId` is `user-${name}-${Date.now()}` and then this `userId` is stored as a *field*
+        // and `addDoc` creates a *separate* Firestore document ID.
+        // This means the `userId` in localStorage IS NOT the document ID.
+        // The query `where("userId", "==", userId)` is correct.
+
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
-            const userDoc = querySnapshot.docs[0]; // Should be only one
-            const unsub = onSnapshot(userDoc.ref, (docSnap) => {
+            const userDoc = querySnapshot.docs[0]; 
+            unsubscribeParticipant = onSnapshot(userDoc.ref, (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data() as ParticipantType;
                     setIsMuted(data.isMuted ?? false);
@@ -137,13 +149,14 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
             }, (error) => {
                  console.error("Error listening to own participant data: ", error);
             });
-            return unsub; // Return the unsubscribe function
+        } else {
+          // This case could happen if the participant document was deleted or not yet created
+          // For now, we assume it should exist if the user is on this page.
+          console.warn("Could not find participant document for userId:", userId);
         }
-        return () => {}; // Return an empty unsubscribe function if not found
     };
     
-    let unsubscribeParticipant: (() => void) | undefined;
-    findParticipantDocAndListen().then(unsub => unsubscribeParticipant = unsub);
+    findParticipantDocAndListen();
 
     return () => {
         if (unsubscribeParticipant) {
@@ -186,12 +199,12 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
 
     const unsubscribe = onSnapshot(q_msg, (querySnapshot) => {
       const fetchedMessages: DisplayMessage[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data() as MessageType; 
+      querySnapshot.forEach((docSn) => { // Renamed doc to docSn to avoid conflict
+        const data = docSn.data() as MessageType; 
         const timestamp = data.timestamp as Timestamp | null; 
         fetchedMessages.push({
           ...data,
-          id: doc.id,
+          id: docSn.id,
           senderUserId: data.senderUserId, 
           senderName: data.senderName,
           senderType: data.senderType,
@@ -212,6 +225,31 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
 
     return () => unsubscribe();
   }, [sessionId, toast, userId]);
+
+  // Cooldown timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout | undefined;
+    if (sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && lastMessageSentAt > 0) {
+      const cooldownMillis = sessionData.messageCooldownSeconds * 1000;
+      const updateRemainingTime = () => {
+        const timePassed = Date.now() - lastMessageSentAt;
+        const remaining = cooldownMillis - timePassed;
+        if (remaining > 0) {
+          setCooldownRemainingSeconds(Math.ceil(remaining / 1000));
+        } else {
+          setCooldownRemainingSeconds(0);
+          if (interval) clearInterval(interval);
+        }
+      };
+      updateRemainingTime(); // Initial call
+      interval = setInterval(updateRemainingTime, 1000);
+    } else {
+      setCooldownRemainingSeconds(0); // No cooldown active
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [lastMessageSentAt, sessionData?.messageCooldownSeconds]);
 
 
   const scrollToBottom = () => {
@@ -285,11 +323,24 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
   }
   
   const isSessionActive = sessionData.status === "active";
-  const canSendMessage = isSessionActive && !isMuted;
+  const canSendBasedOnStatusAndMute = isSessionActive && !isMuted;
+  const canSendMessage = canSendBasedOnStatusAndMute && cooldownRemainingSeconds <= 0;
+
   let sessionStatusMessage = "";
-  if (sessionData.status === "ended") sessionStatusMessage = "Diese Simulation wurde vom Administrator beendet.";
-  else if (sessionData.status === "paused") sessionStatusMessage = "Die Simulation ist aktuell pausiert.";
-  else if (isMuted) sessionStatusMessage = "Sie wurden vom Administrator stummgeschaltet.";
+  let inputPlaceholderText = "Nachricht eingeben...";
+
+  if (sessionData.status === "ended") {
+    sessionStatusMessage = "Diese Simulation wurde vom Administrator beendet.";
+    inputPlaceholderText = "Simulation beendet";
+  } else if (sessionData.status === "paused") {
+    sessionStatusMessage = "Die Simulation ist aktuell pausiert.";
+    inputPlaceholderText = "Simulation pausiert";
+  } else if (isMuted) {
+    sessionStatusMessage = "Sie wurden vom Administrator stummgeschaltet.";
+    inputPlaceholderText = "Sie sind stummgeschaltet";
+  } else if (cooldownRemainingSeconds > 0) {
+    inputPlaceholderText = `Nächste Nachricht in ${cooldownRemainingSeconds}s...`;
+  }
 
 
   return (
@@ -437,11 +488,11 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
 
           {/* Message Input */}
           <div className="border-t bg-background p-3 md:p-4">
-            {!canSendMessage && sessionStatusMessage && (
+            {!canSendBasedOnStatusAndMute && sessionStatusMessage && (
                  <Alert variant={sessionData.status === "ended" || isMuted ? "destructive" : "default"} className="mb-2">
                     {sessionData.status === "paused" ? <PauseCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                     <AlertTitle>
-                        {sessionData.status === "ended" ? "Sitzung beendet" : (sessionData.status === "paused" ? "Sitzung pausiert" : "Stummgeschaltet")}
+                        {sessionData.status === "ended" ? "Sitzung beendet" : (sessionData.status === "paused" ? "Sitzung pausiert" : (isMuted ? "Stummgeschaltet" : "Hinweis"))}
                     </AlertTitle>
                     <AlertDescription>
                         {sessionStatusMessage}
@@ -457,7 +508,7 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
               </Button>
               <Input
                 type="text"
-                placeholder={canSendMessage ? "Nachricht eingeben..." : "Nachrichtenversand deaktiviert"}
+                placeholder={inputPlaceholderText}
                 className="flex-1 text-base"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
@@ -470,7 +521,10 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
                 <Send className="h-5 w-5" />
               </Button>
             </form>
-            {sessionData.messageCooldownSeconds > 0 && isSessionActive && !isMuted && (
+            {cooldownRemainingSeconds > 0 && canSendBasedOnStatusAndMute && (
+                 <p className="text-xs text-muted-foreground mt-1.5 text-right">Nächste Nachricht in {cooldownRemainingSeconds}s</p>
+            )}
+            {sessionData.messageCooldownSeconds > 0 && cooldownRemainingSeconds <=0 && canSendBasedOnStatusAndMute && (
                  <p className="text-xs text-muted-foreground mt-1.5 text-right">Nachrichten Cooldown: {sessionData.messageCooldownSeconds}s</p>
             )}
           </div>
@@ -480,7 +534,8 @@ function ChatPageContent({ params: pageParams }: ChatPageProps) {
   );
 }
 
-export default function ChatPage(props: ChatPageProps) {
+export default function ChatPage({ params }: ChatPageProps) { // Destructure params here
+  // const sessionId = params.sessionId; // No longer needed if ChatPageContent handles its own data fetching based on its own sessionId prop
   return (
     <Suspense fallback={
         <div className="flex h-screen w-full items-center justify-center p-4">
@@ -490,7 +545,10 @@ export default function ChatPage(props: ChatPageProps) {
             </Card>
         </div>
     }>
-      <ChatPageContent {...props} />
+      {/* Pass sessionId directly to ChatPageContent */}
+      <ChatPageContent sessionId={params.sessionId} />
     </Suspense>
   );
 }
+
+    
