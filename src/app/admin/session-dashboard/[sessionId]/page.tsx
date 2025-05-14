@@ -11,7 +11,7 @@ import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
-import type { Scenario } from "@/lib/types";
+import type { Scenario, BotConfig } from "@/lib/types"; // Added BotConfig
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
@@ -20,20 +20,54 @@ interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
 }
 
+interface DisplayParticipant {
+  id: string;
+  name: string;
+  role: string; // e.g. "Teilnehmer A", "Bot Provokateur"
+  isMuted?: boolean;
+  isBot: boolean;
+  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
+  escalation?: number;
+  avatarFallback?: string;
+}
+
+
 export default function AdminSessionDashboardPage({ params }: AdminSessionDashboardPageProps) {
-  const { sessionId } = params; // Destructure sessionId
+  const { sessionId } = params;
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [invitationLink, setInvitationLink] = useState<string>("");
+  const [displayParticipants, setDisplayParticipants] = useState<DisplayParticipant[]>([]);
 
   useEffect(() => {
-    // Use the destructured sessionId
     const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
-    if (typeof window !== "undefined") {
-      setInvitationLink(`${window.location.origin}/join/${sessionId}`);
+
+    if (scenario) {
+      if (typeof window !== "undefined") {
+        setInvitationLink(`${window.location.origin}/join/${sessionId}`);
+      }
+
+      const studentPlaceholders: DisplayParticipant[] = [];
+      const numStudentRoles = scenario.standardRollen - scenario.defaultBots;
+      for (let i = 0; i < numStudentRoles; i++) {
+        studentPlaceholders.push({
+          id: `student-placeholder-${i + 1}`,
+          name: `Teilnehmer ${String.fromCharCode(65 + i)}`, // Teilnehmer A, B, C...
+          role: `Teilnehmer ${String.fromCharCode(65 + i)}`,
+          isBot: false,
+          status: "Nicht beigetreten",
+          avatarFallback: `T${String.fromCharCode(65 + i)}`,
+        });
+      }
+      // For now, actual joined students are not tracked here. This will require backend integration.
+      setDisplayParticipants(studentPlaceholders);
+
+    } else {
+      // Handle scenario not found
+      setDisplayParticipants([]);
     }
-  }, [sessionId]); // Depend on the destructured sessionId
+  }, [sessionId]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(invitationLink).then(() => {
@@ -44,27 +78,15 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     });
   };
 
-  // Placeholder data and functions
-  const participants = [ // This would eventually be dynamic
-    { id: "1", name: "Schüler Max", role: "Teilnehmer A", isMuted: false, isBot: false },
-    { id: "2", name: "Schülerin Anna", role: "Teilnehmer B", isMuted: true, isBot: false },
-    { id: "3", name: "Bot Provokateur", role: "Bot", isBot: true, status: "Aktiv", escalation: 2 },
-    { id: "4", name: "Bot Verteidiger", role: "Bot", isBot: true, status: "Inaktiv", escalation: 0 },
-  ];
-
   const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
 
-  const getBotName = (index: number, personalityType?: 'provokateur' | 'verteidiger' | 'informant'): string => {
-    if (personalityType) {
-      switch (personalityType) {
-        case 'provokateur': return 'Bot Provokateur';
-        case 'verteidiger': return 'Bot Verteidiger';
-        case 'informant': return 'Bot Informant';
-        default: return `Bot ${index + 1}`;
-      }
+  const getBotDisplayName = (botConfig: BotConfig, index: number): string => {
+    switch (botConfig.personality) {
+      case 'provokateur': return 'Bot Provokateur';
+      case 'verteidiger': return 'Bot Verteidiger';
+      case 'informant': return 'Bot Informant';
+      default: return `Bot ${index + 1} (${botConfig.personality || 'Standard'})`;
     }
-    // Fallback or default naming if personalities are not yet defined for each bot
-    return `Bot ${index + 1} (${currentScenario?.defaultBotsConfig?.[index]?.personality || 'Standard'})`;
   };
 
 
@@ -79,7 +101,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           <p className="text-muted-foreground">Sitzungs-ID: {sessionId}</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Buttons moved to the "Sitzungseinstellungen & Einladung" card */}
           <Button variant="destructive"><Pause className="mr-2 h-4 w-4" /> Sitzung beenden</Button>
         </div>
       </div>
@@ -99,7 +120,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                 <p className="text-sm text-muted-foreground">
                   {currentScenario ? `${currentScenario.standardRollen - currentScenario.defaultBots} Teilnehmer, ${currentScenario.defaultBots} Bot(s)` : 'Laden...'}
                 </p>
-                {/* Future: Add UI for custom role definition here */}
               </div>
               <div>
                 <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
@@ -155,32 +175,37 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5 text-primary" /> Teilnehmende ({participants.filter(p => !p.isBot).length})</CardTitle>
+              <CardTitle className="flex items-center">
+                <Users className="mr-2 h-5 w-5 text-primary" /> 
+                Teilnehmende ({currentScenario ? currentScenario.standardRollen - currentScenario.defaultBots : 0})
+              </CardTitle>
             </CardHeader>
             <CardContent className="max-h-64 overflow-y-auto space-y-3">
-              {participants.filter(p => !p.isBot).map(p => (
+              {displayParticipants.filter(p => !p.isBot).map(p => (
                 <div key={p.id} className="flex items-center justify-between p-2 bg-muted/20 rounded-md">
                   <div>
                     <p className="font-medium">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{p.role}</p>
+                    <p className="text-xs text-muted-foreground">{p.role} - <span className={p.status === "Nicht beigetreten" ? "italic text-orange-500" : ""}>{p.status}</span></p>
                   </div>
-                  <Button variant={p.isMuted ? "secondary" : "outline"} size="sm" onClick={() => alert(`Mute/Unmute ${p.name}`)}>
+                  <Button variant={p.isMuted ? "secondary" : "outline"} size="sm" onClick={() => alert(`Stummschalten/Entstummen für ${p.name} (noch nicht implementiert)`)}>
                     {p.isMuted ? <VolumeX className="mr-1 h-4 w-4" /> : <Volume2 className="mr-1 h-4 w-4" />}
                     {p.isMuted ? "Entstummen" : "Stumm"}
                   </Button>
                 </div>
               ))}
+              {displayParticipants.filter(p => !p.isBot).length === 0 && currentScenario && (
+                <p className="text-sm text-muted-foreground">Noch keine Teilnehmer für dieses Szenario erwartet oder beigetreten.</p>
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center"><Bot className="mr-2 h-5 w-5 text-primary" /> Bot-Steuerung ({currentScenario?.defaultBots || 0})</CardTitle>
+              <CardTitle className="flex items-center"><Bot className="mr-2 h-5 w-5 text-primary" /> Bot-Steuerung ({currentScenario?.defaultBotsConfig?.length || 0})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {currentScenario && Array.from({ length: currentScenario.defaultBots }).map((_, index) => {
-                 const botConfig = currentScenario.defaultBotsConfig?.[index];
-                 const botName = getBotName(index, botConfig?.personality);
+              {currentScenario?.defaultBotsConfig?.map((botConfig, index) => {
+                 const botName = getBotDisplayName(botConfig, index);
                  // Placeholder status and escalation, should come from dynamic state
                  const botStatus = index === 0 ? "Aktiv" : "Inaktiv"; 
                  const botEscalation = index === 0 ? 2 : 0;
@@ -207,6 +232,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                   </div>
                 );
               })}
+               {(!currentScenario?.defaultBotsConfig || currentScenario.defaultBotsConfig.length === 0) && (
+                 <p className="text-sm text-muted-foreground">Für dieses Szenario sind keine Bots konfiguriert.</p>
+               )}
             </CardContent>
           </Card>
 

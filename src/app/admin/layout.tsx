@@ -23,8 +23,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { scenarios } from '@/lib/scenarios';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
+  const firstScenarioId = scenarios.length > 0 ? scenarios[0].id : '1'; // Use first scenario or fallback
+
   return (
     <SidebarProvider defaultOpen>
       <Sidebar>
@@ -49,8 +52,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </Link>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              {/* Placeholder link, replace with actual session link */}
-              <Link href="/admin/session-dashboard/placeholder-session" legacyBehavior passHref>
+              <Link href={`/admin/session-dashboard/${firstScenarioId}`} legacyBehavior passHref>
                 <SidebarMenuButton tooltip="Aktive Simulation">
                   <MessageCircle />
                   <span>Aktive Simulation</span>
