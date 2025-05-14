@@ -29,7 +29,7 @@ interface ChatPageProps {
   params: { sessionId: string };
 }
 
-interface ChatPageContentProps { // Changed to accept sessionId directly
+interface ChatPageContentProps {
   sessionId: string;
 }
 
@@ -44,7 +44,7 @@ interface DisplayParticipant extends ParticipantType {
 }
 
 
-function ChatPageContent({ sessionId }: ChatPageContentProps) { // sessionId directly from props
+function ChatPageContent({ sessionId }: ChatPageContentProps) { 
   const { toast } = useToast();
   const router = useRouter();
 
@@ -123,21 +123,8 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) { // sessionId dir
 
     const findParticipantDocAndListen = async () => {
         const participantsColRef = collection(db, "sessions", sessionId, "participants");
-        // Assuming userId from localStorage is the unique identifier for the participant document.
-        // If userId is a field *within* the participant document, and the document ID is different,
-        // you'd query like this:
         const q = query(participantsColRef, where("userId", "==", userId));
         
-        // However, in the join page, we use addDoc which auto-generates an ID.
-        // The localStorage `userId` is intended to be this auto-generated ID.
-        // So, we should use `doc(db, "sessions", sessionId, "participants", userId)` IF userId *is* the doc ID.
-        // The current code tries to query based on a field `userId`.
-        // Let's clarify if `localStorage.getItem(chatUser_${sessionId}_userId)` stores the Firestore document ID or a custom ID.
-        // Based on join/[sessionId]/page.tsx, `userId` is `user-${name}-${Date.now()}` and then this `userId` is stored as a *field*
-        // and `addDoc` creates a *separate* Firestore document ID.
-        // This means the `userId` in localStorage IS NOT the document ID.
-        // The query `where("userId", "==", userId)` is correct.
-
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
             const userDoc = querySnapshot.docs[0]; 
@@ -150,8 +137,6 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) { // sessionId dir
                  console.error("Error listening to own participant data: ", error);
             });
         } else {
-          // This case could happen if the participant document was deleted or not yet created
-          // For now, we assume it should exist if the user is on this page.
           console.warn("Could not find participant document for userId:", userId);
         }
     };
@@ -199,7 +184,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) { // sessionId dir
 
     const unsubscribe = onSnapshot(q_msg, (querySnapshot) => {
       const fetchedMessages: DisplayMessage[] = [];
-      querySnapshot.forEach((docSn) => { // Renamed doc to docSn to avoid conflict
+      querySnapshot.forEach((docSn) => { 
         const data = docSn.data() as MessageType; 
         const timestamp = data.timestamp as Timestamp | null; 
         fetchedMessages.push({
@@ -534,8 +519,8 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) { // sessionId dir
   );
 }
 
-export default function ChatPage({ params }: ChatPageProps) { // Destructure params here
-  // const sessionId = params.sessionId; // No longer needed if ChatPageContent handles its own data fetching based on its own sessionId prop
+export default function ChatPage({ params }: ChatPageProps) { 
+  const extractedSessionId = params.sessionId;
   return (
     <Suspense fallback={
         <div className="flex h-screen w-full items-center justify-center p-4">
@@ -545,10 +530,7 @@ export default function ChatPage({ params }: ChatPageProps) { // Destructure par
             </Card>
         </div>
     }>
-      {/* Pass sessionId directly to ChatPageContent */}
-      <ChatPageContent sessionId={params.sessionId} />
+      <ChatPageContent sessionId={extractedSessionId} />
     </Suspense>
   );
 }
-
-    
