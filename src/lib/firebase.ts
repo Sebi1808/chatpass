@@ -10,7 +10,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyDaphZpBgJnKK74eirmP3becW5CIy8jtRs",
   authDomain: "chatsimulation.firebaseapp.com",
   projectId: "chatsimulation",
-  storageBucket: "chatsimulation.appspot.com", 
+  storageBucket: "chatsimulation.firebasestorage.app", // UPDATED HERE
   messagingSenderId: "334950741339",
   appId: "1:334950741339:web:7dc1f27f472d4abfe2d67e",
   measurementId: "G-446PZ79SFY"
