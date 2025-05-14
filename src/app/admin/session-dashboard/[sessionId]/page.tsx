@@ -7,19 +7,24 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
-import type { Scenario, BotConfig, Participant } from "@/lib/types";
+import type { Scenario, BotConfig, Participant, Message as MessageType } from "@/lib/types";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
+}
+
+interface AdminDashboardMessage extends MessageType {
+  id: string;
+  timestampDisplay: string;
 }
 
 export default function AdminSessionDashboardPage({ params }: AdminSessionDashboardPageProps) {
@@ -28,7 +33,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [invitationLink, setInvitationLink] = useState<string>("Wird generiert...");
   const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
+  const [chatMessages, setChatMessages] = useState<AdminDashboardMessage[]>([]);
   const [isLoadingLink, setIsLoadingLink] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
 
 
   useEffect(() => {
@@ -57,8 +64,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
             toast({ title: "Neue Sitzung erstellt", description: `Sitzung ${sessionId} wurde in Firestore angelegt.` });
           } else {
             const existingData = docSnap.data();
-            // Ensure link is up-to-date if window.location.origin changed (e.g. dev vs prod)
-            // or if it wasn't stored before
             if (existingData.invitationLink !== link && link) {
                  await setDoc(sessionDocRef, { invitationLink: link }, { merge: true });
                  setInvitationLink(link);
@@ -78,10 +83,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       };
       generateLink();
 
-      // Listen for participants
       const participantsColRef = collection(db, "sessions", sessionId, "participants");
-      const q = query(participantsColRef);
-      const unsubscribeParticipants = onSnapshot(q, (querySnapshot) => {
+      const participantsQuery = query(participantsColRef);
+      const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
         const fetchedParticipants: Participant[] = [];
         querySnapshot.forEach((doc) => {
           fetchedParticipants.push({ id: doc.id, ...doc.data() } as Participant);
@@ -92,14 +96,40 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         toast({ variant: "destructive", title: "Firestore Fehler", description: "Teilnehmer konnten nicht geladen werden." });
       });
 
+      // Listen for chat messages
+      const messagesColRef = collection(db, "sessions", sessionId, "messages");
+      const messagesQuery = query(messagesColRef, orderBy("timestamp", "asc"));
+      setIsLoadingMessages(true);
+      const unsubscribeMessages = onSnapshot(messagesQuery, (querySnapshot) => {
+        const fetchedMessages: AdminDashboardMessage[] = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data() as MessageType;
+          const timestamp = data.timestamp as Timestamp | null;
+          fetchedMessages.push({
+            ...data,
+            id: doc.id,
+            timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Senden...'
+          });
+        });
+        setChatMessages(fetchedMessages);
+        setIsLoadingMessages(false);
+      }, (error) => {
+        console.error("Error fetching messages: ", error);
+        toast({ variant: "destructive", title: "Firestore Fehler", description: "Nachrichten konnten nicht geladen werden." });
+        setIsLoadingMessages(false);
+      });
+
       return () => {
         unsubscribeParticipants();
+        unsubscribeMessages();
       };
 
     } else {
       setInvitationLink("Szenario nicht gefunden");
       setIsLoadingLink(false);
       setSessionParticipants([]);
+      setChatMessages([]);
+      setIsLoadingMessages(false);
     }
   }, [sessionId, toast]);
 
@@ -128,13 +158,11 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     }
   };
   
-  // Create placeholder participants if scenario expects them and real participants haven't joined yet
   const displayParticipantsList: Participant[] = [...sessionParticipants];
   if (currentScenario && sessionParticipants.length < expectedStudentRoles) {
     const joinedUserIds = new Set(sessionParticipants.map(p => p.userId));
     for (let i = 0; i < expectedStudentRoles; i++) {
         const placeholderId = `student-placeholder-${i + 1}`;
-        // This check is simplistic, assumes student roles are not pre-added to DB with this ID scheme
         if (!joinedUserIds.has(placeholderId) && displayParticipantsList.length < expectedStudentRoles ) {
              displayParticipantsList.push({
                 id: placeholderId,
@@ -152,7 +180,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
-      {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-2 md:space-y-0">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-primary">
@@ -166,9 +193,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       </div>
       <Separator />
 
-      {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Chat Preview & Controls */}
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
@@ -201,9 +226,23 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary" /> Chat-Verlauf (Live-Vorschau)</CardTitle>
               <CardDescription>Beobachten Sie die laufende Diskussion.</CardDescription>
             </CardHeader>
-            <CardContent className="h-96 bg-muted/30 rounded-md p-4 overflow-y-auto">
-              <p className="text-sm text-muted-foreground">[Live Chat-Nachrichten aus Firestore werden hier angezeigt]</p>
-              {/* Placeholder for actual chat messages from Firestore */}
+            <CardContent className="h-96 bg-muted/30 rounded-md p-4 overflow-y-auto space-y-2">
+              {isLoadingMessages && <p className="text-sm text-muted-foreground">Chat-Nachrichten werden geladen...</p>}
+              {!isLoadingMessages && chatMessages.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                  <MessageCircleIcon className="w-12 h-12 mb-2 opacity-50" />
+                  <p>Noch keine Nachrichten in dieser Sitzung.</p>
+                </div>
+              )}
+              {!isLoadingMessages && chatMessages.map(msg => (
+                <div key={msg.id} className="text-sm p-2 rounded bg-card/50 shadow-sm">
+                  <span className={`font-semibold ${msg.senderType === 'bot' ? 'text-accent' : msg.senderType === 'admin' ? 'text-primary' : 'text-foreground/80'}`}>
+                    {msg.senderName}:
+                  </span>
+                  <span className="ml-1">{msg.content}</span>
+                  <span className="text-xs text-muted-foreground/70 float-right pt-1">{msg.timestampDisplay}</span>
+                </div>
+              ))}
             </CardContent>
           </Card>
 
@@ -228,7 +267,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           </Card>
         </div>
 
-        {/* Right Column: Participants & Bots */}
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -258,6 +296,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               {expectedStudentRoles === 0 && sessionParticipants.filter(p => !p.isBot).length === 0 && (
                 <p className="text-sm text-muted-foreground">Keine Teilnehmer für dieses Szenario vorgesehen.</p>
               )}
+               {displayParticipantsList.filter(p => !p.isBot).length === 0 && expectedStudentRoles > 0 && (
+                 <p className="text-sm text-muted-foreground">Noch keine Teilnehmer beigetreten.</p>
+               )}
             </CardContent>
           </Card>
 
@@ -268,9 +309,8 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
             <CardContent className="space-y-4">
               {currentScenario?.defaultBotsConfig?.map((botConfig, index) => {
                  const botName = getBotDisplayName(botConfig, index);
-                 // Placeholder status and escalation, should come from dynamic state
-                 const botStatus = "Aktiv"; // Placeholder, bot state needs separate management
-                 const botEscalation = 0; // Placeholder
+                 const botStatus = "Aktiv"; 
+                 const botEscalation = 0; 
 
                 return (
                   <div key={`bot-${index}`} className="p-3 border rounded-lg space-y-3">
@@ -315,3 +355,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     </div>
   );
 }
+
+
+    
