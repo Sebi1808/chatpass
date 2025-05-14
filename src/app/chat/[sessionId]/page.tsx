@@ -33,11 +33,11 @@ import { Progress } from "@/components/ui/progress";
 
 
 interface ChatPageProps {
-  sessionId: string;
+  params: { sessionId: string }; // For ChatPage component
 }
 
 interface ChatPageContentProps {
-  sessionId: string;
+  sessionId: string; // Passed directly to ChatPageContent
   initialUserName?: string;
   initialUserRole?: string;
   initialUserId?: string;
@@ -437,6 +437,9 @@ export function ChatPageContent({
                 case 'storage/unknown':
                   errorMessage = "Unbekannter Fehler beim Upload. Server-Antwort prüfen.";
                   break;
+                default:
+                  errorMessage = `Storage Fehler: ${error.code} - ${error.message}`;
+                  break;
               }
               toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: errorMessage });
               reject(error);
@@ -631,7 +634,7 @@ export function ChatPageContent({
                             <p className="text-sm font-medium">
                               {p.name}
                               {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0 border-accent text-accent">BOT</Badge>}
-                              {(p.userId === initialUserId && isAdminView) && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
+                              {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
                               {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                             </p>
                             <p className="text-xs text-muted-foreground">{p.role}</p>
@@ -665,7 +668,7 @@ export function ChatPageContent({
                         <p className="text-sm font-medium">
                           {p.name}
                           {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
-                           {(p.userId === initialUserId && isAdminView) && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
+                           {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
                           {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                         </p>
                         <p className="text-xs text-muted-foreground">{p.role}</p>
@@ -693,7 +696,7 @@ export function ChatPageContent({
                   </div>
                 </CardHeader>
                 <CardContent className="p-3 pt-0">
-                  <ScrollArea className="h-60 text-xs">
+                  <ScrollArea className="h-[200px] text-xs"> {/* Adjusted height */}
                       <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                           {currentScenario.langbeschreibung}
                       </CardDescription>
@@ -937,7 +940,7 @@ export function ChatPageContent({
 }
 
 export default function ChatPage({ params }: { params: ChatPageProps }) {
-  const { sessionId } = params; // Destructure here
+  const { sessionId } = params; 
 
   return (
     <Suspense fallback={
@@ -952,4 +955,3 @@ export default function ChatPage({ params }: { params: ChatPageProps }) {
     </Suspense>
   );
 }
-

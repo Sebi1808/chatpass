@@ -28,7 +28,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { ChatPageContent } from "@/app/chat/[sessionId]/page"; // Import der refaktorierten Komponente
+import { ChatPageContent } from "@/app/chat/[sessionId]/page"; 
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
@@ -44,15 +44,15 @@ const DEFAULT_COOLDOWN = 0;
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
-  const { sessionId } = props.params;
+  const { sessionId } = props.params; // Destructure sessionId from props.params
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
-  const [chatMessages, setChatMessages] = useState<AdminDashboardMessage[]>([]); // Beibehalten für einfache Admin-Ansicht, falls benötigt
+  const [chatMessages, setChatMessages] = useState<AdminDashboardMessage[]>([]); 
   
   const [isLoadingSessionData, setIsLoadingSessionData] = useState(true);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(true); // Für die einfache Chat-Ansicht
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true); 
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isStartingOrRestartingSession, setIsStartingOrRestartingSession] = useState(false);
@@ -130,7 +130,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingSessionData(false);
       setSessionData(null); 
     }
-  }, [sessionId, toast]);
+  }, [sessionId, toast]); // Use destructured sessionId
 
 
   useEffect(() => {
@@ -150,7 +150,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingSessionData(false);
     });
     return () => unsubscribeSessionData();
-  }, [sessionId]);
+  }, [sessionId]); // Use destructured sessionId
 
 
   useEffect(() => {
@@ -170,12 +170,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingParticipants(false);
     });
     return () => unsubscribeParticipants();
-  }, [sessionId]);
+  }, [sessionId]); // Use destructured sessionId
 
-  // Effect for Chat Messages (für die Admin-Ansicht, die nicht die ChatPageContent Komponente ist)
   useEffect(() => {
-    if (!sessionId || showParticipantMirrorView) { // Nur laden, wenn Spiegelansicht nicht aktiv ist
-      setIsLoadingMessages(false); // Wenn Spiegel aktiv, werden Nachrichten von ChatPageContent geladen
+    if (!sessionId || showParticipantMirrorView) { 
+      setIsLoadingMessages(false); 
       return;
     }
     setIsLoadingMessages(true);
@@ -199,11 +198,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingMessages(false);
     });
     return () => unsubscribeMessages();
-  }, [sessionId, showParticipantMirrorView]); // Abhängigkeit showParticipantMirrorView hinzugefügt
+  }, [sessionId, showParticipantMirrorView]);
 
   useEffect(() => {
-    if (showParticipantMirrorView && chatMessagesEndRef.current) { // Dieser Ref ist für die *alte* Chat-Anzeige
-      // chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" }); // Auskommentiert, da ChatPageContent eigenes Scrolling hat
+    if (showParticipantMirrorView && chatMessagesEndRef.current) { 
+      // chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" }); 
     }
   }, [chatMessages, showParticipantMirrorView]);
 
@@ -484,18 +483,18 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       )}
 
       {showParticipantMirrorView && (
-        <Card className="mt-6 border-primary/50 shadow-lg col-span-1 lg:col-span-3"> {/* Volle Breite für die Chat-Einbettung */}
+        <Card className="mt-6 border-primary/50 shadow-lg col-span-1 lg:col-span-3"> 
           <CardHeader>
             <CardTitle className="flex items-center text-primary"><Eye className="mr-2 h-5 w-5"/> Live Chat-Spiegelung</CardTitle>
             <CardDescription>Hier sehen und interagieren Sie als "Admin" im Live-Chat der Sitzung.</CardDescription>
           </CardHeader>
-          <CardContent className="h-[70vh] p-0"> {/* Höhe anpassen, kein Padding für ChatPageContent */}
-            {sessionId && ( // Sicherstellen, dass sessionId vorhanden ist
+          <CardContent className="h-[70vh] p-0"> 
+            {sessionId && ( 
               <ChatPageContent 
                 sessionId={sessionId} 
                 initialUserName="Admin"
                 initialUserRole="Moderator"
-                initialUserId="ADMIN_USER_ID_FIXED" // Eine feste, eindeutige ID für den Admin
+                initialUserId="ADMIN_USER_ID_FIXED" 
                 initialUserAvatarFallback="AD"
                 isAdminView={true} 
               />
@@ -506,7 +505,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Diese Sektion wird nur angezeigt, wenn showParticipantMirrorView false ist */}
         {!showParticipantMirrorView && (
           <>
             <div className="lg:col-span-2 space-y-6">
@@ -744,5 +742,3 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
-
-    
