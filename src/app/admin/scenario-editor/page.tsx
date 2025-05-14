@@ -25,9 +25,11 @@ export default function ScenarioEditorPage() {
       <Separator />
       <Card>
         <CardHeader>
-          <CardTitle>Editor-Funktionen</CardTitle>
+          <CardTitle>Editor-Funktionen (Demnächst verfügbar)</CardTitle>
           <CardDescription>
-            Diese Seite wird in Zukunft die Werkzeuge zur Verwaltung Ihrer Szenarien enthalten.
+            Diese Seite wird in Zukunft die Werkzeuge zur Verwaltung Ihrer Chat-Simulationsszenarien enthalten.
+            Hier können Sie neue Szenarien erstellen, bestehende bearbeiten, Bot-Persönlichkeiten definieren,
+            Standard-Rollen festlegen und vieles mehr.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -36,15 +38,26 @@ export default function ScenarioEditorPage() {
             erfolgt über die statisch definierte Liste in <code>src/lib/scenarios.ts</code>.
           </p>
           <p className="text-muted-foreground mt-4">
-            Zukünftige Funktionen könnten umfassen:
+            **Zukünftige Funktionen könnten umfassen:**
           </p>
           <ul className="list-disc list-inside text-muted-foreground mt-2 space-y-1">
-            <li>Erstellen neuer Szenarien mit Titel, Beschreibung, Tags.</li>
-            <li>Definieren von Standardrollen und Bot-Konfigurationen pro Szenario.</li>
-            <li>Zuweisen von spezifischen Fähigkeiten oder Startbedingungen für Bots.</li>
+            <li>Erstellen neuer Szenarien mit Titel, Beschreibung, Lernzielen und Tags.</li>
+            <li>Definieren von Standardrollen für Teilnehmer.</li>
+            <li>Konfigurieren von KI-Bots:
+                <ul className="list-['-_'] list-inside ml-4">
+                    <li>Auswahl der Persönlichkeit (Provokateur, Verteidiger, Informant, Standard).</li>
+                    <li>Festlegen von spezifischen Startanweisungen oder Zielen für Bots.</li>
+                    <li>Definieren von Schlüsselwörtern, auf die Bots reagieren.</li>
+                    <li>Erstellen von Sets vorgefertigter Antworten oder Reaktionsmustern.</li>
+                </ul>
+            </li>
             <li>Speichern und Laden von Szenarien aus einer Datenbank.</li>
-            <li>Verwalten von vordefinierten Bot-Antworten oder Ereignissen.</li>
+            <li>Duplizieren und Anpassen bestehender Szenarien.</li>
+            <li>Verwalten von Medien (Bilder, Videos), die in Szenarien verwendet werden können.</li>
           </ul>
+           <p className="text-muted-foreground mt-4">
+            Die aktuelle Szenarienliste wird aus <code>src/lib/scenarios.ts</code> geladen. Änderungen dort wirken sich direkt auf die Auswahl im Admin-Dashboard aus.
+          </p>
         </CardContent>
       </Card>
     </div>

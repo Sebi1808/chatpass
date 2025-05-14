@@ -5,7 +5,7 @@ import type { RefObject } from 'react';
 import { MessageSquare } from "lucide-react";
 import { MessageBubble } from './message-bubble';
 import type { DisplayMessage } from '@/lib/types';
-import type { ParticipantColor } from '@/lib/config'; // Assuming ParticipantColor type is exported
+import type { ParticipantColor, emojiCategories as EmojiCategoriesType } from '@/lib/config';
 
 interface MessageListProps {
   messages: DisplayMessage[];
@@ -14,10 +14,10 @@ interface MessageListProps {
   onMentionUser: (name: string) => void;
   onSetReply: (message: DisplayMessage) => void;
   onSetQuote: (message: DisplayMessage) => void;
-  onOpenReactionPicker: (messageId: string) => void;
   onScrollToMessage: (messageId: string) => void;
   onSetImageForModal: (imageUrl: string | null, imageFileName?: string | null) => void;
-  onReactionClick: (messageId: string, emoji: string) => void;
+  onReaction: (messageId: string, emoji: string) => void; // Updated prop name
+  emojiCategories: typeof EmojiCategoriesType; // Added prop
   messagesEndRef: RefObject<HTMLDivElement>;
   isChatDataLoading: boolean;
   isAdminView?: boolean;
@@ -30,10 +30,10 @@ export function MessageList({
   onMentionUser,
   onSetReply,
   onSetQuote,
-  onOpenReactionPicker,
   onScrollToMessage,
   onSetImageForModal,
-  onReactionClick,
+  onReaction, // Updated prop name
+  emojiCategories, // Added prop
   messagesEndRef,
   isChatDataLoading,
   isAdminView = false,
@@ -50,10 +50,10 @@ export function MessageList({
           onMentionUser={onMentionUser}
           onSetReply={onSetReply}
           onSetQuote={onSetQuote}
-          onOpenReactionPicker={onOpenReactionPicker}
           onScrollToMessage={onScrollToMessage}
           onSetImageForModal={onSetImageForModal}
-          onReactionClick={onReactionClick}
+          onReaction={onReaction} // Pass down the reaction handler
+          emojiCategories={emojiCategories} // Pass down emoji categories
         />
       ))}
       <div ref={messagesEndRef} />

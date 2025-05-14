@@ -27,7 +27,7 @@ import {
 import { scenarios } from '@/lib/scenarios';
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  const firstScenarioId = scenarios.length > 0 ? scenarios[0].id : '1'; 
+  const firstScenarioId = scenarios.length > 0 ? scenarios[0].id : '1';
 
   return (
     <SidebarProvider defaultOpen>
@@ -66,7 +66,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <SidebarMenuItem>
               <Link href="/admin/scenario-editor" legacyBehavior passHref>
                 <SidebarMenuButton tooltip="Szenario Editor">
-                  <NotebookPen /> 
+                  <NotebookPen />
                   <span>Szenario Editor</span>
                 </SidebarMenuButton>
               </Link>
@@ -87,7 +87,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <SidebarTrigger className="bg-background/50 hover:bg-background/80 backdrop-blur-sm border"/>
         </div>
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-md sm:px-6 print:hidden">
-            <div className="md:hidden"> 
+            <div className="md:hidden">
                 <SidebarTrigger />
             </div>
             <div className="hidden md:block group-data-[variant=sidebar]:group-data-[collapsible=offcanvas]:group-data-[state=collapsed]:block">

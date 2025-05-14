@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Image from 'next/image';
 import type { DisplayMessage } from '@/lib/types';
-import type { emojiCategories as EmojiCategoriesType } from '@/lib/config'; // Import type
+import type { emojiCategories as EmojiCategoriesType } from '@/lib/config';
 import { cn } from '@/lib/utils';
 
 interface MessageInputBarProps {
@@ -38,9 +38,8 @@ interface MessageInputBarProps {
   handleCancelQuote: () => void;
   showEmojiPicker: boolean;
   setShowEmojiPicker: (value: boolean) => void;
-  handleEmojiSelect: (emoji: string) => void;
+  handleEmojiSelect: (emoji: string) => void; // For adding emoji to input
   emojiCategories: typeof EmojiCategoriesType;
-  reactingToMessageId: string | null;
   messageCooldownSeconds: number | undefined;
 }
 
@@ -67,9 +66,8 @@ export function MessageInputBar({
   handleCancelQuote,
   showEmojiPicker,
   setShowEmojiPicker,
-  handleEmojiSelect,
+  handleEmojiSelect, // For input
   emojiCategories,
-  reactingToMessageId,
   messageCooldownSeconds,
 }: MessageInputBarProps) {
 
@@ -159,10 +157,7 @@ export function MessageInputBar({
           <Paperclip className="h-5 w-5" />
         </Button>
 
-        <Popover open={showEmojiPicker} onOpenChange={(open) => {
-          setShowEmojiPicker(open);
-          if (!open && reactingToMessageId) { /* Only reset reactingToMessageId if picker was for reactions */ }
-        }}>
+        <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!showAttachmentAndEmojiButtons}>
               <Smile className="h-5 w-5" />
@@ -210,7 +205,7 @@ export function MessageInputBar({
           onChange={(e) => setNewMessage(e.target.value)}
           disabled={isInputDisabled}
         />
-        <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!showAttachmentAndEmojiButtons /* Add your voice logic here */} onClick={() => alert("Spracheingabe (noch nicht implementiert)")}>
+        <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!showAttachmentAndEmojiButtons} onClick={() => alert("Spracheingabe (noch nicht implementiert)")}>
           <Mic className="h-5 w-5" />
         </Button>
         <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">

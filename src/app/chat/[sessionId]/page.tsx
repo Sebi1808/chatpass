@@ -4,7 +4,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2 } from "lucide-react";
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2, NotebookPen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
@@ -19,6 +19,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -72,7 +74,7 @@ export function ChatPageContent({
 }: ChatPageContentProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const sessionId = currentSessionIdFromProps; 
+  const sessionId = currentSessionIdFromProps;
 
   const [userName, setUserName] = useState<string | null>(initialUserName || null);
   const [userRole, setUserRole] = useState<string | null>(initialUserRole || null);
@@ -95,8 +97,8 @@ export function ChatPageContent({
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
 
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
+  const [showEmojiPickerForInput, setShowEmojiPickerForInput] = useState(false); // For message input
+  // reactingToMessageId is now handled by MessageBubble component
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -482,14 +484,14 @@ export function ChatPageContent({
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: MessageType = {
-        id: '', 
+        id: '',
         senderUserId: userId,
         senderName: userName,
         senderType: isAdminView ? 'admin' : 'user',
         avatarFallback: userAvatarFallback,
         content: newMessage.trim(),
         timestamp: serverTimestamp(),
-        reactions: {}, 
+        reactions: {},
       };
 
       if (uploadedImageUrl) messageData.imageUrl = uploadedImageUrl;
@@ -510,7 +512,7 @@ export function ChatPageContent({
       setQuotingMessage(null);
       handleRemoveSelectedImage();
       if (!isAdminView) setLastMessageSentAt(Date.now());
-      setShowEmojiPicker(false);
+      setShowEmojiPickerForInput(false);
 
     } catch (error) {
       console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
@@ -556,14 +558,9 @@ export function ChatPageContent({
     inputRef.current?.focus();
   };
 
-  const handleEmojiSelect = (emoji: string) => {
-    if (reactingToMessageId) {
-      handleReaction(reactingToMessageId, emoji);
-      setReactingToMessageId(null); 
-    } else {
-      setNewMessage(prev => prev + emoji);
-    }
-    setShowEmojiPicker(false);
+  const handleEmojiSelectForInput = (emoji: string) => {
+    setNewMessage(prev => prev + emoji);
+    setShowEmojiPickerForInput(false);
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
@@ -596,6 +593,8 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
+      // Optional: Toast for successful reaction, can be too noisy
+      // toast({ title: `Reagiert mit ${emoji}` });
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -604,11 +603,6 @@ export function ChatPageContent({
         description: "Ihre Reaktion konnte nicht gespeichert werden.",
       });
     }
-  };
-
-  const openReactionPicker = (messageId: string) => {
-    setReactingToMessageId(messageId);
-    setShowEmojiPicker(true);
   };
 
   const handleSetImageForModal = (imageUrl: string | null, imageFileName: string | null = null) => {
@@ -648,7 +642,7 @@ export function ChatPageContent({
               {userName && userRole && userId && (
                 <>
                   <Avatar className={cn("h-8 w-8 border hidden sm:flex", getParticipantColorClasses(userId, 'user').ring, "ring-2")}>
-                    <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user" />
+                    <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user"/>
                     <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
                       {userAvatarFallback}
                     </AvatarFallback>
@@ -708,10 +702,10 @@ export function ChatPageContent({
                 onMentionUser={handleMentionUser}
                 onSetReply={handleSetReply}
                 onSetQuote={handleSetQuote}
-                onOpenReactionPicker={openReactionPicker}
                 onScrollToMessage={scrollToMessage}
                 onSetImageForModal={handleSetImageForModal}
-                onReactionClick={handleReaction}
+                onReaction={handleReaction} // Pass the reaction handler
+                emojiCategories={emojiCategories} // Pass emoji categories
                 messagesEndRef={messagesEndRef}
                 isChatDataLoading={isChatDataLoading}
                 isAdminView={isAdminView}
@@ -739,17 +733,16 @@ export function ChatPageContent({
               handleCancelReply={handleCancelReply}
               quotingMessage={quotingMessage}
               handleCancelQuote={handleCancelQuote}
-              showEmojiPicker={showEmojiPicker}
-              setShowEmojiPicker={setShowEmojiPicker}
-              handleEmojiSelect={handleEmojiSelect}
+              showEmojiPicker={showEmojiPickerForInput}
+              setShowEmojiPicker={setShowEmojiPickerForInput}
+              handleEmojiSelect={handleEmojiSelectForInput}
               emojiCategories={emojiCategories}
-              reactingToMessageId={reactingToMessageId}
               messageCooldownSeconds={sessionData?.messageCooldownSeconds}
             />
           </main>
         </div>
       </div>
-      <DialogContent className="p-0 sm:p-0 max-w-5xl w-auto md:w-auto lg:w-auto h-auto max-h-[90vh] flex flex-col bg-background/95 backdrop-blur-md shadow-2xl rounded-xl">
+      <DialogContent className="p-0 sm:p-0 max-w-[90vw] w-auto h-auto md:max-w-[80vw] lg:max-w-[70vw] max-h-[85vh] flex flex-col bg-background/95 backdrop-blur-md shadow-2xl rounded-xl">
         <DialogHeader className="p-3 sm:p-4 flex-shrink-0 border-b">
           <DialogTitle className="text-foreground/90 truncate pr-10">
             {imageFileNameForModal || "Bildvorschau"}
@@ -761,8 +754,8 @@ export function ChatPageContent({
             <Image
               src={imageForModal}
               alt={imageFileNameForModal || "Vollbild-Vorschau"}
-              fill // Use fill to make it responsive to the parent container
-              style={{ objectFit: "contain" }} // Ensure the whole image is visible and aspect ratio is maintained
+              fill
+              style={{ objectFit: "contain" }}
               className="rounded-md"
               data-ai-hint="image modal"
             />
@@ -774,12 +767,12 @@ export function ChatPageContent({
 }
 
 
-interface ChatPageProps { 
+interface ChatPageProps {
   params: { sessionId: string };
 }
 
-export default function ChatPage({ params: pageParams }: ChatPageProps) { 
-  const { sessionId } = pageParams;
+export default function ChatPage({ params: pageParams }: ChatPageProps) {
+  const sessionId = pageParams.sessionId; // Corrected sessionId access
 
   return (
     <Suspense fallback={
@@ -794,4 +787,3 @@ export default function ChatPage({ params: pageParams }: ChatPageProps) {
     </Suspense>
   );
 }
-
