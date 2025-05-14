@@ -1,3 +1,4 @@
+
 import type { LucideIcon } from 'lucide-react';
 
 export interface Scenario {
@@ -6,7 +7,14 @@ export interface Scenario {
   kurzbeschreibung: string;
   langbeschreibung: string;
   defaultBots: number;
-  standardRollen: number;
-  iconName: string; // Changed from 'icon' to 'iconName' and type to string
+  standardRollen: number; // Gesamtzahl der Rollen inkl. Bots
+  iconName: string; 
   tags: string[];
+  // Optional: Spezifische Konfiguration für jeden Bot, falls benötigt
+  defaultBotsConfig?: BotConfig[]; 
+}
+
+export interface BotConfig {
+  personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
+  // Weitere bot-spezifische Einstellungen hier
 }

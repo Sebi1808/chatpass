@@ -1,5 +1,5 @@
 
-"use client"; // hinzugefügt
+"use client";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,23 +8,63 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, LinkIcon, MessageSquare, Play, Pause, QrCode, Users, Settings, Zap, Volume2, VolumeX } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, LinkIcon, MessageSquare, Play, Pause, QrCode, Users, Settings, Zap, Volume2, VolumeX, Copy } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import { scenarios } from "@/lib/scenarios";
+import type { Scenario } from "@/lib/types";
+import { useEffect, useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
 }
 
 export default function AdminSessionDashboardPage({ params }: AdminSessionDashboardPageProps) {
+  const { toast } = useToast();
+  const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
+  const [invitationLink, setInvitationLink] = useState<string>("");
+
+  useEffect(() => {
+    const scenario = scenarios.find(s => s.id === params.sessionId);
+    setCurrentScenario(scenario);
+    if (typeof window !== "undefined") {
+      setInvitationLink(`${window.location.origin}/join/${params.sessionId}`);
+    }
+  }, [params.sessionId]);
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(invitationLink).then(() => {
+      toast({ title: "Link kopiert!", description: "Der Einladungslink wurde in die Zwischenablage kopiert." });
+    }).catch(err => {
+      toast({ variant: "destructive", title: "Fehler", description: "Link konnte nicht kopiert werden." });
+      console.error('Failed to copy: ', err);
+    });
+  };
+
   // Placeholder data and functions
-  const scenarioTitle = "Hate-Speech Simulation";
-  const participants = [
-    { id: "1", name: "Schüler Max", role: "Teilnehmer A", isMuted: false },
-    { id: "2", name: "Schülerin Anna", role: "Teilnehmer B", isMuted: true },
+  const participants = [ // This would eventually be dynamic
+    { id: "1", name: "Schüler Max", role: "Teilnehmer A", isMuted: false, isBot: false },
+    { id: "2", name: "Schülerin Anna", role: "Teilnehmer B", isMuted: true, isBot: false },
     { id: "3", name: "Bot Provokateur", role: "Bot", isBot: true, status: "Aktiv", escalation: 2 },
     { id: "4", name: "Bot Verteidiger", role: "Bot", isBot: true, status: "Inaktiv", escalation: 0 },
   ];
+
+  const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
+
+  const getBotName = (index: number, personalityType?: 'provokateur' | 'verteidiger' | 'informant'): string => {
+    if (personalityType) {
+      switch (personalityType) {
+        case 'provokateur': return 'Bot Provokateur';
+        case 'verteidiger': return 'Bot Verteidiger';
+        case 'informant': return 'Bot Informant';
+        default: return `Bot ${index + 1}`;
+      }
+    }
+    // Fallback or default naming if personalities are not yet defined for each bot
+    return `Bot ${index + 1} (${currentScenario?.defaultBotsConfig?.[index]?.personality || 'Standard'})`;
+  };
+
 
   return (
     <div className="container mx-auto p-4 md:p-6 space-y-6">
@@ -37,8 +77,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           <p className="text-muted-foreground">Sitzungs-ID: {params.sessionId}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline"><LinkIcon className="mr-2 h-4 w-4" /> Einladungslink</Button>
-          <Button variant="outline"><QrCode className="mr-2 h-4 w-4" /> QR-Code</Button>
+          {/* Buttons moved to the "Sitzungseinstellungen & Einladung" card */}
           <Button variant="destructive"><Pause className="mr-2 h-4 w-4" /> Sitzung beenden</Button>
         </div>
       </div>
@@ -48,6 +87,33 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Chat Preview & Controls */}
         <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center"><Settings className="mr-2 h-5 w-5 text-primary" /> Sitzungseinstellungen & Einladung</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label className="font-semibold">Vordefinierte Rollen für dieses Szenario:</Label>
+                <p className="text-sm text-muted-foreground">
+                  {currentScenario ? `${currentScenario.standardRollen - currentScenario.defaultBots} Teilnehmer, ${currentScenario.defaultBots} Bot(s)` : 'Laden...'}
+                </p>
+                {/* Future: Add UI for custom role definition here */}
+              </div>
+              <div>
+                <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input id="invitation-link" type="text" value={invitationLink} readOnly className="bg-muted" />
+                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren">
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")}>
+                <QrCode className="mr-2 h-4 w-4" /> QR-Code anzeigen
+              </Button>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary" /> Chat-Verlauf (Live-Vorschau)</CardTitle>
@@ -107,30 +173,38 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center"><Bot className="mr-2 h-5 w-5 text-primary" /> Bot-Steuerung</CardTitle>
+              <CardTitle className="flex items-center"><Bot className="mr-2 h-5 w-5 text-primary" /> Bot-Steuerung ({currentScenario?.defaultBots || 0})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {participants.filter(p => p.isBot).map(bot => (
-                <div key={bot.id} className="p-3 border rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">{bot.name} <Badge variant={bot.status === "Aktiv" ? "default" : "outline"}>{bot.status}</Badge></p>
-                    <Switch checked={bot.status === "Aktiv"} onCheckedChange={() => alert(`Toggle Bot ${bot.name}`)} />
+              {currentScenario && Array.from({ length: currentScenario.defaultBots }).map((_, index) => {
+                 const botConfig = currentScenario.defaultBotsConfig?.[index];
+                 const botName = getBotName(index, botConfig?.personality);
+                 // Placeholder status and escalation, should come from dynamic state
+                 const botStatus = index === 0 ? "Aktiv" : "Inaktiv"; 
+                 const botEscalation = index === 0 ? 2 : 0;
+
+                return (
+                  <div key={`bot-${index}`} className="p-3 border rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold">{botName} <Badge variant={botStatus === "Aktiv" ? "default" : "outline"}>{botStatus}</Badge></p>
+                      <Switch checked={botStatus === "Aktiv"} onCheckedChange={() => alert(`Toggle Bot ${botName}`)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Eskalationslevel: {botEscalation}</Label>
+                      <Progress value={botEscalation * 33.33} className="h-2" />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => alert(`Eskalieren ${botName}`)}><ChevronUp className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="sm" onClick={() => alert(`Deeskalieren ${botName}`)}><ChevronDown className="h-4 w-4" /></Button>
+                      <Button variant="secondary" size="sm" className="flex-1" onClick={() => alert(`Manuell Posten ${botName}`)}>Posten</Button>
+                    </div>
+                    <div className="flex items-center space-x-2 pt-1">
+                      <Label htmlFor={`autotimer-bot-${index}`} className="text-xs">Auto-Timer</Label>
+                      <Switch id={`autotimer-bot-${index}`} />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Eskalationslevel: {bot.escalation}</Label>
-                    <Progress value={(bot.escalation || 0) * 33.33} className="h-2" />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => alert(`Eskalieren ${bot.name}`)}><ChevronUp className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="sm" onClick={() => alert(`Deeskalieren ${bot.name}`)}><ChevronDown className="h-4 w-4" /></Button>
-                    <Button variant="secondary" size="sm" className="flex-1" onClick={() => alert(`Manuell Posten ${bot.name}`)}>Posten</Button>
-                  </div>
-                  <div className="flex items-center space-x-2 pt-1">
-                    <Label htmlFor={`autotimer-${bot.id}`} className="text-xs">Auto-Timer</Label>
-                    <Switch id={`autotimer-${bot.id}`} />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
 
@@ -149,3 +223,4 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     </div>
   );
 }
+
