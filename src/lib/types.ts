@@ -26,7 +26,8 @@ export interface BotConfig {
 export interface SessionData {
   scenarioId: string;
   createdAt: Timestamp | Date;
-  invitationLink: string;
+  invitationLink: string; // Basis-Link, z.B. https://domain.com/join/sessionId
+  invitationToken?: string; // Einzigartiger Token für den aktuellen gültigen Link
   status: "active" | "paused" | "ended"; // Overall session status
   messageCooldownSeconds: number; // Cooldown for messages
   // Potentially add global simulation pace settings here
@@ -59,3 +60,4 @@ export interface Message {
   replyToMessageSenderName?: string;
   botFlag?: boolean; 
 }
+

@@ -40,25 +40,31 @@ interface AdminDashboardMessage extends MessageType {
 
 const DEFAULT_COOLDOWN = 0; // Default 0 seconds cooldown
 
+// Helper to generate a random token
+const generateToken = () => Math.random().toString(36).substring(2, 10);
+
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
   const sessionId = props.params.sessionId;
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
-  const [invitationLink, setInvitationLink] = useState<string>("Wird generiert...");
+  // invitationLink state is removed, derived from sessionData now
   const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
   const [chatMessages, setChatMessages] = useState<AdminDashboardMessage[]>([]);
   
-  const [isLoadingLink, setIsLoadingLink] = useState(true);
   const [isLoadingSessionData, setIsLoadingSessionData] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isStartingOrRestartingSession, setIsStartingOrRestartingSession] = useState(false);
   const [isResettingSession, setIsResettingSession] = useState(false);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
 
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
 
+  const displayedInvitationLink = sessionData?.invitationLink && sessionData.invitationToken 
+    ? `${sessionData.invitationLink}?token=${sessionData.invitationToken}` 
+    : "Wird generiert...";
 
   // Effect for Scenario and initial SessionData setup
   useEffect(() => {
@@ -67,78 +73,89 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
     if (scenario) {
       const sessionDocRef = doc(db, "sessions", sessionId);
-      const generateLinkAndSetupSession = async () => {
-        setIsLoadingLink(true);
+      const setupSession = async () => {
         setIsLoadingSessionData(true);
         try {
           const docSnap = await getDoc(sessionDocRef);
-          let link = "";
+          let baseLink = "";
           if (typeof window !== "undefined") {
-            link = `${window.location.origin}/join/${sessionId}`;
+            baseLink = `${window.location.origin}/join/${sessionId}`;
           }
 
           if (!docSnap.exists()) {
+            const newSessionToken = generateToken();
             const newSessionData: SessionData = {
               scenarioId: sessionId,
               createdAt: serverTimestamp(),
-              invitationLink: link,
-              status: "active", // Start new sessions as active
+              invitationLink: baseLink, // Store base link
+              invitationToken: newSessionToken, // Store token
+              status: "active", 
               messageCooldownSeconds: DEFAULT_COOLDOWN,
             };
             await setDoc(sessionDocRef, newSessionData);
-            setSessionData(newSessionData);
-            setInvitationLink(link);
+            // setSessionData(newSessionData); // Will be set by onSnapshot
             setPaceValue(DEFAULT_COOLDOWN);
-            // toast({ title: "Neue Sitzung erstellt", description: `Sitzung ${sessionId} wurde in Firestore angelegt.` });
           } else {
             const existingData = docSnap.data() as SessionData;
-            setSessionData(existingData);
-            if (existingData.invitationLink !== link && link) {
-                 await updateDoc(sessionDocRef, { invitationLink: link });
-                 setInvitationLink(link);
+            const updates: Partial<SessionData> = {};
+            let needsDbUpdate = false;
+
+            if (existingData.invitationLink !== baseLink && baseLink) {
+              updates.invitationLink = baseLink;
+              needsDbUpdate = true;
+            }
+            if (!existingData.invitationToken) {
+              updates.invitationToken = generateToken();
+              needsDbUpdate = true;
+            }
+            
+            if (needsDbUpdate) {
+              await updateDoc(sessionDocRef, updates);
+              // Data will refresh via onSnapshot
             } else {
-                setInvitationLink(existingData.invitationLink || link);
+              // If no DB update needed, set local sessionData if not already set by onSnapshot
+              // This ensures UI updates if onSnapshot hasn't fired yet for initial load.
+              if (!sessionData || sessionData.scenarioId !== existingData.scenarioId) {
+                setSessionData(existingData); 
+              }
             }
             setPaceValue(existingData.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
           }
         } catch (error) {
           console.error("Error managing session document: ", error);
           toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzung konnte nicht erstellt/geladen werden." });
-          if (typeof window !== "undefined") {
-            setInvitationLink(`${window.location.origin}/join/${sessionId}`); // Fallback
-          }
         } finally {
-          setIsLoadingLink(false);
           setIsLoadingSessionData(false);
         }
       };
-      generateLinkAndSetupSession();
+      setupSession();
     } else {
-      setInvitationLink("Szenario nicht gefunden");
-      setIsLoadingLink(false);
       setIsLoadingSessionData(false);
-      setSessionData(null);
+      setSessionData(null); // Reset sessionData if scenario not found
     }
-  }, [sessionId, toast]);
+  }, [sessionId, toast]); // sessionData removed from dependencies to avoid loop on initial setup
 
-  // Effect for listening to SessionData changes (status, cooldown)
+
+  // Effect for listening to SessionData changes (status, cooldown, token)
   useEffect(() => {
     if (!sessionId) return;
     const sessionDocRef = doc(db, "sessions", sessionId);
+    // setIsLoadingSessionData(true); // Potentially set loading true before snapshot
     const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as SessionData;
         setSessionData(data);
         setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
       } else {
-        setSessionData(null); // Session might have been deleted
+        setSessionData(null); 
       }
+      setIsLoadingSessionData(false); // Set loading false after data received
     }, (error) => {
       console.error("Error listening to session data: ", error);
-      // toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzungsdaten konnten nicht synchronisiert werden." });
+      setIsLoadingSessionData(false);
     });
     return () => unsubscribeSessionData();
-  }, [sessionId, toast]);
+  }, [sessionId]); // Removed toast from deps
 
 
   // Effect for Participants
@@ -156,11 +173,10 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingParticipants(false);
     }, (error) => {
       console.error("Error fetching participants: ", error);
-      // toast({ variant: "destructive", title: "Firestore Fehler", description: "Teilnehmer konnten nicht geladen werden." });
       setIsLoadingParticipants(false);
     });
     return () => unsubscribeParticipants();
-  }, [sessionId, toast]);
+  }, [sessionId]);
 
   // Effect for Chat Messages
   useEffect(() => {
@@ -183,16 +199,15 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsLoadingMessages(false);
     }, (error) => {
       console.error("Error fetching messages: ", error);
-      // toast({ variant: "destructive", title: "Firestore Fehler", description: "Nachrichten konnten nicht geladen werden." });
       setIsLoadingMessages(false);
     });
     return () => unsubscribeMessages();
-  }, [sessionId, toast]);
+  }, [sessionId]);
 
 
   const copyToClipboard = () => {
-    if (invitationLink && invitationLink !== "Wird generiert..." && invitationLink !== "Szenario nicht gefunden") {
-      navigator.clipboard.writeText(invitationLink).then(() => {
+    if (displayedInvitationLink && !displayedInvitationLink.includes("Wird generiert...")) {
+      navigator.clipboard.writeText(displayedInvitationLink).then(() => {
         toast({ title: "Link kopiert!", description: "Der Einladungslink wurde in die Zwischenablage kopiert." });
       }).catch(err => {
         toast({ variant: "destructive", title: "Fehler", description: "Link konnte nicht kopiert werden." });
@@ -202,29 +217,47 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   };
 
+  const handleGenerateNewInvitationToken = async () => {
+    if (!sessionId || !sessionData) return;
+    setIsGeneratingLink(true);
+    const newSessionToken = generateToken();
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    try {
+      await updateDoc(sessionDocRef, { invitationToken: newSessionToken });
+      toast({ title: "Neuer Einladungslink generiert", description: "Der Token wurde aktualisiert." });
+    } catch (error) {
+      console.error("Error generating new invitation token: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Neuer Link-Token konnte nicht generiert werden." });
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  };
+
   const handleStartRestartSession = async () => {
     if (!sessionId) return;
     setIsStartingOrRestartingSession(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
-    let link = invitationLink;
-    if (typeof window !== "undefined" && (!link || link === "Wird generiert..." || link === "Szenario nicht gefunden")) {
-        link = `${window.location.origin}/join/${sessionId}`;
+    let baseLink = sessionData?.invitationLink || ""; // Keep existing base link if available
+    if (typeof window !== "undefined" && !baseLink) {
+        baseLink = `${window.location.origin}/join/${sessionId}`;
     }
+    const newSessionToken = generateToken();
 
     const sessionUpdateData: Partial<SessionData> = {
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
         scenarioId: sessionId,
-        invitationLink: link,
+        invitationLink: baseLink,
+        invitationToken: newSessionToken,
     };
 
-    if (!sessionData || sessionData.status === "ended") {
-        sessionUpdateData.createdAt = serverTimestamp(); // New or fully restarted session
+    if (!sessionData || sessionData.status === "ended" || sessionData.status === "paused") { // Also for paused, new token
+        sessionUpdateData.createdAt = serverTimestamp(); 
     }
 
     try {
-        await setDoc(sessionDocRef, sessionUpdateData, { merge: true }); // Use setDoc with merge to create or update
-        toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv mit Standardeinstellungen." });
+        await setDoc(sessionDocRef, sessionUpdateData, { merge: true }); 
+        toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv mit neuem Link-Token." });
     } catch (error) {
         console.error("Error starting/restarting session: ", error);
         toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht gestartet/aktualisiert werden." });
@@ -242,32 +275,28 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
     try {
       const batch = writeBatch(db);
-
-      // Delete participants
       const participantsSnap = await getDocs(participantsColRef);
       participantsSnap.forEach(doc => batch.delete(doc.ref));
-
-      // Delete messages
       const messagesSnap = await getDocs(messagesColRef);
       messagesSnap.forEach(doc => batch.delete(doc.ref));
-
       await batch.commit();
 
-      // Re-initialize session document
-      let link = "";
+      let baseLink = "";
       if (typeof window !== "undefined") {
-        link = `${window.location.origin}/join/${sessionId}`;
+        baseLink = `${window.location.origin}/join/${sessionId}`;
       }
+      const newSessionToken = generateToken();
       const newSessionData: SessionData = {
         scenarioId: sessionId,
         createdAt: serverTimestamp(),
-        invitationLink: link,
+        invitationLink: baseLink,
+        invitationToken: newSessionToken,
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
       };
-      await setDoc(sessionDocRef, newSessionData); // Overwrite with new session data
+      await setDoc(sessionDocRef, newSessionData); 
 
-      toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Die Sitzung wurde neu gestartet." });
+      toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Neuer Link-Token generiert." });
     } catch (error) {
       console.error("Error resetting session: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht zurückgesetzt werden." });
@@ -308,11 +337,10 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const handlePaceChange = async (newPace: number[]) => {
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const newCooldown = newPace[0];
-    setPaceValue(newCooldown); // Optimistic UI update for slider
+    setPaceValue(newCooldown); 
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { messageCooldownSeconds: newCooldown });
-      // toast({ title: "Pace angepasst", description: `Nachrichten Cooldown ist jetzt ${newCooldown}s.` }); // Can be too noisy
     } catch (error) {
       console.error("Error updating pace: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Pace konnte nicht angepasst werden." });
@@ -365,21 +393,20 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   
   const displayParticipantsList: Participant[] = [...sessionParticipants];
   if (currentScenario && !isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).length < expectedStudentRoles) {
-    const joinedUserIds = new Set(sessionParticipants.map(p => p.userId));
     const placeholdersToAdd = expectedStudentRoles - displayParticipantsList.filter(p => !p.isBot).length;
     
     let placeholderIndex = 0;
     for (let i = 0; i < expectedStudentRoles && placeholderIndex < placeholdersToAdd; i++) {
         const potentialPlaceholderId = `student-placeholder-${String.fromCharCode(65 + i)}`;
-        const isRoleTakenByRealUser = sessionParticipants.some(p => !p.isBot && p.role === `Teilnehmer ${String.fromCharCode(65 + i)}`);
-        const isPlaceholderNeeded = !displayParticipantsList.some(dp => dp.userId === potentialPlaceholderId && dp.isBot === false)
-
-        if (!isRoleTakenByRealUser && isPlaceholderNeeded) {
+        const roleName = `Teilnehmer ${String.fromCharCode(65 + i)}`;
+        const isRoleTakenByRealUser = sessionParticipants.some(p => !p.isBot && p.role === roleName);
+        
+        if (!isRoleTakenByRealUser) {
              displayParticipantsList.push({
                 id: potentialPlaceholderId, 
                 userId: potentialPlaceholderId, 
-                name: `Teilnehmer ${String.fromCharCode(65 + i)}`,
-                role: `Teilnehmer ${String.fromCharCode(65 + i)}`,
+                name: roleName,
+                role: roleName,
                 isBot: false,
                 status: "Nicht beigetreten",
                 avatarFallback: `T${String.fromCharCode(65 + i)}`,
@@ -392,7 +419,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const isSessionEnded = sessionData?.status === "ended";
   const isSessionPaused = sessionData?.status === "paused";
   const isSessionActive = sessionData?.status === "active";
-  const isSessionInteractable = !isSessionEnded; // Used to disable many controls
+  const isSessionInteractable = !isSessionEnded;
 
   const getStartRestartButtonText = () => {
     if (!sessionData || sessionData.status === 'ended') return "Sitzung starten";
@@ -462,15 +489,20 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
               <div>
                 <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <Input id="invitation-link" type="text" value={isLoadingLink || isLoadingSessionData || !invitationLink || invitationLink === "Wird generiert..." ? "Wird geladen..." : invitationLink} readOnly className="bg-muted" />
-                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingLink || isLoadingSessionData || !invitationLink || invitationLink === "Wird generiert..."}>
+                  <Input id="invitation-link" type="text" value={isLoadingSessionData ? "Wird geladen..." : displayedInvitationLink} readOnly className="bg-muted" />
+                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...")}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-              <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={!invitationLink || invitationLink === "Wird generiert..."}>
-                <QrCode className="mr-2 h-4 w-4" /> QR-Code anzeigen
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...")}>
+                    <QrCode className="mr-2 h-4 w-4" /> QR-Code anzeigen
+                </Button>
+                <Button variant="default" onClick={handleGenerateNewInvitationToken} disabled={isLoadingSessionData || isGeneratingLink || !sessionData}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> {isGeneratingLink ? "Generiere..." : "Neuen Einladungslink generieren"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -527,7 +559,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                         <AlertDialogHeader>
                             <AlertDialogTitle>Sitzung wirklich komplett zurücksetzen?</AlertDialogTitle>
                             <AlertDialogDescription>
-                            Alle Teilnehmer und Nachrichten dieser Sitzung werden dauerhaft gelöscht. Die Sitzung wird mit Standardeinstellungen neu gestartet. Diese Aktion kann nicht rückgängig gemacht werden.
+                            Alle Teilnehmer und Nachrichten dieser Sitzung werden dauerhaft gelöscht. Die Sitzung wird mit Standardeinstellungen neu gestartet (inkl. neuem Einladungslink-Token). Diese Aktion kann nicht rückgängig gemacht werden.
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
