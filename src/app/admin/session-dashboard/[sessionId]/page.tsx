@@ -40,8 +40,7 @@ interface AdminDashboardMessage extends MessageType {
 
 const DEFAULT_COOLDOWN = 0; // Default 0 seconds cooldown
 
-export default function AdminSessionDashboardPage({ params }: AdminSessionDashboardPageProps) {
-  const { sessionId } = params;
+export default function AdminSessionDashboardPage({ params: { sessionId } }: AdminSessionDashboardPageProps) {
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
