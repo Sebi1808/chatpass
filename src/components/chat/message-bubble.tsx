@@ -1,12 +1,12 @@
 
 "use client";
 
-import type { MouseEvent, useState } from 'react';
+import { type MouseEvent, useState } from 'react'; // Added useState import
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CornerDownLeft, Quote, SmilePlus, Eye } from "lucide-react";
+import { CornerDownLeft, Quote, SmilePlus, Eye, Bot as BotIcon, User } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -47,6 +47,7 @@ export function MessageBubble({
     : getParticipantColorClasses(message.senderUserId, message.senderType);
 
   const handleMessageClick = (e: MouseEvent<HTMLDivElement>) => {
+    // Prevents the message click from closing popovers if the click is inside a popover or on a button
     if ((e.target as HTMLElement).closest('button, a, img, [data-radix-popover-content-wrapper]')) {
       return;
     }
@@ -54,7 +55,7 @@ export function MessageBubble({
 
   const handleEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
-    setShowReactionPicker(false);
+    setShowReactionPicker(false); // Close picker after selection
   };
 
 
@@ -82,6 +83,7 @@ export function MessageBubble({
               {message.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", isOwn ? "border-primary-foreground/50 text-primary-foreground/80 bg-primary-foreground/10" : "border-current text-current bg-transparent opacity-80")}>🤖 BOT</Badge>}
               {message.senderType === 'admin' && !isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>👑 ADMIN</Badge>}
               {message.senderType === 'admin' && isOwn && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 border-primary-foreground/70 text-primary-foreground/80 bg-primary-foreground/10")}>👑 ADMIN (Du)</Badge>}
+
             </button>
             <span className={`text-xs ${isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{message.timestampDisplay}</span>
           </div>
@@ -107,12 +109,12 @@ export function MessageBubble({
               <Image
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
-                width={300}
-                height={300} // Provide a suitable height, next/image will maintain aspect ratio based on objectFit
+                width={300} 
+                height={300} 
                 style={{
                   maxWidth: "100%",
-                  height: "auto", // Allow height to adjust to maintain aspect ratio
-                  objectFit: "contain",
+                  height: "auto", 
+                  objectFit: "contain", 
                   display: "block"
                 }}
                 className="transition-transform duration-300 group-hover:scale-105"
@@ -159,7 +161,7 @@ export function MessageBubble({
                 <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
                   <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
                 </Button>
-                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onSetQuote(message); }} aria-label="Zitieren">
+                 <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onSetQuote(message); }} aria-label="Zitieren">
                   <Quote className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Zitieren</span>
                 </Button>
               </>
