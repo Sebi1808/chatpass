@@ -5,9 +5,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX } from "lucide-react"; 
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle } from "lucide-react"; 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useRouter } from "next/navigation"; 
 import { useEffect, useState, Suspense, useRef, type FormEvent } from "react";
 import { scenarios } from "@/lib/scenarios";
@@ -23,6 +23,7 @@ import { db } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
 
 
 interface ChatPageProps {
@@ -42,6 +43,28 @@ interface DisplayMessage extends MessageType {
 interface DisplayParticipant extends ParticipantType {
    id: string; 
 }
+
+const chatBubbleColors = [
+  { bg: "bg-[hsl(var(--chart-1))]", text: "text-primary-foreground" }, // More vibrant blue, ensure text is light
+  { bg: "bg-[hsl(var(--chart-2))]", text: "text-primary-foreground" }, // Greenish, ensure text is light
+  { bg: "bg-[hsl(var(--chart-3))]", text: "text-primary-foreground" }, // Orangeish, text black (primary-foreground is black)
+  { bg: "bg-[hsl(var(--chart-4))]", text: "text-primary-foreground" }, // Purplish, ensure text is light
+  { bg: "bg-[hsl(var(--chart-5))]", text: "text-primary-foreground" }, // Pinkish/reddish, ensure text is light
+  { bg: "bg-teal-700", text: "text-teal-50" },
+  { bg: "bg-indigo-600", text: "text-indigo-50" },
+  { bg: "bg-pink-700", text: "text-pink-50" },
+];
+
+// Simple hash function to get a color index consistently for a user
+const simpleHash = (str: string): number => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+};
 
 
 function ChatPageContent({ sessionId }: ChatPageContentProps) { 
@@ -64,6 +87,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true); 
   const [isChatDataLoading, setIsChatDataLoading] = useState(true);
+  const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
 
 
   useEffect(() => {
@@ -157,9 +181,9 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
     if (!sessionId) return;
     setIsChatDataLoading(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    const q = query(participantsColRef, orderBy("joinedAt", "asc"));
+    const q_participants = query(participantsColRef, orderBy("joinedAt", "asc"));
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const unsubscribe = onSnapshot(q_participants, (querySnapshot) => {
       const fetchedParticipants: DisplayParticipant[] = [];
       querySnapshot.forEach((doc) => {
         fetchedParticipants.push({ id: doc.id, ...doc.data() } as DisplayParticipant);
@@ -244,6 +268,18 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   useEffect(scrollToBottom, [messages]);
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
+  
+  const getParticipantColorClasses = (senderUserId: string, senderType: 'admin' | 'user' | 'bot'): {bg: string, text: string} => {
+    if (senderType === 'bot') {
+      return { bg: "bg-accent/20", text: "text-accent-foreground" }; // Specific style for bots
+    }
+    if (senderType === 'admin') {
+      return { bg: "bg-destructive/20", text: "text-destructive-foreground" }; // Specific style for admin
+    }
+    const colorIndex = simpleHash(senderUserId) % chatBubbleColors.length;
+    return chatBubbleColors[colorIndex];
+  };
+
 
   const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -279,21 +315,38 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
 
 
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
-    try {
-      await addDoc(messagesColRef, {
+    const messageData: Omit<MessageType, 'id'> = {
         senderUserId: userId,
         senderName: userName,
         senderType: 'user', 
         avatarFallback: userAvatarFallback,
         content: newMessage.trim(),
         timestamp: serverTimestamp(),
-      });
+    };
+
+    if (replyingTo) {
+        messageData.replyToMessageId = replyingTo.id;
+        messageData.replyToMessageContentSnippet = replyingTo.content.substring(0, 70) + (replyingTo.content.length > 70 ? "..." : "");
+        messageData.replyToMessageSenderName = replyingTo.senderName;
+    }
+
+    try {
+      await addDoc(messagesColRef, messageData);
       setNewMessage("");
+      setReplyingTo(null); // Clear reply state
       setLastMessageSentAt(Date.now());
     } catch (error) {
       console.error("Error sending message: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Nachricht konnte nicht gesendet werden." });
     }
+  };
+
+  const handleSetReply = (message: DisplayMessage) => {
+    setReplyingTo(message);
+  };
+
+  const handleCancelReply = () => {
+    setReplyingTo(null);
   };
   
   if (isLoading || !currentScenario || !userId || !sessionData) { 
@@ -369,7 +422,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                           <AvatarFallback>{p.avatarFallback}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="text-sm font-medium">{p.name} {p.isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
+                          <p className="text-sm font-medium">{p.name} {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
                           <p className="text-xs text-muted-foreground">{p.role} {p.isBot ? <BotIcon className="inline h-3 w-3" /> : <User className="inline h-3 w-3" />}</p>
                         </div>
                       </div>
@@ -384,7 +437,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       {/* Main chat area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Participant List (Sidebar) */}
-        <aside className="hidden md:flex md:w-64 lg:w-72 flex-col border-r bg-background p-4 space-y-4">
+        <aside className="hidden md:flex md:w-72 lg:w-80 flex-col border-r bg-background p-4 space-y-4">
           <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
           <ScrollArea className="flex-1">
             <div className="space-y-3">
@@ -395,28 +448,34 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                     <AvatarFallback>{p.avatarFallback}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="text-sm font-medium">{p.name} {p.isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
+                    <p className="text-sm font-medium">{p.name} {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
                      <p className="text-xs text-muted-foreground">{p.role} {p.isBot ? <BotIcon className="inline h-3 w-3" /> : <User className="inline h-3 w-3" />}</p>
                   </div>
                 </div>
               ))}
             </div>
           </ScrollArea>
-           {userRole && currentScenario && (
-            <Card className="mt-auto">
+          <Separator />
+           {userRole && currentScenario && userName && userAvatarFallback && (
+            <Card className="mt-auto bg-muted/30">
               <CardHeader className="p-3">
-                <CardTitle className="text-sm flex items-center">
-                   <Avatar className="h-6 w-6 border mr-2">
+                <div className="flex items-center gap-2">
+                   <Avatar className="h-10 w-10 border">
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
                         <AvatarFallback>{userAvatarFallback}</AvatarFallback>
                     </Avatar>
-                    Ihre Rolle: {userRole}
-                </CardTitle>
+                    <div>
+                        <CardTitle className="text-base">{userName}</CardTitle>
+                        <p className="text-xs text-muted-foreground">Ihre Rolle: {userRole}</p>
+                    </div>
+                </div>
               </CardHeader>
-              <CardContent className="p-3 pt-0 text-xs text-muted-foreground max-h-24 overflow-y-auto">
-                {userRole.toLowerCase().includes("teilnehmer") && currentScenario.langbeschreibung}
-                {userRole.toLowerCase().includes("bot") && "Sie sind ein Bot und nehmen aktiv an der Diskussion teil."}
-                {userRole.toLowerCase().includes("admin") && "Sie sind Admin und moderieren die Diskussion."}
+              <CardContent className="p-3 pt-0 text-xs ">
+                <CardDescription className="max-h-24 overflow-y-auto text-muted-foreground border-l-2 border-primary pl-2 italic">
+                    {userRole.toLowerCase().includes("teilnehmer") && currentScenario.langbeschreibung}
+                    {userRole.toLowerCase().includes("bot") && "Sie sind ein Bot und nehmen aktiv an der Diskussion teil, basierend auf Ihrer programmierten Persönlichkeit."}
+                    {userRole.toLowerCase().includes("admin") && "Sie sind Admin und moderieren diese Diskussion."}
+                </CardDescription>
               </CardContent>
             </Card>
           )}
@@ -426,40 +485,51 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
         <main className="flex flex-1 flex-col">
           <ScrollArea className="flex-1 p-4 md:p-6">
             <div className="space-y-6">
-              {messages.map((msg) => (
-                  <div key={msg.id} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
-                    {!msg.isOwn && (
-                      <Avatar className="h-10 w-10 border">
-                         <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user"/>
-                        <AvatarFallback>{msg.avatarFallback}</AvatarFallback>
-                      </Avatar>
-                    )}
-                    <Card className={`max-w-xs md:max-w-md lg:max-w-lg shadow-md ${msg.isOwn ? "bg-primary text-primary-foreground" : "bg-card"}`}>
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={`text-xs font-semibold ${msg.isOwn ? "text-primary-foreground/80" : "text-accent"}`}>
-                            {msg.senderName}
-                            {msg.senderType === 'bot' && <BotIcon className="inline-block h-3 w-3 ml-1" />}
-                            {msg.senderType === 'admin' && <Settings className="inline-block h-3 w-3 ml-1" />}
-                          </span>
-                          <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{msg.timestampDisplay}</span>
-                        </div>
-                        {msg.replyTo && (
-                          <div className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-primary/20 text-primary-foreground/90" : "bg-muted text-muted-foreground"}`}>
-                             <CornerDownLeft className="h-3 w-3 shrink-0" /> <span className="truncate">Antwort auf: {msg.replyTo}</span>
+              {messages.map((msg) => {
+                  const bubbleColor = msg.isOwn ? {bg: "bg-primary", text: "text-primary-foreground"} : getParticipantColorClasses(msg.senderUserId, msg.senderType);
+                  return (
+                    <div key={msg.id} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
+                      {!msg.isOwn && (
+                        <Avatar className="h-10 w-10 border self-end">
+                           <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user"/>
+                          <AvatarFallback>{msg.avatarFallback}</AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div className={`max-w-xs md:max-w-md lg:max-w-lg rounded-lg shadow-md ${bubbleColor.bg} ${bubbleColor.text}`}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-xs font-semibold ${msg.isOwn ? "text-primary-foreground/80" : (msg.senderType === 'bot' ? 'text-accent' : 'opacity-80')}`}>
+                              {msg.senderName}
+                              {msg.senderType === 'bot' && <BotIcon className="inline-block h-3 w-3 ml-1" />}
+                              {msg.senderType === 'admin' && <Settings className="inline-block h-3 w-3 ml-1" />}
+                            </span>
+                            <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
                           </div>
-                        )}
-                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      </CardContent>
-                    </Card>
-                    {msg.isOwn && userName && userAvatarFallback && ( 
-                      <Avatar className="h-10 w-10 border">
-                        <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
-                        <AvatarFallback>{userAvatarFallback}</AvatarFallback>
-                      </Avatar>
-                    )}
-                  </div>
-                ))}
+                          {msg.replyToMessageId && msg.replyToMessageSenderName && msg.replyToMessageContentSnippet && (
+                            <div className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-black/20" : "bg-black/10"} opacity-80`}>
+                               <CornerDownLeft className="h-3 w-3 shrink-0" /> 
+                               <div className="truncate">
+                                  <span className="font-medium">Antwort auf {msg.replyToMessageSenderName}:</span> {msg.replyToMessageContentSnippet}
+                               </div>
+                            </div>
+                          )}
+                          <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                           {!msg.isOwn && (
+                            <Button variant="ghost" size="icon" className={`mt-1 h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text}`} onClick={() => handleSetReply(msg)} aria-label="Antworten">
+                                <CornerDownLeft className="h-3.5 w-3.5" />
+                            </Button>
+                           )}
+                        </CardContent>
+                      </div>
+                      {msg.isOwn && userName && userAvatarFallback && ( 
+                        <Avatar className="h-10 w-10 border self-end">
+                          <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
+                          <AvatarFallback>{userAvatarFallback}</AvatarFallback>
+                        </Avatar>
+                      )}
+                    </div>
+                  );
+                })}
               <div ref={messagesEndRef} />
                {messages.length === 0 && !isChatDataLoading && (
                 <div className="text-center text-muted-foreground py-8">
@@ -468,11 +538,27 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                     <p>Sei der Erste, der eine Nachricht sendet!</p>
                 </div>
             )}
+             {isChatDataLoading && (
+                <div className="text-center text-muted-foreground py-8">
+                    <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50 animate-pulse" />
+                    <p>Lade Chat-Nachrichten...</p>
+                </div>
+            )}
             </div>
           </ScrollArea>
 
           {/* Message Input */}
           <div className="border-t bg-background p-3 md:p-4">
+            {replyingTo && (
+              <div className="mb-2 p-2 border rounded-md bg-muted/50 text-sm text-muted-foreground flex justify-between items-center">
+                <div>
+                  Antwort auf <span className="font-semibold">{replyingTo.senderName}</span>: <span className="italic">&quot;{replyingTo.content.substring(0,30)}...&quot;</span>
+                </div>
+                <Button variant="ghost" size="icon" onClick={handleCancelReply} className="h-6 w-6 p-0">
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
             {!canSendBasedOnStatusAndMute && sessionStatusMessage && (
                  <Alert variant={sessionData.status === "ended" || isMuted ? "destructive" : "default"} className="mb-2">
                     {sessionData.status === "paused" ? <PauseCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
@@ -485,10 +571,10 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 </Alert>
             )}
             <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading}>
                 <Paperclip className="h-5 w-5" />
               </Button>
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading}>
                 <Smile className="h-5 w-5" />
               </Button>
               <Input
@@ -499,7 +585,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 onChange={(e) => setNewMessage(e.target.value)}
                 disabled={!canSendMessage || isLoading}
               />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage}>
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading}>
                 <Mic className="h-5 w-5" />
               </Button>
               <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!canSendMessage || !newMessage.trim() || isLoading} aria-label="Senden">

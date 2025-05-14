@@ -54,7 +54,8 @@ export interface Message {
   avatarFallback: string;
   content: string;
   timestamp: Timestamp | Date; 
-  replyTo?: string; 
+  replyToMessageId?: string; 
+  replyToMessageContentSnippet?: string;
+  replyToMessageSenderName?: string;
   botFlag?: boolean; 
 }
-
