@@ -1,3 +1,4 @@
+
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import {
@@ -14,7 +15,7 @@ import {
 import { Logo } from '@/components/icons/logo';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LayoutGrid, MessageCircle, Settings, LogOut, Home } from 'lucide-react';
+import { LayoutGrid, MessageCircle, Settings, LogOut, Home, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,8 +37,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <Link href="/admin" className="block group-data-[collapsible=icon]:hidden">
               <Logo />
             </Link>
+             {/* SidebarTrigger is now part of the Sidebar component's internal logic for desktop, 
+                 but we might need a manual one if we want it *inside* the header when collapsed for icon mode */}
             <div className="block group-data-[collapsible=icon]:hidden">
               <SidebarTrigger />
+            </div>
+             {/* Explicit trigger for icon mode, always visible in header */}
+            <div className="hidden group-data-[collapsible=icon]:block">
+                <SidebarTrigger />
             </div>
           </div>
         </SidebarHeader>
@@ -73,7 +80,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-md sm:px-6">
-            <div className="md:hidden"> {/* Hidden on medium and larger screens where sidebar trigger is in sidebar */}
+            <div className="md:hidden"> {/* Mobile trigger - visible when sidebar is part of Sheet */}
+                <SidebarTrigger />
+            </div>
+             <div className="hidden md:block group-data-[variant=sidebar]:group-data-[collapsible=offcanvas]:group-data-[state=collapsed]:block">
+                {/* This trigger is for when the sidebar is fully off-canvas collapsed on desktop */}
                 <SidebarTrigger />
             </div>
             <div className="flex-1">
