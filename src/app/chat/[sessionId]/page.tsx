@@ -20,6 +20,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
@@ -32,16 +33,16 @@ import Image from 'next/image';
 import { Progress } from "@/components/ui/progress";
 
 
-interface ChatPageUrlParams { 
-  sessionId: string; 
+interface ChatPageUrlParams {
+  sessionId: string;
 }
 
 interface ChatPageProps {
-  params: ChatPageUrlParams; 
+  params: ChatPageUrlParams;
 }
 
 interface ChatPageContentProps {
-  sessionId: string; 
+  sessionId: string;
   initialUserName?: string;
   initialUserRole?: string;
   initialUserId?: string;
@@ -60,14 +61,14 @@ interface DisplayParticipant extends ParticipantType {
 }
 
 const participantColors = [
-  { name: 'sky', bg: "bg-sky-400/90", text: "text-sky-50", nameText: "text-sky-50", ring: "ring-sky-400" },
-  { name: 'emerald', bg: "bg-emerald-400/90", text: "text-emerald-50", nameText: "text-emerald-50", ring: "ring-emerald-400" },
-  { name: 'violet', bg: "bg-violet-400/90", text: "text-violet-50", nameText: "text-violet-50", ring: "ring-violet-400" },
-  { name: 'rose', bg: "bg-rose-400/90", text: "text-rose-50", nameText: "text-rose-50", ring: "ring-rose-400" },
-  { name: 'amber', bg: "bg-amber-400/90", text: "text-amber-50", nameText: "text-amber-50", ring: "ring-amber-400" },
-  { name: 'teal', bg: "bg-teal-400/90", text: "text-teal-50", nameText: "text-teal-50", ring: "ring-teal-400" },
-  { name: 'indigo', bg: "bg-indigo-400/90", text: "text-indigo-50", nameText: "text-indigo-50", ring: "ring-indigo-400" },
-  { name: 'fuchsia', bg: "bg-fuchsia-400/90", text: "text-fuchsia-50", nameText: "text-fuchsia-50", ring: "ring-fuchsia-400" },
+  { name: 'sky', bg: "bg-sky-500/90", text: "text-sky-50", nameText: "text-sky-100", ring: "ring-sky-500" },
+  { name: 'emerald', bg: "bg-emerald-500/90", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-500" },
+  { name: 'violet', bg: "bg-violet-500/90", text: "text-violet-50", nameText: "text-violet-100", ring: "ring-violet-500" },
+  { name: 'rose', bg: "bg-rose-500/90", text: "text-rose-50", nameText: "text-rose-100", ring: "ring-rose-500" },
+  { name: 'amber', bg: "bg-amber-500/90", text: "text-amber-50", nameText: "text-amber-100", ring: "ring-amber-500" },
+  { name: 'teal', bg: "bg-teal-500/90", text: "text-teal-50", nameText: "text-teal-100", ring: "ring-teal-500" },
+  { name: 'indigo', bg: "bg-indigo-500/90", text: "text-indigo-50", nameText: "text-indigo-100", ring: "ring-indigo-500" },
+  { name: 'fuchsia', bg: "bg-fuchsia-500/90", text: "text-fuchsia-50", nameText: "text-fuchsia-100", ring: "ring-fuchsia-500" },
 ];
 
 const simpleHash = (str: string): number => {
@@ -125,7 +126,8 @@ export function ChatPageContent({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  
+  const [imageForModal, setImageForModal] = useState<string | null>(null);
+
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
 
@@ -318,17 +320,17 @@ export function ChatPageContent({
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
   const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, nameText: string, ring: string } => {
-    if (isAdminView && pUserId === userId && pSenderType === 'admin') { 
+    if (isAdminView && pUserId === userId && pSenderType === 'admin') {
        return { bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
-    if (pSenderType === 'admin') { 
+    if (pSenderType === 'admin') {
       return { bg: "bg-destructive/70", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
     if (pSenderType === 'bot') {
       return { bg: "bg-accent/60", text: "text-accent-foreground", nameText: "text-accent-foreground/90", ring: "ring-accent" };
     }
     if (!pUserId) {
-        return { ...participantColors[0], ring: participantColors[0].ring || "ring-gray-400" }; 
+        return { ...participantColors[0], ring: participantColors[0].ring || "ring-gray-400" };
     }
     const colorIndex = simpleHash(pUserId) % participantColors.length;
     return { ...participantColors[colorIndex], ring: participantColors[colorIndex].ring || `ring-${participantColors[colorIndex].name}-400`};
@@ -338,13 +340,13 @@ export function ChatPageContent({
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { 
+      if (file.size > 5 * 1024 * 1024) {
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUploadProgress(null); 
+      setImageUploadProgress(null);
     }
   };
 
@@ -357,7 +359,7 @@ export function ChatPageContent({
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    setImageUploadProgress(null); 
+    setImageUploadProgress(null);
   };
 
   const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
@@ -394,7 +396,7 @@ export function ChatPageContent({
 
     setIsSendingMessage(true);
     if (selectedImageFile) {
-      setImageUploadProgress(0); 
+      setImageUploadProgress(0);
     }
 
     let uploadedImageUrl: string | undefined = undefined;
@@ -406,7 +408,7 @@ export function ChatPageContent({
         const imageFileName = `${file.name}_${Date.now()}`;
         const imagePath = `chat_images/${sessionId}/${imageFileName}`;
         const sRef = storageRef(storage, imagePath);
-        
+
         console.log(`Attempting to upload ${file.name} to ${imagePath}`);
         console.log("Storage reference:", sRef);
 
@@ -427,7 +429,7 @@ export function ChatPageContent({
                   break;
               }
             },
-            (error) => { 
+            (error) => {
               console.error("Firebase Storage upload error: ", error);
               let errorMessage = `Fehler: ${error.code || 'Unbekannt'}`;
               if (error.message) errorMessage += ` - ${error.message}`;
@@ -467,21 +469,21 @@ export function ChatPageContent({
                   break;
               }
               toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: errorMessage });
-              reject(new Error(errorMessage)); 
+              reject(new Error(errorMessage));
             },
-            async () => { 
+            async () => {
               console.log('Upload successful, getting download URL...');
               try {
                 const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
                 console.log('Download URL:', downloadURL);
                 uploadedImageUrl = downloadURL;
-                uploadedImageFileName = file.name; 
-                resolve(); 
+                uploadedImageFileName = file.name;
+                resolve();
               } catch (getUrlError) {
                 const getUrlErrorTyped = getUrlError as Error;
                 console.error("Error getting download URL: ", getUrlErrorTyped);
                 toast({ variant: "destructive", title: "Bild-URL Abruf fehlgeschlagen", description: `URL konnte nicht abgerufen werden: ${getUrlErrorTyped.message}` });
-                reject(getUrlErrorTyped); 
+                reject(getUrlErrorTyped);
               }
             }
           );
@@ -508,21 +510,21 @@ export function ChatPageContent({
 
       if (uploadedImageUrl) messageData.imageUrl = uploadedImageUrl;
       if (uploadedImageFileName) messageData.imageFileName = uploadedImageFileName;
-      
+
       if (replyingTo) {
         messageData.replyToMessageId = replyingTo.id;
         messageData.replyToMessageContentSnippet = replyingTo.content.substring(0, 70) + (replyingTo.content.length > 70 ? "..." : "");
         messageData.replyToMessageSenderName = replyingTo.senderName;
       }
-      
+
       console.log("Adding message to Firestore:", messageData);
       await addDoc(messagesColRef, messageData);
       console.log("Message added to Firestore.");
-      
+
       setNewMessage("");
       setReplyingTo(null);
       setQuotingMessage(null);
-      handleRemoveSelectedImage(); 
+      handleRemoveSelectedImage();
       if (!isAdminView) setLastMessageSentAt(Date.now());
       setShowEmojiPicker(false);
 
@@ -535,7 +537,7 @@ export function ChatPageContent({
     } finally {
       console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
-      setImageUploadProgress(null); 
+      setImageUploadProgress(null);
     }
   };
 
@@ -560,7 +562,7 @@ export function ChatPageContent({
   const handleCancelQuote = () => {
      if (quotingMessage) {
         const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\n\\n`;
-        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g'); 
+        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g');
         setNewMessage(prev => prev.replace(regex, ""));
     }
     setQuotingMessage(null);
@@ -575,6 +577,16 @@ export function ChatPageContent({
     setNewMessage(prev => prev + emoji);
     // setShowEmojiPicker(false); // Keep picker open for multiple emojis
   };
+
+  const handleReaction = (emoji: string, messageId: string) => {
+    // For now, just show a toast. Full implementation later.
+    toast({
+        title: "Reaktion (Demnächst!)",
+        description: `Du hast mit ${emoji} auf eine Nachricht reagiert. Diese Funktion wird bald vollständig implementiert.`,
+    });
+    setShowEmojiPicker(false); // Close picker after reaction attempt
+  };
+
 
   if (isLoading && !isAdminView) {
     return (
@@ -609,365 +621,431 @@ export function ChatPageContent({
   } else if (cooldownRemainingSeconds > 0 && !isAdminView) {
     inputPlaceholderText = `Nächste Nachricht in ${cooldownRemainingSeconds}s...`;
   }
-  
+
   const isSendButtonDisabled = !canTryToSend || (!newMessage.trim() && !selectedImageFile) || isSendingMessage || isLoading;
 
 
   return (
-    <div className={cn("flex flex-col bg-muted/40", isAdminView ? "h-full" : "h-screen")}>
-      {!isAdminView && (
-        <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
-          <h1 className="text-lg font-semibold text-primary truncate max-w-[calc(100%-200px)] sm:max-w-none">
-            Simulation: {getScenarioTitle()}
-          </h1>
-          <div className="flex items-center gap-2">
-            <Badge variant={sessionData?.status === "active" ? "default" : (sessionData?.status === "paused" ? "secondary" : "destructive")}>
-              {sessionData?.status === "active" ? "Aktiv" : (sessionData?.status === "paused" ? "Pausiert" : "Beendet")}
-            </Badge>
-            {userName && userRole && userId && (
-              <>
-                <Avatar className={cn("h-8 w-8 border hidden sm:flex", getParticipantColorClasses(userId, 'user').ring, "ring-2")}>
-                  <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user" />
-                  <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
-                    {userAvatarFallback}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm font-medium hidden sm:inline truncate max-w-[100px]">
-                  {userName}
-                </span>
-              </>
-            )}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden" aria-label="Teilnehmer anzeigen">
-                  <Users className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4">
-                <SheetHeader className="mb-4">
-                  <SheetTitle>Teilnehmende ({participants.length})</SheetTitle>
-                </SheetHeader>
-                <ScrollArea className="h-[calc(100%-80px)]">
-                  <div className="space-y-3">
-                    {participants.map((p) => {
-                      const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
-                      return (
-                        <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                          <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                            <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                            <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="text-sm font-medium">
-                              {p.name}
-                              {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0 border-accent text-accent">BOT</Badge>}
-                              {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
-                              {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
-                            </p>
-                            <p className="text-xs text-muted-foreground">{p.role}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              </SheetContent>
-            </Sheet>
-          </div>
-        </header>
-      )}
-
-      <div className="flex flex-1 overflow-hidden">
+    <Dialog> {/* Root Dialog for image modal */}
+      <div className={cn("flex flex-col bg-muted/40", isAdminView ? "h-full" : "h-screen")}>
         {!isAdminView && (
-          <aside className="hidden md:flex md:w-72 lg:w-80 flex-col border-r bg-background p-4 space-y-4">
-            <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
-            <ScrollArea className="flex-1">
-              <div className="space-y-3">
-                {participants.map((p) => {
-                  const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
-                  return (
-                    <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                       <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                        <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                        <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+          <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
+            <h1 className="text-lg font-semibold text-primary truncate max-w-[calc(100%-200px)] sm:max-w-none">
+              Simulation: {getScenarioTitle()}
+            </h1>
+            <div className="flex items-center gap-2">
+              <Badge variant={sessionData?.status === "active" ? "default" : (sessionData?.status === "paused" ? "secondary" : "destructive")}>
+                {sessionData?.status === "active" ? "Aktiv" : (sessionData?.status === "paused" ? "Pausiert" : "Beendet")}
+              </Badge>
+              {userName && userRole && userId && (
+                <>
+                  <Avatar className={cn("h-8 w-8 border hidden sm:flex", getParticipantColorClasses(userId, 'user').ring, "ring-2")}>
+                    <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user" />
+                    <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
+                      {userAvatarFallback}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium hidden sm:inline truncate max-w-[100px]">
+                    {userName}
+                  </span>
+                </>
+              )}
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="md:hidden" aria-label="Teilnehmer anzeigen">
+                    <Users className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4">
+                  <SheetHeader className="mb-4">
+                    <SheetTitle>Teilnehmende ({participants.length})</SheetTitle>
+                  </SheetHeader>
+                  <ScrollArea className="h-[calc(100%-80px)]">
+                    <div className="space-y-3">
+                      {participants.map((p) => {
+                        const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
+                        return (
+                          <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
+                            <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
+                              <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
+                              <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <p className="text-sm font-medium">
+                                {p.name}
+                                {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0 border-accent text-accent">BOT</Badge>}
+                                {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
+                                {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{p.role}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </SheetContent>
+              </Sheet>
+            </div>
+          </header>
+        )}
+
+        <div className="flex flex-1 overflow-hidden">
+          {!isAdminView && (
+            <aside className="hidden md:flex md:w-72 lg:w-80 flex-col border-r bg-background p-4 space-y-4">
+              <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
+              <ScrollArea className="flex-1">
+                <div className="space-y-3">
+                  {participants.map((p) => {
+                    const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
+                    return (
+                      <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
+                         <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
+                          <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
+                          <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-sm font-medium">
+                            {p.name}
+                            {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
+                             {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
+                            {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{p.role}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              <Separator />
+              {userRole && currentScenario && userName && userAvatarFallback && userId && (
+                <Card className="mt-auto bg-muted/30">
+                  <CardHeader className="p-3">
+                    <div className="flex items-center gap-2">
+                       <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
+                        <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
+                        <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
+                          {userAvatarFallback}
+                        </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium">
-                          {p.name}
-                          {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent">BOT</Badge>}
-                           {(p.userId === initialUserId && isAdminView && p.senderType === 'admin') && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
-                          {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{p.role}</p>
+                        <CardTitle className="text-base">{userName}</CardTitle>
+                        <p className="text-xs text-muted-foreground">Ihre Rolle: {userRole}</p>
                       </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-3 pt-0">
+                    <ScrollArea className="h-[200px] text-xs">
+                        <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
+                            {currentScenario.langbeschreibung}
+                        </CardDescription>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              )}
+            </aside>
+          )}
+
+          <main className="flex flex-1 flex-col">
+            <ScrollArea className={cn("flex-1 p-4 md:p-6", isAdminView ? "bg-background" : "")}>
+              <div className="space-y-6">
+                {messages.map((msg) => {
+                  const bubbleColor = msg.isOwn ? (isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin') : { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }) : getParticipantColorClasses(msg.senderUserId, msg.senderType);
+                  return (
+                    <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
+                      {!msg.isOwn && (
+                        <Avatar className={cn("h-10 w-10 border-2 self-end", bubbleColor.ring)}>
+                          <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user" />
+                          <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{msg.avatarFallback}</AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div className={cn("max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md", bubbleColor.bg, bubbleColor.text)}>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <button
+                              onClick={() => !msg.isOwn && handleMentionUser(msg.senderName)}
+                              className={cn("text-xs font-semibold cursor-pointer hover:underline", bubbleColor.nameText)}
+                              disabled={msg.isOwn}
+                            >
+                              {msg.senderName}
+                              {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent text-accent bg-accent/10")}>BOT</Badge>}
+                              {msg.senderType === 'admin' && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1 py-0")}>ADMIN</Badge>}
+                            </button>
+                            <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
+                          </div>
+                          {msg.replyToMessageId && msg.replyToMessageSenderName && msg.replyToMessageContentSnippet && (
+                            <div
+                              className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-black/20" : "bg-black/10"} opacity-80 cursor-pointer hover:opacity-100`}
+                              onClick={() => scrollToMessage(msg.replyToMessageId as string)}
+                              title="Zum Original springen"
+                            >
+                              <CornerDownLeft className="h-3 w-3 shrink-0" />
+                              <div className="truncate">
+                                <span className="font-medium">Antwort auf {msg.replyToMessageSenderName}:</span> {msg.replyToMessageContentSnippet}
+                              </div>
+                            </div>
+                          )}
+                          {msg.imageUrl && (
+                             <DialogTrigger asChild>
+                               <div className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-[3/2] rounded-md overflow-hidden cursor-pointer group" onClick={() => setImageForModal(msg.imageUrl || null)}>
+                                <Image
+                                  src={msg.imageUrl}
+                                  alt={msg.imageFileName || "Hochgeladenes Bild"}
+                                  layout="fill"
+                                  objectFit="cover"
+                                  className="transition-transform duration-300 group-hover:scale-105"
+                                  data-ai-hint="chat image"
+                                />
+                                 <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                    <Eye className="h-8 w-8 text-white" />
+                                </div>
+                               </div>
+                             </DialogTrigger>
+                          )}
+                           {msg.imageFileName && !msg.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {msg.imageFileName}</p>}
+                          {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
+                          <div className="flex items-center gap-1 mt-1.5">
+                            {!msg.isOwn && (
+                              <>
+                                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => handleSetReply(msg)} aria-label="Antworten">
+                                  <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
+                                </Button>
+                                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => handleSetQuote(msg)} aria-label="Zitieren">
+                                  <Quote className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Zitieren</span>
+                                </Button>
+                              </>
+                            )}
+                             <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="icon" className={`h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} aria-label="Reagieren">
+                                        <SmilePlus className="h-4 w-4" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
+                                     <Tabs defaultValue={emojiCategories[0].name} className="w-full">
+                                        <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                                        {emojiCategories.map(category => (
+                                            <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
+                                            {category.icon}
+                                            </TabsTrigger>
+                                        ))}
+                                        </TabsList>
+                                        {emojiCategories.map(category => (
+                                        <TabsContent key={category.name} value={category.name} className="mt-0">
+                                            <ScrollArea className="h-48">
+                                            <div className="grid grid-cols-8 gap-0.5 p-2">
+                                                {category.emojis.map(emoji => (
+                                                <Button
+                                                    key={emoji}
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-xl p-0 h-8 w-8"
+                                                    onClick={() => handleReaction(emoji, msg.id)}
+                                                >
+                                                    {emoji}
+                                                </Button>
+                                                ))}
+                                            </div>
+                                            </ScrollArea>
+                                        </TabsContent>
+                                        ))}
+                                    </Tabs>
+                                </PopoverContent>
+                             </Popover>
+                          </div>
+                        </CardContent>
+                      </div>
+                       {msg.isOwn && userName && userAvatarFallback && userId && (
+                         <Avatar className={cn("h-10 w-10 border-2 self-end", isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').ring : getParticipantColorClasses(userId, 'user').ring)}>
+                          <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
+                          <AvatarFallback className={`${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').bg : getParticipantColorClasses(userId, 'user').bg} ${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').text : getParticipantColorClasses(userId, 'user').text}`}>
+                             {msg.senderType === 'admin' && isAdminView ? "AD" : userAvatarFallback}
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
                     </div>
                   );
                 })}
+                <div ref={messagesEndRef} />
+                {messages.length === 0 && !isChatDataLoading && (
+                  <div className="text-center text-muted-foreground py-8">
+                    <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                    <p>Noch keine Nachrichten in dieser Sitzung.</p>
+                    {!isAdminView && <p>Sei der Erste, der eine Nachricht sendet!</p>}
+                  </div>
+                )}
+                {isChatDataLoading && (
+                  <div className="text-center text-muted-foreground py-8">
+                    <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50 animate-pulse" />
+                    <p>Lade Chat-Nachrichten...</p>
+                  </div>
+                )}
               </div>
             </ScrollArea>
-            <Separator />
-            {userRole && currentScenario && userName && userAvatarFallback && userId && (
-              <Card className="mt-auto bg-muted/30">
-                <CardHeader className="p-3">
-                  <div className="flex items-center gap-2">
-                     <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
-                      <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                      <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
-                        {userAvatarFallback}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <CardTitle className="text-base">{userName}</CardTitle>
-                      <p className="text-xs text-muted-foreground">Ihre Rolle: {userRole}</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-3 pt-0">
-                  <ScrollArea className="h-[200px] text-xs"> 
-                      <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
-                          {currentScenario.langbeschreibung}
-                      </CardDescription>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            )}
-          </aside>
-        )}
 
-        <main className="flex flex-1 flex-col">
-          <ScrollArea className={cn("flex-1 p-4 md:p-6", isAdminView ? "bg-background" : "")}>
-            <div className="space-y-6">
-              {messages.map((msg) => {
-                const bubbleColor = msg.isOwn ? (isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin') : { bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }) : getParticipantColorClasses(msg.senderUserId, msg.senderType);
-                return (
-                  <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
-                    {!msg.isOwn && (
-                      <Avatar className={cn("h-10 w-10 border-2 self-end", bubbleColor.ring)}>
-                        <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user" />
-                        <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{msg.avatarFallback}</AvatarFallback>
-                      </Avatar>
-                    )}
-                    <div className={cn("max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md", bubbleColor.bg, bubbleColor.text)}>
-                      <CardContent className="p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <button
-                            onClick={() => !msg.isOwn && handleMentionUser(msg.senderName)}
-                            className={cn("text-xs font-semibold cursor-pointer hover:underline", msg.isOwn ? bubbleColor.nameText : bubbleColor.nameText)}
-                            disabled={msg.isOwn}
-                          >
-                            {msg.senderName}
-                            {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent text-accent")}>BOT</Badge>}
-                            {msg.senderType === 'admin' && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1 py-0")}>ADMIN</Badge>}
-                          </button>
-                          <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
-                        </div>
-                        {msg.replyToMessageId && msg.replyToMessageSenderName && msg.replyToMessageContentSnippet && (
-                          <div
-                            className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${msg.isOwn ? "bg-black/20" : "bg-black/10"} opacity-80 cursor-pointer hover:opacity-100`}
-                            onClick={() => scrollToMessage(msg.replyToMessageId as string)}
-                            title="Zum Original springen"
-                          >
-                            <CornerDownLeft className="h-3 w-3 shrink-0" />
-                            <div className="truncate">
-                              <span className="font-medium">Antwort auf {msg.replyToMessageSenderName}:</span> {msg.replyToMessageContentSnippet}
-                            </div>
-                          </div>
-                        )}
-                        {msg.imageUrl && (
-                           <div className="my-2 relative w-full max-w-[300px] aspect-[3/2] rounded-md overflow-hidden">
-                            <Image
-                              src={msg.imageUrl}
-                              alt={msg.imageFileName || "Hochgeladenes Bild"}
-                              layout="fill"
-                              objectFit="cover"
-                              className="cursor-pointer"
-                              onClick={() => window.open(msg.imageUrl, '_blank')}
-                              data-ai-hint="chat image"
-                            />
-                           </div>
-                        )}
-                         {msg.imageFileName && !msg.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {msg.imageFileName}</p>}
-                        {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
-                        <div className="flex items-center gap-1 mt-1.5">
-                          {!msg.isOwn && (
-                            <>
-                              <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => handleSetReply(msg)} aria-label="Antworten">
-                                <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
-                              </Button>
-                              <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => handleSetQuote(msg)} aria-label="Zitieren">
-                                <Quote className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Zitieren</span>
-                              </Button>
-                            </>
-                          )}
-                           <Button variant="ghost" size="icon" className={`h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => toast({title: "Reagieren (noch nicht implementiert)"})} aria-label="Reagieren">
-                                <SmilePlus className="h-4 w-4" />
-                           </Button>
-                        </div>
-                      </CardContent>
-                    </div>
-                     {msg.isOwn && userName && userAvatarFallback && userId && (
-                       <Avatar className={cn("h-10 w-10 border-2 self-end", isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').ring : getParticipantColorClasses(userId, 'user').ring)}>
-                        <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                        <AvatarFallback className={`${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').bg : getParticipantColorClasses(userId, 'user').bg} ${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').text : getParticipantColorClasses(userId, 'user').text}`}>
-                           {msg.senderType === 'admin' && isAdminView ? "AD" : userAvatarFallback}
-                        </AvatarFallback>
-                      </Avatar>
-                    )}
+            <div className={cn("border-t bg-background p-3 md:p-4 relative", isAdminView ? "border-t-0" : "")}>
+              {replyingTo && (
+                <div className="mb-2 p-2 border rounded-md bg-muted/50 text-sm text-muted-foreground flex justify-between items-center">
+                  <div>
+                    Antwort auf <span className="font-semibold">{replyingTo.senderName}</span>: <span className="italic">&quot;{replyingTo.content.substring(0, 30)}...&quot;</span>
                   </div>
-                );
-              })}
-              <div ref={messagesEndRef} />
-              {messages.length === 0 && !isChatDataLoading && (
-                <div className="text-center text-muted-foreground py-8">
-                  <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                  <p>Noch keine Nachrichten in dieser Sitzung.</p>
-                  {!isAdminView && <p>Sei der Erste, der eine Nachricht sendet!</p>}
+                  <Button variant="ghost" size="icon" onClick={handleCancelReply} className="h-6 w-6 p-0">
+                    <XCircle className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
-              {isChatDataLoading && (
-                <div className="text-center text-muted-foreground py-8">
-                  <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50 animate-pulse" />
-                  <p>Lade Chat-Nachrichten...</p>
+              {quotingMessage && (
+                <div className="mb-2 p-2 border rounded-md bg-muted/50 text-sm text-muted-foreground flex justify-between items-center">
+                  <div>
+                    Zitiert <span className="font-semibold">{quotingMessage.senderName}</span>. Bearbeiten Sie das Zitat und Ihre Nachricht.
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={handleCancelQuote} className="h-6 w-6 p-0">
+                    <XCircle className="h-4 w-4" />
+                  </Button>
                 </div>
+              )}
+              {imagePreviewUrl && (
+                <div className="mb-2 p-2 border rounded-md bg-muted/50 flex items-center gap-2">
+                  <Image src={imagePreviewUrl} alt="Vorschau" width={60} height={60} className="rounded-md object-cover" data-ai-hint="image preview"/>
+                  <div className="flex-1 text-sm text-muted-foreground">
+                    <p className="font-semibold">{selectedImageFile?.name}</p>
+                    <p>{selectedImageFile ? (selectedImageFile.size / 1024).toFixed(1) : 0} KB</p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={handleRemoveSelectedImage} className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10" disabled={isSendingMessage}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 && (
+                <div className="mt-1 mb-2">
+                  <Progress value={imageUploadProgress} className="h-2 w-full" />
+                  <p className="text-xs text-muted-foreground text-right mt-0.5">{imageUploadProgress.toFixed(0)}% hochgeladen</p>
+                </div>
+              )}
+              {!canTryToSend && sessionData?.status !== "active" && (
+                <Alert variant={sessionData?.status === "ended" ? "destructive" : "default"} className="mb-2">
+                  {sessionData?.status === "paused" ? <PauseCircle className="h-4 w-4" /> : (sessionData?.status === "ended" ? <AlertTriangle className="h-4 w-4" /> : null)}
+                  <AlertTitle>
+                    {sessionData?.status === "ended" ? "Sitzung beendet" : (sessionData?.status === "paused" ? "Sitzung pausiert" : "Hinweis")}
+                  </AlertTitle>
+                  <AlertDescription>
+                    {sessionData?.status === "ended" ? "Diese Simulation wurde vom Administrator beendet." : "Die Simulation ist aktuell pausiert."}
+                  </AlertDescription>
+                </Alert>
+              )}
+               {isMuted && !isAdminView && sessionData?.status === "active" && (
+                   <Alert variant="destructive" className="mb-2">
+                      <VolumeX className="h-4 w-4" />
+                      <AlertTitle>Stummgeschaltet</AlertTitle>
+                      <AlertDescription>Sie wurden vom Administrator stummgeschaltet.</AlertDescription>
+                  </Alert>
+              )}
+              <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
+                <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!canTryToSend || isSendingMessage || isLoading} />
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading || (isAdminView && !selectedImageFile)} onClick={() => fileInputRef.current?.click()}>
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+
+                <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView}>
+                      <Smile className="h-5 w-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
+                    <Tabs defaultValue={emojiCategories[0].name} className="w-full">
+                      <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                        {emojiCategories.map(category => (
+                          <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
+                            {category.icon}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                      {emojiCategories.map(category => (
+                        <TabsContent key={category.name} value={category.name} className="mt-0">
+                          <ScrollArea className="h-48">
+                            <div className="grid grid-cols-8 gap-0.5 p-2">
+                              {category.emojis.map(emoji => (
+                                <Button
+                                  key={emoji}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-xl p-0 h-8 w-8"
+                                  onClick={() => {
+                                    handleEmojiSelect(emoji);
+                                  }}
+                                >
+                                  {emoji}
+                                </Button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  </PopoverContent>
+                </Popover>
+
+                <Input
+                  ref={inputRef}
+                  id="message-input"
+                  type="text"
+                  placeholder={inputPlaceholderText}
+                  className="flex-1 text-base"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  disabled={!canTryToSend || isSendingMessage || isLoading}
+                />
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
+                  <Mic className="h-5 w-5" />
+                </Button>
+                <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
+                  {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
+                </Button>
+              </form>
+              {cooldownRemainingSeconds > 0 && canTryToSend && !isAdminView && sessionData?.status === "active" && !isMuted && (
+                <p className="text-xs text-muted-foreground mt-1.5 text-right">Nächste Nachricht in {cooldownRemainingSeconds}s</p>
+              )}
+              {sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && cooldownRemainingSeconds <= 0 && canTryToSend && !isAdminView && sessionData?.status === "active" && !isMuted &&(
+                <p className="text-xs text-muted-foreground mt-1.5 text-right">Nachrichten Cooldown: {sessionData.messageCooldownSeconds}s</p>
               )}
             </div>
-          </ScrollArea>
-
-          <div className={cn("border-t bg-background p-3 md:p-4 relative", isAdminView ? "border-t-0" : "")}>
-            {replyingTo && (
-              <div className="mb-2 p-2 border rounded-md bg-muted/50 text-sm text-muted-foreground flex justify-between items-center">
-                <div>
-                  Antwort auf <span className="font-semibold">{replyingTo.senderName}</span>: <span className="italic">&quot;{replyingTo.content.substring(0, 30)}...&quot;</span>
-                </div>
-                <Button variant="ghost" size="icon" onClick={handleCancelReply} className="h-6 w-6 p-0">
-                  <XCircle className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-            {quotingMessage && (
-              <div className="mb-2 p-2 border rounded-md bg-muted/50 text-sm text-muted-foreground flex justify-between items-center">
-                <div>
-                  Zitiert <span className="font-semibold">{quotingMessage.senderName}</span>. Bearbeiten Sie das Zitat und Ihre Nachricht.
-                </div>
-                <Button variant="ghost" size="icon" onClick={handleCancelQuote} className="h-6 w-6 p-0">
-                  <XCircle className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-            {imagePreviewUrl && (
-              <div className="mb-2 p-2 border rounded-md bg-muted/50 flex items-center gap-2">
-                <Image src={imagePreviewUrl} alt="Vorschau" width={60} height={60} className="rounded-md object-cover" data-ai-hint="image preview"/>
-                <div className="flex-1 text-sm text-muted-foreground">
-                  <p className="font-semibold">{selectedImageFile?.name}</p>
-                  <p>{selectedImageFile ? (selectedImageFile.size / 1024).toFixed(1) : 0} KB</p>
-                </div>
-                <Button variant="ghost" size="icon" onClick={handleRemoveSelectedImage} className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10" disabled={isSendingMessage}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-            {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 && (
-              <div className="mt-1 mb-2">
-                <Progress value={imageUploadProgress} className="h-2 w-full" />
-                <p className="text-xs text-muted-foreground text-right mt-0.5">{imageUploadProgress.toFixed(0)}% hochgeladen</p>
-              </div>
-            )}
-            {!canTryToSend && sessionData?.status !== "active" && (
-              <Alert variant={sessionData?.status === "ended" ? "destructive" : "default"} className="mb-2">
-                {sessionData?.status === "paused" ? <PauseCircle className="h-4 w-4" /> : (sessionData?.status === "ended" ? <AlertTriangle className="h-4 w-4" /> : null)}
-                <AlertTitle>
-                  {sessionData?.status === "ended" ? "Sitzung beendet" : (sessionData?.status === "paused" ? "Sitzung pausiert" : "Hinweis")}
-                </AlertTitle>
-                <AlertDescription>
-                  {sessionData?.status === "ended" ? "Diese Simulation wurde vom Administrator beendet." : "Die Simulation ist aktuell pausiert."}
-                </AlertDescription>
-              </Alert>
-            )}
-             {isMuted && !isAdminView && sessionData?.status === "active" && (
-                 <Alert variant="destructive" className="mb-2">
-                    <VolumeX className="h-4 w-4" />
-                    <AlertTitle>Stummgeschaltet</AlertTitle>
-                    <AlertDescription>Sie wurden vom Administrator stummgeschaltet.</AlertDescription>
-                </Alert>
-            )}
-            <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
-              <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!canTryToSend || isSendingMessage || isLoading} />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView} onClick={() => fileInputRef.current?.click()}>
-                <Paperclip className="h-5 w-5" />
-              </Button>
-
-              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView}>
-                    <Smile className="h-5 w-5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
-                  <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-                    <TabsList className="grid w-full grid-cols-5 h-auto p-1">
-                      {emojiCategories.map(category => (
-                        <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
-                          {category.icon}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                    {emojiCategories.map(category => (
-                      <TabsContent key={category.name} value={category.name} className="mt-0">
-                        <ScrollArea className="h-48">
-                          <div className="grid grid-cols-8 gap-0.5 p-2">
-                            {category.emojis.map(emoji => (
-                              <Button
-                                key={emoji}
-                                variant="ghost"
-                                size="icon"
-                                className="text-xl p-0 h-8 w-8"
-                                onClick={() => {
-                                  handleEmojiSelect(emoji);
-                                }}
-                              >
-                                {emoji}
-                              </Button>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                </PopoverContent>
-              </Popover>
-
-              <Input
-                ref={inputRef}
-                id="message-input"
-                type="text"
-                placeholder={inputPlaceholderText}
-                className="flex-1 text-base"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                disabled={!canTryToSend || isSendingMessage || isLoading}
-              />
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canTryToSend || isSendingMessage || isLoading || isAdminView} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
-                <Mic className="h-5 w-5" />
-              </Button>
-              <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
-                {isSendingMessage && selectedImageFile ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
-              </Button>
-            </form>
-            {cooldownRemainingSeconds > 0 && canTryToSend && !isAdminView && sessionData?.status === "active" && !isMuted && (
-              <p className="text-xs text-muted-foreground mt-1.5 text-right">Nächste Nachricht in {cooldownRemainingSeconds}s</p>
-            )}
-            {sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && cooldownRemainingSeconds <= 0 && canTryToSend && !isAdminView && sessionData?.status === "active" && !isMuted &&(
-              <p className="text-xs text-muted-foreground mt-1.5 text-right">Nachrichten Cooldown: {sessionData.messageCooldownSeconds}s</p>
-            )}
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
-    </div>
+      {/* Dialog for Image Modal */}
+      <DialogContent className="p-0 max-w-3xl w-auto bg-transparent border-0 shadow-none">
+        {imageForModal && (
+          <div className="relative aspect-video w-full">
+            <Image
+              src={imageForModal}
+              alt="Vollbild-Vorschau"
+              layout="fill"
+              objectFit="contain"
+              className="rounded-lg"
+              data-ai-hint="image modal"
+            />
+             <DialogClose asChild>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white h-8 w-8"
+                    onClick={() => setImageForModal(null)}
+                    aria-label="Schließen"
+                >
+                    <XCircle className="h-5 w-5" />
+                </Button>
+            </DialogClose>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
-export default function ChatPage({ params: routeParams }: ChatPageProps) { 
-  const { sessionId } = routeParams; 
+export default function ChatPage({ params }: ChatPageProps) {
+  const { sessionId } = params;
 
   return (
     <Suspense fallback={
@@ -982,5 +1060,3 @@ export default function ChatPage({ params: routeParams }: ChatPageProps) {
     </Suspense>
   );
 }
-
-    
