@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -8,26 +9,41 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Logo } from "@/components/icons/logo";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Mail, User, ArrowLeft } from "lucide-react";
-import React from "react";
+import { Mail, User, ArrowLeft, ShieldAlert } from "lucide-react";
+import React, { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { toast } = useToast();
   const initialRole = searchParams.get("role") || "admin";
+  const [adminUsername, setAdminUsername] = useState("");
 
-  // Placeholder actions
   const handleAdminLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // In a real app, this would trigger a magic link flow
-    alert("Magic Link (simuliert): E-Mail gesendet!");
-    router.push("/admin"); // Redirect to admin dashboard after "login"
+    if (adminUsername === "admin") {
+      toast({
+        title: "Login erfolgreich",
+        description: "Sie werden zum Admin-Dashboard weitergeleitet.",
+      });
+      router.push("/admin");
+    } else {
+      toast({
+        variant: "destructive",
+        title: "Login fehlgeschlagen",
+        description: "Ungültiger Benutzername.",
+      });
+    }
   };
 
   const handleGuestLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // In a real app, this would register the guest
-    alert("Gast-Login (simuliert): Sie können nun teilnehmen.");
+    toast({
+        title: "Gast-Login (simuliert)",
+        description: "Sie können nun teilnehmen.",
+    });
     // Guests would typically be redirected via a session link,
     // for now, a placeholder redirect or message.
     // router.push("/chat/some-session-id"); // Example redirect
@@ -53,20 +69,27 @@ export default function LoginPage() {
         <TabsContent value="admin">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5 text-primary" /> Admin Login</CardTitle>
+              <CardTitle className="flex items-center gap-2"><ShieldAlert className="h-5 w-5 text-primary" /> Admin Login</CardTitle>
               <CardDescription>
-                Melden Sie sich mit Ihrer Schul-E-Mail-Adresse an. Sie erhalten einen Magic Link.
+                Geben Sie &quot;admin&quot; als Benutzernamen ein, um sich anzumelden.
               </CardDescription>
             </CardHeader>
             <form onSubmit={handleAdminLogin}>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">E-Mail Adresse</Label>
-                  <Input id="email" type="email" placeholder="max.mustermann@schule.de" required />
+                  <Label htmlFor="adminUsername">Benutzername</Label>
+                  <Input 
+                    id="adminUsername" 
+                    type="text" 
+                    placeholder="admin" 
+                    required 
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                  />
                 </div>
               </CardContent>
               <CardFooter>
-                <Button type="submit" className="w-full">Magic Link anfordern</Button>
+                <Button type="submit" className="w-full">Anmelden</Button>
               </CardFooter>
             </form>
           </Card>
