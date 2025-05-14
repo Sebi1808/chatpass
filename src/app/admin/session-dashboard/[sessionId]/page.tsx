@@ -7,16 +7,27 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
-import type { Scenario, BotConfig, Participant, Message as MessageType } from "@/lib/types";
-import { useEffect, useState } from "react";
+import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData } from "@/lib/types";
+import { useEffect, useState, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/firebase";
-import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query, orderBy, Timestamp, updateDoc, writeBatch, getDocs, where } from "firebase/firestore";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 interface AdminSessionDashboardPageProps {
   params: { sessionId: string };
@@ -27,25 +38,35 @@ interface AdminDashboardMessage extends MessageType {
   timestampDisplay: string;
 }
 
+const DEFAULT_COOLDOWN = 0; // Default 0 seconds cooldown
+
 export default function AdminSessionDashboardPage({ params }: AdminSessionDashboardPageProps) {
   const { sessionId } = params;
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
+  const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [invitationLink, setInvitationLink] = useState<string>("Wird generiert...");
   const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
   const [chatMessages, setChatMessages] = useState<AdminDashboardMessage[]>([]);
+  
   const [isLoadingLink, setIsLoadingLink] = useState(true);
+  const [isLoadingSessionData, setIsLoadingSessionData] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
+
+  const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
 
 
+  // Effect for Scenario and initial SessionData setup
   useEffect(() => {
     const scenario = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenario);
 
     if (scenario) {
       const sessionDocRef = doc(db, "sessions", sessionId);
-      const generateLink = async () => {
+      const generateLinkAndSetupSession = async () => {
         setIsLoadingLink(true);
+        setIsLoadingSessionData(true);
         try {
           const docSnap = await getDoc(sessionDocRef);
           let link = "";
@@ -54,22 +75,28 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           }
 
           if (!docSnap.exists()) {
-            await setDoc(sessionDocRef, {
+            const newSessionData: SessionData = {
               scenarioId: sessionId,
               createdAt: serverTimestamp(),
               invitationLink: link,
-              status: "active" // Initial status
-            });
+              status: "active",
+              messageCooldownSeconds: DEFAULT_COOLDOWN,
+            };
+            await setDoc(sessionDocRef, newSessionData);
+            setSessionData(newSessionData);
             setInvitationLink(link);
+            setPaceValue(DEFAULT_COOLDOWN);
             toast({ title: "Neue Sitzung erstellt", description: `Sitzung ${sessionId} wurde in Firestore angelegt.` });
           } else {
-            const existingData = docSnap.data();
+            const existingData = docSnap.data() as SessionData;
+            setSessionData(existingData);
             if (existingData.invitationLink !== link && link) {
-                 await setDoc(sessionDocRef, { invitationLink: link }, { merge: true });
+                 await updateDoc(sessionDocRef, { invitationLink: link });
                  setInvitationLink(link);
             } else {
                 setInvitationLink(existingData.invitationLink || link);
             }
+            setPaceValue(existingData.messageCooldownSeconds || DEFAULT_COOLDOWN);
           }
         } catch (error) {
           console.error("Error managing session document: ", error);
@@ -79,59 +106,87 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           }
         } finally {
           setIsLoadingLink(false);
+          setIsLoadingSessionData(false);
         }
       };
-      generateLink();
-
-      const participantsColRef = collection(db, "sessions", sessionId, "participants");
-      const participantsQuery = query(participantsColRef);
-      const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
-        const fetchedParticipants: Participant[] = [];
-        querySnapshot.forEach((doc) => {
-          fetchedParticipants.push({ id: doc.id, ...doc.data() } as Participant);
-        });
-        setSessionParticipants(fetchedParticipants);
-      }, (error) => {
-        console.error("Error fetching participants: ", error);
-        toast({ variant: "destructive", title: "Firestore Fehler", description: "Teilnehmer konnten nicht geladen werden." });
-      });
-
-      // Listen for chat messages
-      const messagesColRef = collection(db, "sessions", sessionId, "messages");
-      const messagesQuery = query(messagesColRef, orderBy("timestamp", "asc"));
-      setIsLoadingMessages(true);
-      const unsubscribeMessages = onSnapshot(messagesQuery, (querySnapshot) => {
-        const fetchedMessages: AdminDashboardMessage[] = [];
-        querySnapshot.forEach((doc) => {
-          const data = doc.data() as MessageType;
-          const timestamp = data.timestamp as Timestamp | null;
-          fetchedMessages.push({
-            ...data,
-            id: doc.id,
-            timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Senden...'
-          });
-        });
-        setChatMessages(fetchedMessages);
-        setIsLoadingMessages(false);
-      }, (error) => {
-        console.error("Error fetching messages: ", error);
-        toast({ variant: "destructive", title: "Firestore Fehler", description: "Nachrichten konnten nicht geladen werden." });
-        setIsLoadingMessages(false);
-      });
-
-      return () => {
-        unsubscribeParticipants();
-        unsubscribeMessages();
-      };
-
+      generateLinkAndSetupSession();
     } else {
       setInvitationLink("Szenario nicht gefunden");
       setIsLoadingLink(false);
-      setSessionParticipants([]);
-      setChatMessages([]);
-      setIsLoadingMessages(false);
+      setIsLoadingSessionData(false);
+      setSessionData(null);
     }
   }, [sessionId, toast]);
+
+  // Effect for listening to SessionData changes (status, cooldown)
+  useEffect(() => {
+    if (!sessionId) return;
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as SessionData;
+        setSessionData(data);
+        setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
+      } else {
+        // Session might have been deleted or not yet created
+        setSessionData(null);
+      }
+    }, (error) => {
+      console.error("Error listening to session data: ", error);
+      toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzungsdaten konnten nicht synchronisiert werden." });
+    });
+    return () => unsubscribeSessionData();
+  }, [sessionId, toast]);
+
+
+  // Effect for Participants
+  useEffect(() => {
+    if (!sessionId) return;
+    setIsLoadingParticipants(true);
+    const participantsColRef = collection(db, "sessions", sessionId, "participants");
+    const participantsQuery = query(participantsColRef, orderBy("joinedAt", "asc"));
+    const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
+      const fetchedParticipants: Participant[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedParticipants.push({ id: doc.id, ...doc.data() } as Participant);
+      });
+      setSessionParticipants(fetchedParticipants);
+      setIsLoadingParticipants(false);
+    }, (error) => {
+      console.error("Error fetching participants: ", error);
+      toast({ variant: "destructive", title: "Firestore Fehler", description: "Teilnehmer konnten nicht geladen werden." });
+      setIsLoadingParticipants(false);
+    });
+    return () => unsubscribeParticipants();
+  }, [sessionId, toast]);
+
+  // Effect for Chat Messages
+  useEffect(() => {
+    if (!sessionId) return;
+    setIsLoadingMessages(true);
+    const messagesColRef = collection(db, "sessions", sessionId, "messages");
+    const messagesQuery = query(messagesColRef, orderBy("timestamp", "asc"));
+    const unsubscribeMessages = onSnapshot(messagesQuery, (querySnapshot) => {
+      const fetchedMessages: AdminDashboardMessage[] = [];
+      querySnapshot.forEach((docSn) => {
+        const data = docSn.data() as MessageType;
+        const timestamp = data.timestamp as Timestamp | null;
+        fetchedMessages.push({
+          ...data,
+          id: docSn.id,
+          timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Senden...'
+        });
+      });
+      setChatMessages(fetchedMessages);
+      setIsLoadingMessages(false);
+    }, (error) => {
+      console.error("Error fetching messages: ", error);
+      toast({ variant: "destructive", title: "Firestore Fehler", description: "Nachrichten konnten nicht geladen werden." });
+      setIsLoadingMessages(false);
+    });
+    return () => unsubscribeMessages();
+  }, [sessionId, toast]);
+
 
   const copyToClipboard = () => {
     if (invitationLink && invitationLink !== "Wird generiert..." && invitationLink !== "Szenario nicht gefunden") {
@@ -139,17 +194,88 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         toast({ title: "Link kopiert!", description: "Der Einladungslink wurde in die Zwischenablage kopiert." });
       }).catch(err => {
         toast({ variant: "destructive", title: "Fehler", description: "Link konnte nicht kopiert werden." });
-        console.error('Failed to copy: ', err);
       });
     } else {
         toast({ variant: "destructive", title: "Fehler", description: "Einladungslink ist noch nicht bereit."});
     }
   };
 
+  const handleEndSession = async () => {
+    if (!sessionId) return;
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    try {
+      await updateDoc(sessionDocRef, { status: "ended" });
+      toast({ title: "Sitzung beendet", description: "Die Sitzung wurde als beendet markiert." });
+    } catch (error) {
+      console.error("Error ending session: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht beendet werden." });
+    }
+  };
+
+  const handleToggleSimulationActive = async (isActive: boolean) => {
+    if (!sessionId || !sessionData || sessionData.status === "ended") return;
+    const newStatus = isActive ? "active" : "paused";
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    try {
+      await updateDoc(sessionDocRef, { status: newStatus });
+      toast({ title: "Simulationsstatus geändert", description: `Simulation ist jetzt ${newStatus === 'active' ? 'aktiv' : 'pausiert'}.` });
+    } catch (error) {
+      console.error("Error toggling simulation active: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Simulationsstatus konnte nicht geändert werden." });
+    }
+  };
+  
+  const handlePaceChange = async (newPace: number[]) => {
+    if (!sessionId || !sessionData || sessionData.status === "ended") return;
+    const newCooldown = newPace[0];
+    setPaceValue(newCooldown); // Optimistic UI update for slider
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    try {
+      await updateDoc(sessionDocRef, { messageCooldownSeconds: newCooldown });
+      // toast({ title: "Pace angepasst", description: `Nachrichten Cooldown ist jetzt ${newCooldown}s.` }); // Can be too noisy
+    } catch (error) {
+      console.error("Error updating pace: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Pace konnte nicht angepasst werden." });
+    }
+  };
+
+  const handleMuteAllUsers = async () => {
+    if (!sessionId || !sessionData || sessionData.status === "ended") return;
+    const participantsColRef = collection(db, "sessions", sessionId, "participants");
+    const q = query(participantsColRef, where("isBot", "==", false));
+    try {
+      const querySnapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      querySnapshot.forEach((docSnap) => {
+        batch.update(docSnap.ref, { isMuted: true });
+      });
+      await batch.commit();
+      toast({ title: "Alle Teilnehmer stummgeschaltet" });
+    } catch (error) {
+      console.error("Error muting all users: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnten nicht alle stummgeschaltet werden." });
+    }
+  };
+
+  const handleToggleMuteParticipant = async (participantId: string, currentMuteStatus: boolean | undefined) => {
+    if (!sessionId || !sessionData || sessionData.status === "ended") return;
+    const participantDocRef = doc(db, "sessions", sessionId, "participants", participantId);
+    try {
+      await updateDoc(participantDocRef, { isMuted: !currentMuteStatus });
+      toast({ title: `Teilnehmer ${!currentMuteStatus ? 'stummgeschaltet' : 'freigeschaltet'}` });
+    } catch (error) {
+      console.error("Error toggling mute for participant: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Stummschaltung konnte nicht geändert werden." });
+    }
+  };
+
+
   const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
   const expectedStudentRoles = currentScenario ? currentScenario.standardRollen - currentScenario.defaultBots : 0;
 
   const getBotDisplayName = (botConfig: BotConfig, index: number): string => {
+    // Use botConfig.name if available, otherwise generate
+    if (botConfig.name) return botConfig.name;
     switch (botConfig.personality) {
       case 'provokateur': return 'Bot Provokateur';
       case 'verteidiger': return 'Bot Verteidiger';
@@ -159,23 +285,35 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
   };
   
   const displayParticipantsList: Participant[] = [...sessionParticipants];
-  if (currentScenario && sessionParticipants.length < expectedStudentRoles) {
+  if (currentScenario && !isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).length < expectedStudentRoles) {
     const joinedUserIds = new Set(sessionParticipants.map(p => p.userId));
-    for (let i = 0; i < expectedStudentRoles; i++) {
-        const placeholderId = `student-placeholder-${i + 1}`;
-        if (!joinedUserIds.has(placeholderId) && displayParticipantsList.length < expectedStudentRoles ) {
+    const placeholdersToAdd = expectedStudentRoles - displayParticipantsList.filter(p => !p.isBot).length;
+    
+    let placeholderIndex = 0;
+    for (let i = 0; i < expectedStudentRoles && placeholderIndex < placeholdersToAdd; i++) {
+        const potentialPlaceholderId = `student-placeholder-${String.fromCharCode(65 + i)}`;
+        // Check if a real participant already took this letter, or if placeholder already exists
+        const isRoleTakenByRealUser = sessionParticipants.some(p => !p.isBot && p.role === `Teilnehmer ${String.fromCharCode(65 + i)}`);
+        const isPlaceholderNeeded = !displayParticipantsList.some(dp => dp.userId === potentialPlaceholderId && dp.isBot === false)
+
+        if (!isRoleTakenByRealUser && isPlaceholderNeeded) {
              displayParticipantsList.push({
-                id: placeholderId,
-                userId: placeholderId,
+                id: potentialPlaceholderId, // Use a consistent ID format
+                userId: potentialPlaceholderId, // For consistency
                 name: `Teilnehmer ${String.fromCharCode(65 + i)}`,
                 role: `Teilnehmer ${String.fromCharCode(65 + i)}`,
                 isBot: false,
                 status: "Nicht beigetreten",
                 avatarFallback: `T${String.fromCharCode(65 + i)}`,
             });
+            placeholderIndex++;
         }
     }
   }
+
+  const isSessionEnded = sessionData?.status === "ended";
+  const isSessionPaused = sessionData?.status === "paused";
+  const isSessionInteractable = !isSessionEnded;
 
 
   return (
@@ -188,10 +326,38 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           <p className="text-muted-foreground">Sitzungs-ID: {sessionId}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="destructive"><Pause className="mr-2 h-4 w-4" /> Sitzung beenden</Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" disabled={isSessionEnded}>
+                <Power className="mr-2 h-4 w-4" /> Sitzung beenden
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Sitzung wirklich beenden?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Wenn Sie die Sitzung beenden, können keine weiteren Nachrichten gesendet werden. Die Daten bleiben erhalten.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction onClick={handleEndSession}>Beenden</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
       <Separator />
+
+      {isSessionEnded && (
+        <Card className="border-destructive bg-destructive/10">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Sitzung Beendet</CardTitle>
+            <CardDescription className="text-destructive/80">Diese Sitzung wurde beendet und ist nicht mehr aktiv.</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
@@ -209,13 +375,13 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               <div>
                 <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
                 <div className="flex items-center gap-2 mt-1">
-                  <Input id="invitation-link" type="text" value={isLoadingLink ? "Wird geladen..." : invitationLink} readOnly className="bg-muted" />
-                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingLink}>
+                  <Input id="invitation-link" type="text" value={isLoadingLink || isLoadingSessionData ? "Wird geladen..." : invitationLink} readOnly className="bg-muted" />
+                  <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingLink || isLoadingSessionData || !isSessionInteractable}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-              <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")}>
+              <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={!isSessionInteractable}>
                 <QrCode className="mr-2 h-4 w-4" /> QR-Code anzeigen
               </Button>
             </CardContent>
@@ -250,18 +416,35 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
             <CardHeader>
                 <CardTitle className="flex items-center"><Settings className="mr-2 h-5 w-5 text-primary" /> Pace & Allgemeine Steuerung</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
                 <div>
-                    <Label htmlFor="pace-slider" className="mb-2 block">Pace-Regler (Cool-down: <span className="font-bold text-primary">5s</span>)</Label>
-                    <Slider defaultValue={[5]} max={10} step={1} id="pace-slider" />
+                    <Label htmlFor="pace-slider" className="mb-2 block">
+                      Nachrichten Cooldown (Verzögerung): <span className="font-bold text-primary">{paceValue}s</span>
+                    </Label>
+                    <Slider 
+                        value={[paceValue]} 
+                        max={30} step={1} 
+                        id="pace-slider" 
+                        onValueChange={(value) => setPaceValue(value[0])} // Update display optimistically
+                        onValueCommit={handlePaceChange} // Update Firestore on commit
+                        disabled={!isSessionInteractable}
+                    />
                 </div>
                 <div className="flex items-center justify-between">
-                    <Label htmlFor="simulation-active" className="text-base">Simulation Aktiv</Label>
-                    <Switch id="simulation-active" defaultChecked />
+                    <Label htmlFor="simulation-active" className="text-base">
+                        Simulation Aktiv <Badge variant={sessionData?.status === 'active' ? "default" : (sessionData?.status === "paused" ? "secondary" : "destructive")}>{sessionData?.status || "Laden..."}</Badge>
+                    </Label>
+                    <Switch 
+                        id="simulation-active" 
+                        checked={sessionData?.status === "active"} 
+                        onCheckedChange={handleToggleSimulationActive}
+                        disabled={!isSessionInteractable || sessionData?.status === 'ended'} // Disable if ended
+                    />
                 </div>
                  <div className="flex items-center space-x-2">
-                    <Button variant="outline"><Play className="mr-2 h-4 w-4" /> Globale Pause</Button>
-                    <Button variant="destructive"><AlertCircle className="mr-2 h-4 w-4" /> Alle Stummschalten</Button>
+                    <Button variant="destructive" onClick={handleMuteAllUsers} disabled={!isSessionInteractable}>
+                        <VolumeX className="mr-2 h-4 w-4" /> Alle Stummschalten
+                    </Button>
                 </div>
             </CardContent>
           </Card>
@@ -276,7 +459,8 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
               </CardTitle>
             </CardHeader>
             <CardContent className="max-h-96 overflow-y-auto space-y-3">
-              {displayParticipantsList.filter(p => !p.isBot).map(p => (
+              {isLoadingParticipants && <p className="text-sm text-muted-foreground">Lade Teilnehmer...</p>}
+              {!isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).map(p => (
                 <div key={p.id || p.userId} className="flex items-center justify-between p-2 bg-muted/20 rounded-md">
                   <div>
                     <p className="font-medium">{p.name}</p>
@@ -285,18 +469,24 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                         <span className={p.status === "Nicht beigetreten" ? "italic text-orange-500" : (p.id.startsWith("student-placeholder") ? "italic text-orange-500" : "text-green-500")}>
                             {p.id.startsWith("student-placeholder") ? "Nicht beigetreten" : (p.status || "Beigetreten")}
                         </span>
+                         {p.isMuted && <Badge variant="destructive" className="ml-2 text-xs">Stumm</Badge>}
                     </p>
                   </div>
-                  <Button variant={p.isMuted ? "secondary" : "outline"} size="sm" onClick={() => alert(`Stummschalten/Entstummen für ${p.name} (noch nicht implementiert)`)}>
-                    {p.isMuted ? <VolumeX className="mr-1 h-4 w-4" /> : <Volume2 className="mr-1 h-4 w-4" />}
-                    {p.isMuted ? "Entstummen" : "Stumm"}
+                  <Button 
+                    variant={p.isMuted ? "secondary" : "outline"} 
+                    size="sm" 
+                    onClick={() => handleToggleMuteParticipant(p.id, p.isMuted)}
+                    disabled={!isSessionInteractable || p.id.startsWith("student-placeholder")}
+                  >
+                    {p.isMuted ? <Volume2 className="mr-1 h-4 w-4" /> : <VolumeX className="mr-1 h-4 w-4" />}
+                    {p.isMuted ? "Freischalten" : "Stummschalten"}
                   </Button>
                 </div>
               ))}
-              {expectedStudentRoles === 0 && sessionParticipants.filter(p => !p.isBot).length === 0 && (
+              {!isLoadingParticipants && expectedStudentRoles === 0 && sessionParticipants.filter(p => !p.isBot).length === 0 && (
                 <p className="text-sm text-muted-foreground">Keine Teilnehmer für dieses Szenario vorgesehen.</p>
               )}
-               {displayParticipantsList.filter(p => !p.isBot).length === 0 && expectedStudentRoles > 0 && (
+               {!isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).length === 0 && expectedStudentRoles > 0 && (
                  <p className="text-sm text-muted-foreground">Noch keine Teilnehmer beigetreten.</p>
                )}
             </CardContent>
@@ -308,28 +498,35 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
             </CardHeader>
             <CardContent className="space-y-4">
               {currentScenario?.defaultBotsConfig?.map((botConfig, index) => {
+                 // Find the corresponding participant bot if it has joined
+                 const participantBot = sessionParticipants.find(p => p.isBot && p.name === getBotDisplayName(botConfig, index));
                  const botName = getBotDisplayName(botConfig, index);
-                 const botStatus = "Aktiv"; 
-                 const botEscalation = 0; 
+                 const botIsActive = participantBot?.botConfig?.isActive ?? botConfig.isActive ?? true; // Default to true if not set
+                 const botEscalation = participantBot?.botConfig?.currentEscalation ?? botConfig.currentEscalation ?? 0;
+                 const botAutoTimer = participantBot?.botConfig?.autoTimerEnabled ?? botConfig.autoTimerEnabled ?? false;
 
                 return (
                   <div key={`bot-${index}`} className="p-3 border rounded-lg space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="font-semibold">{botName} <Badge variant={botStatus === "Aktiv" ? "default" : "outline"}>{botStatus}</Badge></p>
-                      <Switch checked={botStatus === "Aktiv"} onCheckedChange={() => alert(`Toggle Bot ${botName}`)} />
+                      <p className="font-semibold">{botName} <Badge variant={botIsActive ? "default" : "outline"}>{botIsActive ? "Aktiv" : "Inaktiv"}</Badge></p>
+                      <Switch 
+                        checked={botIsActive} 
+                        onCheckedChange={() => alert(`Toggle Bot ${botName} (noch nicht implementiert)`)} 
+                        disabled={!isSessionInteractable}
+                      />
                     </div>
                     <div className="space-y-1">
                       <Label className="text-xs">Eskalationslevel: {botEscalation}</Label>
                       <Progress value={botEscalation * 33.33} className="h-2" />
                     </div>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => alert(`Eskalieren ${botName}`)}><ChevronUp className="h-4 w-4" /></Button>
-                      <Button variant="outline" size="sm" onClick={() => alert(`Deeskalieren ${botName}`)}><ChevronDown className="h-4 w-4" /></Button>
-                      <Button variant="secondary" size="sm" className="flex-1" onClick={() => alert(`Manuell Posten ${botName}`)}>Posten</Button>
+                      <Button variant="outline" size="sm" onClick={() => alert(`Eskalieren ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable}><ChevronUp className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="sm" onClick={() => alert(`Deeskalieren ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable}><ChevronDown className="h-4 w-4" /></Button>
+                      <Button variant="secondary" size="sm" className="flex-1" onClick={() => alert(`Manuell Posten ${botName} (noch nicht implementiert)`)} disabled={!isSessionInteractable}>Posten</Button>
                     </div>
                     <div className="flex items-center space-x-2 pt-1">
                       <Label htmlFor={`autotimer-bot-${index}`} className="text-xs">Auto-Timer</Label>
-                      <Switch id={`autotimer-bot-${index}`} />
+                      <Switch id={`autotimer-bot-${index}`} checked={botAutoTimer} disabled={!isSessionInteractable} onCheckedChange={() => alert("Auto-Timer für Bot (noch nicht implementiert)")}/>
                     </div>
                   </div>
                 );
@@ -345,7 +542,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                 <CardTitle className="flex items-center"><Download className="mr-2 h-5 w-5 text-primary" /> Datenexport</CardTitle>
             </CardHeader>
             <CardContent>
-                <Button className="w-full" onClick={() => alert("CSV Export gestartet...")}>
+                <Button className="w-full" onClick={() => alert("CSV Export gestartet...")} >
                     Chat-Protokoll als CSV herunterladen
                 </Button>
             </CardContent>
@@ -355,6 +552,3 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     </div>
   );
 }
-
-
-    

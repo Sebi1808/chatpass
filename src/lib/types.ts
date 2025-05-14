@@ -16,32 +16,45 @@ export interface Scenario {
 
 export interface BotConfig {
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
-  // Weitere bot-spezifische Einstellungen hier
-  name?: string; // Name, der im Chat angezeigt wird
-  avatarFallback?: string; // Für Avatar-Anzeige
+  name?: string; 
+  avatarFallback?: string; 
+  currentEscalation?: number; // Added for bot state
+  isActive?: boolean; // Added for bot state
+  autoTimerEnabled?: boolean; // Added for bot state
+}
+
+export interface SessionData {
+  scenarioId: string;
+  createdAt: Timestamp | Date;
+  invitationLink: string;
+  status: "active" | "paused" | "ended"; // Overall session status
+  messageCooldownSeconds: number; // Cooldown for messages
+  // Potentially add global simulation pace settings here
 }
 
 export interface Participant {
   id: string; // Firestore document ID
-  userId: string; // Eindeutige ID des Benutzers (kann client-generiert sein)
+  userId: string; 
   name: string;
-  role: string; // z.B. "Teilnehmer A", "Bot Provokateur"
+  role: string; 
   avatarFallback: string;
   isBot: boolean;
-  joinedAt?: Timestamp | Date; // Firestore Timestamp oder JS Date
-  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten"; // Für Admin-Dashboard Anzeige
-  isMuted?: boolean; // Für Admin-Dashboard Steuerung
-  escalation?: number; // Für Bot-Steuerung
+  joinedAt?: Timestamp | Date; 
+  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten"; 
+  isMuted?: boolean; // Individual mute status, controlled by admin
+  // botConfig if isBot true, for individual bot state like escalation level
+  botConfig?: BotConfig 
 }
 
 export interface Message {
   id: string; // Firestore document ID
-  senderUserId: string; // ID des Senders (kann userId von Participant oder eine Bot-ID sein)
+  senderUserId: string; 
   senderName: string;
   senderType: 'admin' | 'user' | 'bot';
   avatarFallback: string;
   content: string;
-  timestamp: Timestamp | Date; // Firestore Timestamp oder JS Date
-  replyTo?: string; // ID der Nachricht, auf die geantwortet wird
-  botFlag?: boolean; // Spezielles Flag für Bot-Nachrichten
+  timestamp: Timestamp | Date; 
+  replyTo?: string; 
+  botFlag?: boolean; 
 }
+

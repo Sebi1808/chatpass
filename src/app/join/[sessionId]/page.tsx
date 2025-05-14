@@ -9,12 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { scenarios } from "@/lib/scenarios";
-import type { Scenario } from "@/lib/types";
+import type { Scenario, SessionData } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, LogIn } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
 import { Progress } from "@/components/ui/progress";
 
 export default function JoinSessionPage() {
@@ -27,6 +27,7 @@ export default function JoinSessionPage() {
   const [name, setName] = useState("");
   const [selectedRole, setSelectedRole] = useState("");
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
+  const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [availableRoles, setAvailableRoles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,17 +46,35 @@ export default function JoinSessionPage() {
 
           if (!sessionSnap.exists()) {
             toast({ variant: "destructive", title: "Fehler", description: "Sitzung nicht gefunden." });
-            router.push("/"); // Redirect if session doesn't exist
+            router.push("/"); 
             return;
           }
-          // Scenario is already set from scenarios.ts, can be enriched with Firestore data if needed
+          const fetchedSessionData = sessionSnap.data() as SessionData;
+          setSessionData(fetchedSessionData);
+
+          if (fetchedSessionData.status === "ended") {
+             toast({ variant: "destructive", title: "Sitzung beendet", description: "Diese Sitzung wurde bereits beendet." });
+             router.push("/");
+             return;
+          }
           
           if (scenario) {
             const numParticipantRoles = scenario.standardRollen - scenario.defaultBots;
-            const roles = Array.from({ length: numParticipantRoles }, (_, i) => `Teilnehmer ${String.fromCharCode(65 + i)}`); // Teilnehmer A, B, ...
-            setAvailableRoles(roles);
-            if (roles.length > 0) {
-              setSelectedRole(roles[0]); // Pre-select first role
+            const baseRoles = Array.from({ length: numParticipantRoles }, (_, i) => `Teilnehmer ${String.fromCharCode(65 + i)}`);
+            
+            // Fetch existing participants to determine available roles
+            const participantsColRef = collection(db, "sessions", sessionId, "participants");
+            const participantsQuery = query(participantsColRef, where("isBot", "==", false));
+            const participantsSnap = await getDocs(participantsQuery);
+            const takenRoles = new Set(participantsSnap.docs.map(d => d.data().role));
+            
+            const freeRoles = baseRoles.filter(r => !takenRoles.has(r));
+            setAvailableRoles(freeRoles);
+
+            if (freeRoles.length > 0) {
+              setSelectedRole(freeRoles[0]); 
+            } else {
+              toast({variant: "destructive", title: "Keine Rollen frei", description: "Alle Teilnehmerrollen sind bereits besetzt."});
             }
           }
         } catch (error) {
@@ -82,10 +101,19 @@ export default function JoinSessionPage() {
       toast({ variant: "destructive", title: "Fehler", description: "Bitte wählen Sie eine Rolle aus." });
       return;
     }
-    if (!currentScenario) {
-      toast({ variant: "destructive", title: "Fehler", description: "Szenario nicht geladen." });
+    if (!currentScenario || !sessionData) {
+      toast({ variant: "destructive", title: "Fehler", description: "Szenario- oder Sitzungsdaten nicht geladen." });
       return;
     }
+     if (sessionData.status === "ended") {
+        toast({ variant: "destructive", title: "Sitzung beendet", description: "Beitritt nicht möglich, die Sitzung ist beendet." });
+        return;
+    }
+    if (sessionData.status === "paused") {
+        toast({ variant: "destructive", title: "Sitzung pausiert", description: "Beitritt nicht möglich, die Sitzung ist pausiert. Bitte warten Sie." });
+        return;
+    }
+
 
     setIsSubmitting(true);
     const userId = `user-${name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}`;
@@ -99,6 +127,7 @@ export default function JoinSessionPage() {
         userId: userId,
         avatarFallback: avatarFallback,
         isBot: false,
+        isMuted: false, // Default not muted
         joinedAt: serverTimestamp(),
         status: "Beigetreten"
       });
@@ -135,6 +164,10 @@ export default function JoinSessionPage() {
         </div>
     );
   }
+  
+  const sessionEnded = sessionData?.status === "ended";
+  const sessionPaused = sessionData?.status === "paused";
+
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
@@ -149,6 +182,8 @@ export default function JoinSessionPage() {
           <CardDescription>
             Geben Sie Ihren Namen ein und wählen Sie eine Rolle, um an der Simulation teilzunehmen.
             Die Sitzungs-ID lautet: {sessionId}
+            {sessionEnded && <p className="text-destructive font-semibold mt-2">Diese Sitzung wurde beendet. Ein Beitritt ist nicht mehr möglich.</p>}
+            {sessionPaused && !sessionEnded && <p className="text-orange-500 font-semibold mt-2">Diese Sitzung ist aktuell pausiert. Ein Beitritt ist momentan nicht möglich.</p>}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -162,12 +197,12 @@ export default function JoinSessionPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                disabled={isSubmitting}
+                disabled={isSubmitting || sessionEnded || sessionPaused}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">Wählen Sie Ihre Rolle</Label>
-              <Select value={selectedRole} onValueChange={setSelectedRole} disabled={isSubmitting}>
+              <Select value={selectedRole} onValueChange={setSelectedRole} disabled={isSubmitting || availableRoles.length === 0 || sessionEnded || sessionPaused}>
                 <SelectTrigger id="role">
                   <SelectValue placeholder="Rolle auswählen" />
                 </SelectTrigger>
@@ -179,7 +214,9 @@ export default function JoinSessionPage() {
                       </SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="" disabled>Keine freien Teilnehmerrollen verfügbar</SelectItem>
+                    <SelectItem value="no-roles" disabled>
+                        {sessionEnded ? "Sitzung beendet" : (sessionPaused ? "Sitzung pausiert" : "Keine freien Teilnehmerrollen")}
+                    </SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -192,7 +229,7 @@ export default function JoinSessionPage() {
             )}
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full" disabled={isSubmitting || availableRoles.length === 0}>
+            <Button type="submit" className="w-full" disabled={isSubmitting || availableRoles.length === 0 || sessionEnded || sessionPaused}>
               {isSubmitting ? "Wird beigetreten..." : <><LogIn className="mr-2 h-5 w-5" /> Der Simulation beitreten</>}
             </Button>
           </CardFooter>
