@@ -3,7 +3,6 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +61,7 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: currentSessionId, // Renamed to avoid conflict with state/prop
+  sessionId: currentSessionId, 
   initialUserName,
   initialUserRole,
   initialUserId,
@@ -589,6 +588,8 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
+      // Removed toast for successful reaction to avoid clutter
+      // toast({ title: "Reaktion verarbeitet", description: `Ihre Reaktion "${emoji}" wurde gespeichert.` });
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -619,6 +620,8 @@ export function ChatPageContent({
   if (isAdminView && (!sessionData || !currentScenario)) {
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
+
+  const isSessionActive = sessionData?.status === "active";
 
   return (
     <Dialog open={!!imageForModal} onOpenChange={(isOpen) => { if (!isOpen) setImageForModal(null); }}>
@@ -751,7 +754,7 @@ export function ChatPageContent({
                     <div key={msg.id} id={`msg-${msg.id}`} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
                       {!msg.isOwn && (
                         <Avatar className={cn("h-10 w-10 border-2 self-end", bubbleColor.ring)}>
-                          <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user" />
+                          <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user"/>
                           <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{msg.avatarFallback}</AvatarFallback>
                         </Avatar>
                       )}
@@ -858,7 +861,7 @@ export function ChatPageContent({
                       </div>
                        {msg.isOwn && userName && userAvatarFallback && userId && (
                          <Avatar className={cn("h-10 w-10 border-2 self-end", isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').ring : getParticipantColorClasses(userId, 'user').ring)}>
-                          <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
+                          <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
                           <AvatarFallback className={`${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').bg : getParticipantColorClasses(userId, 'user').bg} ${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').text : getParticipantColorClasses(userId, 'user').text}`}>
                              {msg.senderType === 'admin' && isAdminView ? "AD" : userAvatarFallback}
                           </AvatarFallback>
@@ -922,19 +925,21 @@ export function ChatPageContent({
           </DialogTitle>
         </DialogHeader>
         {imageForModal && (
-          <div className="relative flex-1 w-full min-h-0 flex items-center justify-center p-1 sm:p-2 md:p-4"> {/* Container takes remaining space and pads content */}
+          <div className="relative flex-1 w-full min-h-0 flex items-center justify-center p-1 sm:p-2 md:p-4">
             <Image
               src={imageForModal}
               alt={imageFileNameForModal || "Vollbild-Vorschau"}
               width={1200} 
               height={800}
-              sizes="(max-width: 768px) 80vw, (max-width: 1200px) 60vw, 50vw" // Adjusted sizes
+              sizes="(max-width: 768px) 80vw, (max-width: 1200px) 60vw, 50vw"
               style={{
                 objectFit: "contain", 
                 maxWidth: '100%',    
-                maxHeight: '100%',   
+                maxHeight: '100%',
+                width: 'auto',      // Added for aspect ratio
+                height: 'auto'     // Added for aspect ratio
               }}
-              className="block rounded-md" // Ensure image is block and rounded
+              className="block rounded-md" 
               data-ai-hint="image modal"
             />
           </div>
@@ -944,7 +949,7 @@ export function ChatPageContent({
   );
 }
 
-export default function ChatPage({ params: pageParams }: ChatPageProps) { // pageParams to avoid conflict if ChatPage becomes client component
+export default function ChatPage({ params: pageParams }: ChatPageProps) {
   const { sessionId } = pageParams; 
 
   return (
@@ -960,3 +965,5 @@ export default function ChatPage({ params: pageParams }: ChatPageProps) { // pag
     </Suspense>
   );
 }
+
+    
