@@ -314,17 +314,17 @@ export function ChatPageContent({
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
   const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, nameText: string, ring: string } => {
-    if (isAdminView && pUserId === userId) { // Admin sending message in admin view
+    if (isAdminView && pUserId === userId) { 
        return { bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
-    if (pSenderType === 'admin') { // Admin messages seen by others OR by admin in their own bubble if they sent it
-      return { bg: "bg-destructive/70", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
+    if (pSenderType === 'admin') { 
+      return { bg: "bg-destructive/70", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
     }
     if (pSenderType === 'bot') {
       return { bg: "bg-accent/60", text: "text-accent-foreground", nameText: "text-accent-foreground/90", ring: "ring-accent" };
     }
     if (!pUserId) {
-        return { ...participantColors[0], ring: participantColors[0].ring || "ring-gray-400" }; // Fallback ring
+        return { ...participantColors[0], ring: participantColors[0].ring || "ring-gray-400" }; 
     }
     const colorIndex = simpleHash(pUserId) % participantColors.length;
     return { ...participantColors[colorIndex], ring: participantColors[colorIndex].ring || `ring-${participantColors[colorIndex].name}-400`};
@@ -334,13 +334,13 @@ export function ChatPageContent({
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) { 
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUploadProgress(null); // Reset progress if a new file is selected
+      setImageUploadProgress(null); 
     }
   };
 
@@ -353,7 +353,7 @@ export function ChatPageContent({
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    setImageUploadProgress(null); // Reset progress when image is removed
+    setImageUploadProgress(null); 
   };
 
   const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
@@ -399,35 +399,42 @@ export function ChatPageContent({
     try {
       if (selectedImageFile) {
         const file = selectedImageFile;
-        const imageFileName = `${file.name}_${Date.now()}`;
+        const imageFileName = `${file.name}_${Date.now()}`; // Ensure unique enough name
         const imagePath = `chat_images/${sessionId}/${imageFileName}`;
         const sRef = storageRef(storage, imagePath);
+        
+        console.log(`Attempting to upload ${file.name} to ${imagePath}`);
+
         const uploadTask = uploadBytesResumable(sRef, file);
 
         await new Promise<void>((resolve, reject) => {
           uploadTask.on('state_changed',
             (snapshot) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              console.log('Upload is ' + progress + '% done');
               setImageUploadProgress(progress);
             },
             (error) => { 
-              console.error("Error uploading image: ", error);
-              toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: "Das Bild konnte nicht hochgeladen werden." });
-              reject(error);
+              console.error("Error during Firebase Storage upload: ", error);
+              toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: `Fehler: ${error.code} - ${error.message}` });
+              reject(error); // Reject the promise on error
             },
-            async () => { 
+            async () => { // This is the 'complete' callback
+              console.log('Upload successful, getting download URL...');
               try {
                 uploadedImageUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                uploadedImageFileName = file.name;
-                resolve();
+                uploadedImageFileName = file.name; 
+                console.log('Download URL:', uploadedImageUrl);
+                resolve(); // Resolve the promise on successful completion
               } catch (getUrlError) {
                 console.error("Error getting download URL: ", getUrlError);
                 toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: "URL konnte nicht abgerufen werden." });
-                reject(getUrlError);
+                reject(getUrlError); // Reject if getting URL fails
               }
             }
           );
         });
+        console.log("Image upload process finished. URL:", uploadedImageUrl);
       }
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
@@ -449,7 +456,9 @@ export function ChatPageContent({
         messageData.replyToMessageSenderName = replyingTo.senderName;
       }
       
+      console.log("Adding message to Firestore:", messageData);
       await addDoc(messagesColRef, messageData);
+      console.log("Message added to Firestore.");
       
       setNewMessage("");
       setReplyingTo(null);
@@ -459,10 +468,13 @@ export function ChatPageContent({
       setShowEmojiPicker(false);
 
     } catch (error) {
-      // Error handling for upload or Firestore add is done within their respective blocks or this catch
-      console.error("Error sending message or uploading image: ", error);
-      // If not already toasted, a general toast could be added, but specific toasts are preferred
+      console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
+      // Toast for generic error if not already handled by upload-specific toasts
+      if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("URL konnte nicht abgerufen werden")))) {
+         toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
+      }
     } finally {
+      console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
       setImageUploadProgress(null); 
     }
@@ -489,7 +501,7 @@ export function ChatPageContent({
   const handleCancelQuote = () => {
      if (quotingMessage) {
         const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\n\\n`;
-        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g'); // Make whitespace flexible
+        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g'); 
         setNewMessage(prev => prev.replace(regex, ""));
     }
     setQuotingMessage(null);
@@ -502,7 +514,7 @@ export function ChatPageContent({
 
   const handleEmojiSelect = (emoji: string) => {
     setNewMessage(prev => prev + emoji);
-    setShowEmojiPicker(false); // Close picker after selection
+    // setShowEmojiPicker(false); // Keep picker open for multiple emojis
   };
 
   if (isLoading && !isAdminView) {
@@ -525,8 +537,8 @@ export function ChatPageContent({
   const canTryToSend = canSendBasedOnStatusAndMute && (isAdminView || cooldownRemainingSeconds <= 0);
 
   let inputPlaceholderText = "Nachricht eingeben...";
-  if (isSendingMessage && selectedImageFile) {
-    inputPlaceholderText = `Bild wird hochgeladen (${imageUploadProgress !== null ? imageUploadProgress.toFixed(0) : '0'}%)...`;
+  if (isSendingMessage && selectedImageFile && imageUploadProgress !== null) {
+    inputPlaceholderText = `Bild wird hochgeladen (${imageUploadProgress.toFixed(0)}%)...`;
   } else if (isSendingMessage) {
     inputPlaceholderText = "Nachricht wird gesendet...";
   } else if (sessionData?.status === "ended") {
@@ -685,7 +697,7 @@ export function ChatPageContent({
                             disabled={msg.isOwn}
                           >
                             {msg.senderName}
-                            {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent/50 text-accent")}>BOT</Badge>}
+                            {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent text-accent")}>BOT</Badge>}
                             {msg.senderType === 'admin' && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1 py-0")}>ADMIN</Badge>}
                           </button>
                           <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
@@ -795,7 +807,7 @@ export function ChatPageContent({
                 </Button>
               </div>
             )}
-            {selectedImageFile && isSendingMessage && imageUploadProgress !== null && imageUploadProgress < 100 && (
+            {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 && (
               <div className="mt-1 mb-2">
                 <Progress value={imageUploadProgress} className="h-2 w-full" />
                 <p className="text-xs text-muted-foreground text-right mt-0.5">{imageUploadProgress.toFixed(0)}% hochgeladen</p>
@@ -911,5 +923,3 @@ export default function ChatPage({ params }: { params: ChatPageProps }) {
     </Suspense>
   );
 }
-
-    
