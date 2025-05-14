@@ -22,7 +22,7 @@ export default function LoginPage() {
 
   const handleAdminLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (adminUsername === "admin") {
+    if (adminUsername.trim().toLowerCase() === "admin") {
       toast({
         title: "Login erfolgreich",
         description: "Sie werden zum Admin-Dashboard weitergeleitet.",
@@ -78,11 +78,11 @@ export default function LoginPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="adminUsername">Benutzername</Label>
-                  <Input 
-                    id="adminUsername" 
-                    type="text" 
-                    placeholder="admin" 
-                    required 
+                  <Input
+                    id="adminUsername"
+                    type="text"
+                    placeholder="admin"
+                    required
                     value={adminUsername}
                     onChange={(e) => setAdminUsername(e.target.value)}
                   />
