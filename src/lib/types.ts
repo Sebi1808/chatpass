@@ -18,9 +18,10 @@ export interface BotConfig {
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   name?: string; 
   avatarFallback?: string; 
-  currentEscalation?: number; // Added for bot state
-  isActive?: boolean; // Added for bot state
-  autoTimerEnabled?: boolean; // Added for bot state
+  currentEscalation?: number;
+  isActive?: boolean; 
+  autoTimerEnabled?: boolean;
+  id?: string; // Eindeutige ID für den Bot innerhalb des Szenarios
 }
 
 export interface SessionData {
@@ -42,7 +43,12 @@ export interface Participant {
   joinedAt?: Timestamp | Date; 
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten"; 
   isMuted?: boolean; 
-  botConfig?: BotConfig 
+  botConfig?: BotConfig; // Wird für Bot-Teilnehmer verwendet
+  botScenarioId?: string; // ID der Bot-Konfiguration aus dem Szenario
+}
+
+export interface DisplayParticipant extends Participant {
+  // Keine zusätzlichen Felder für DisplayParticipant in diesem Fall
 }
 
 export interface Message {
@@ -61,3 +67,9 @@ export interface Message {
   imageFileName?: string;
   reactions?: { [emoji: string]: string[] }; // Array of userIds for each emoji
 }
+
+export interface DisplayMessage extends Message {
+  isOwn: boolean;
+  timestampDisplay: string;
+}
+

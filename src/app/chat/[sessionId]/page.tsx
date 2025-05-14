@@ -63,7 +63,7 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: currentSessionIdFromProps, // Renamed to avoid conflict with state/local var
+  sessionId: currentSessionIdFromProps,
   initialUserName,
   initialUserRole,
   initialUserId,
@@ -72,7 +72,7 @@ export function ChatPageContent({
 }: ChatPageContentProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const sessionId = currentSessionIdFromProps; // Use the prop
+  const sessionId = currentSessionIdFromProps; 
 
   const [userName, setUserName] = useState<string | null>(initialUserName || null);
   const [userRole, setUserRole] = useState<string | null>(initialUserRole || null);
@@ -482,7 +482,7 @@ export function ChatPageContent({
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: MessageType = {
-        id: '', // Firestore generates ID, but type expects it
+        id: '', 
         senderUserId: userId,
         senderName: userName,
         senderType: isAdminView ? 'admin' : 'user',
@@ -559,7 +559,7 @@ export function ChatPageContent({
   const handleEmojiSelect = (emoji: string) => {
     if (reactingToMessageId) {
       handleReaction(reactingToMessageId, emoji);
-      setReactingToMessageId(null); // Reset after reaction
+      setReactingToMessageId(null); 
     } else {
       setNewMessage(prev => prev + emoji);
     }
@@ -761,8 +761,8 @@ export function ChatPageContent({
             <Image
               src={imageForModal}
               alt={imageFileNameForModal || "Vollbild-Vorschau"}
-              layout="fill"
-              objectFit="contain"
+              fill // Use fill to make it responsive to the parent container
+              style={{ objectFit: "contain" }} // Ensure the whole image is visible and aspect ratio is maintained
               className="rounded-md"
               data-ai-hint="image modal"
             />
@@ -774,11 +774,11 @@ export function ChatPageContent({
 }
 
 
-interface ChatPageProps { // Changed name to avoid conflict
+interface ChatPageProps { 
   params: { sessionId: string };
 }
 
-export default function ChatPage({ params: pageParams }: ChatPageProps) { // Use new name
+export default function ChatPage({ params: pageParams }: ChatPageProps) { 
   const { sessionId } = pageParams;
 
   return (
@@ -795,4 +795,3 @@ export default function ChatPage({ params: pageParams }: ChatPageProps) { // Use
   );
 }
 
-    
