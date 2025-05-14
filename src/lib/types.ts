@@ -26,15 +26,14 @@ export interface BotConfig {
 export interface SessionData {
   scenarioId: string;
   createdAt: Timestamp | Date;
-  invitationLink: string; // Basis-Link, z.B. https://domain.com/join/sessionId
-  invitationToken?: string; // Einzigartiger Token für den aktuellen gültigen Link
-  status: "active" | "paused" | "ended"; // Overall session status
-  messageCooldownSeconds: number; // Cooldown for messages
-  // Potentially add global simulation pace settings here
+  invitationLink: string; 
+  invitationToken?: string; 
+  status: "active" | "paused" | "ended"; 
+  messageCooldownSeconds: number; 
 }
 
 export interface Participant {
-  id: string; // Firestore document ID
+  id: string; 
   userId: string; 
   name: string;
   role: string; 
@@ -42,13 +41,12 @@ export interface Participant {
   isBot: boolean;
   joinedAt?: Timestamp | Date; 
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten"; 
-  isMuted?: boolean; // Individual mute status, controlled by admin
-  // botConfig if isBot true, for individual bot state like escalation level
+  isMuted?: boolean; 
   botConfig?: BotConfig 
 }
 
 export interface Message {
-  id: string; // Firestore document ID
+  id: string; 
   senderUserId: string; 
   senderName: string;
   senderType: 'admin' | 'user' | 'bot';
@@ -59,5 +57,6 @@ export interface Message {
   replyToMessageContentSnippet?: string;
   replyToMessageSenderName?: string;
   botFlag?: boolean; 
+  imageUrl?: string; // Added for image uploads
+  imageFileName?: string; // Added for image uploads
 }
-

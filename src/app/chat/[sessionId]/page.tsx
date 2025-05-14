@@ -5,11 +5,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye } from "lucide-react";
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, Suspense, useRef, type FormEvent } from "react";
+import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent } from "react";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario, Participant as ParticipantType, Message as MessageType, SessionData } from "@/lib/types";
 import {
@@ -20,20 +20,21 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs } from "firebase/firestore";
+import { db, storage } from "@/lib/firebase"; // Import storage
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc } from "firebase/firestore";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage"; // Firebase Storage functions
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from '@/lib/utils';
+import Image from 'next/image'; // For displaying uploaded images
 
 
 interface ChatPageProps {
-  params: { sessionId: string };
+  sessionId: string; // Changed to directly pass sessionId
 }
 
-// Props für ChatPageContent erweitert
 interface ChatPageContentProps {
   sessionId: string;
   initialUserName?: string;
@@ -76,11 +77,11 @@ const simpleHash = (str: string): number => {
 };
 
 const emojiCategories = [
-  { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'] },
-  { name: "People", icon: "🧑", emojis: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝', '💅', '🤳', '💪', '🦾', '🦵', '🦿', '🦶', '👣', '👂', '🦻', '👃', '🧠', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '👶', '🧒', '👦', '👧', '🧑', '👱', '👨', '🧔', '👨‍🦰', '👨‍🦱', '👨‍🦳', '👨‍𦲀', '👵', '🧓', '👴', '👲', '👳‍♀️', '👳‍♂️', '🧕', '👮‍♀️', '👮‍♂️', '👷‍♀️', '👷‍♂️', '💂‍♀️', '💂‍♂️', '🕵️‍♀️', '🕵️‍♂️', '👩‍⚕️', '👨‍⚕️', '👩‍🌾', '👨‍🌾', '👩‍🍳', '👨‍🍳', '👩‍🎓', '👨‍🎓', '👩‍🎤', '👨‍🎤', '👩‍🏫', '👨‍🏫', '👩‍🏭', '👨‍🏭', '👩‍💻', '👨‍💻', '👩‍💼', '👨‍💼', '👩‍🔧', '👨‍🔧', '👩‍🔬', '👨‍🔬', '👩‍🎨', '👨‍🎨', '👩‍🚒', '👨‍🚒', '👩‍✈️', '👨‍✈️', '👩‍🚀', '👨‍🚀', '👩‍⚖️', '👨‍⚖️', '👰‍♀️', '👰‍♂️', '🤵‍♀️', '🤵‍♂️', '👸', '🤴', '🦸‍♀️', '🦸‍♂️', '🦹‍♀️', '🦹‍♂️', '🤶', '🎅', '🧙‍♀️', '🧙‍♂️', '🧝‍♀️', '🧝‍♂️', '🧛‍♀️', '🧛‍♂️', '🧜‍♀️', '🧜‍♂️', '🧚‍♀️', '🧚‍♂️', '👼', '🤰', '🤱', '👩‍🍼', '👨‍🍼', '🙇‍♀️', '🙇‍♂️', '💁‍♀️', '💁‍♂️', '🙅‍♀️', '🙅‍♂️', '🙆‍♀️', '🙆‍♂️', '🙋‍♀️', '🙋‍♂️', '🧏‍♀️', '🧏‍♂️', '🤦‍♀️', '🤦‍♂️', '🤷‍♀️', '🤷‍♂️', '🙎‍♀️', '🙎‍♂️', '🙍‍♀️', '🙍‍♂️', '💇‍♀️', '💇‍♂️', '🚶‍♀️', '🚶‍♂️', '👩‍🚶‍♀️', '👨‍🚶‍♂️', '👩‍🦯', '👨‍🦯', '🧎‍♀️', '🧎‍♂️', '👩‍🦽', '👨‍🦽', '👩‍🦼', '👨‍🦼', '🏃‍♀️', '🏃‍♂️', '💃', '🕺', '🕴️', '👯‍♀️', '👯‍♂️', '🧖‍♀️', '🧖‍♂️', '🧗‍♀️', '🧗‍♂️', '🤺', '🏇', '⛷️', '🏂', '🏌️‍♀️', '🏌️‍♂️', '🏄‍♀️', '🏄‍♂️', '🚣‍♀️', '🚣‍♂️', '🏊‍♀️', '🏊‍♂️', '⛹️‍♀️', '⛹️‍♂️', '🏋️‍♀️', '🏋️‍♂️', '🚴‍♀️', '🚴‍♂️', '🚵‍♀️', '🚵‍♂️', '🤸‍♀️', '🤸‍♂️', '🤼‍♀️', '🤼‍♂️', '🤽‍♀️', '🤽‍♂️', '🤾‍♀️', '🤾‍♂️', '🤹‍♀️', '🤹‍♂️', '🧘‍♀️', '🧘‍♂️', '👩‍❤️‍💋‍👩', '👨‍❤️‍💋‍👨', '👩‍❤️‍👨', '👩‍❤️‍👩', '👨‍❤️‍👨', '👨‍👩‍👦', '👨‍👩‍👧', '👨‍👩‍👧‍👦', '👨‍👩‍👦‍👦', '👨‍👩‍👧‍👧', '👩‍👩‍👦', '👩‍👩‍👧', '👩‍👩‍👧‍👦', '👩‍👩‍👦‍👦', '👩‍👩‍👧‍👧', '👨‍👨‍👦', '👨‍👨‍👧', '👨‍👨‍👧‍👦', '👨‍👨‍👦‍👦', '👨‍👨‍👧‍👧', '🗣️', '👤', '👥', '🫂'] },
-  { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐒', '🦍', '🦧', '🐶', '🐕', '🦮', '🐕‍🦺', '🐩', '🐺', '🦊', '🦝', '🐱', '🐈', '🐈‍⬛', '🦁', '🐯', '🐅', '🐆', '🐴', '🐎', '🦄', '🦓', '🦌', '🦬', '🐮', '🐂', '🐃', '🐄', '🐷', '🐖', '🐗', '🐽', '🐏', '🐑', '🐐', '🐪', '🐫', '🦙', '🦒', '🐘', '🦣', '🦏', '🦛', '🐭', '🐁', '🐀', '🐹', '🐰', '🐇', '🐿️', '🦫', '🦔', '🦇', '🐻', '🐻‍❄️', '🐨', '🐼', '🦥', '🦦', '🦨', '🦘', '🦡', '🐾', '🦃', '🐔', '🐓', '🐣', '🐤', '🐥', '🐦', '🐧', '🕊️', '🦅', '🦆', '🦢', '🦉', '🦤', '🪶', '🐸', '🐊', '🐢', '🦎', '🐍', '🐲', '🐉', '🦕', '🦖', '🐳', '🐋', '🐬', '🦭', '🐟', '🐠', '🐡', '🦈', '🐙', '🐚', '🐌', '🦋', '🐛', '🐜', '🐝', '🪲', '🐞', '🦗', '🪳', '🕷️', '🕸️', '🦂', '🦟', '🪰', '🪱', '🦠'] },
-  { name: "Food", icon: "🍔", emojis: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🫐', '🥝', '🍅', '🫒', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🫑', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🫘', '🌰', '🍞', '🥐', '🥖', '🫓', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🫕', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🦀', '🦞', '🦐', '🦑', '🦪', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🫖', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢', '🍽️', '🍴', '🥄'] },
-  { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🛗', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚰', '♀️', '♂️', '⚧️', '✖️', '➕', '➖', '➗', '🟰', '♾️', '✔️', '☑️', '🔘', '🔗', '➰', '〰️', '〽️', '⚕️', '💲', ' curvilinee_loop', '🔚', '🔙', '🔛', '🔝', '🔜', '☑️', '🔘', '⚪', '⚫', '🔴', '🔵', '🔸', '🔹', '🔶', '🔷', '🔺', '🔻', '🔳', '🔲', '▪️', '▫️', '◾', '◽', '◼️', '◻️', '🟥', '🟦', '🟧', '🟨', '🟩', '🟪', '⬛', '⬜', '🟫', '⭐', '🌟', '🌠', '࣪', '<seg_82>', ' CHAMPAGNE_GLASS', '🥂', '🥃', '🫗', '🥤', '🧋', '🧃', '🧉', '🧊', '🥢', '🍽️', '🍴', '🥄', '🏺', '🌍', '🌎', '🌏', '🗺️', '🗾', '🧭', '🏔️', '⛰️', '🌋', '🗻', '🏕️', '🏖️', '🏜️', '🏝️', '🏞️', '🏟️', '🏛️', '🏗️', '🧱', '🪨', '🪵', '🛖', '🏘️', '🏚️', '🏠', '🏡', '🏢', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '🏬', '🏭', '🏯', '🏰', '💒', '🗼', '🗽', '⛪', '🕌', '🛕', '🕍', '⛩️', '🕋', '⛲', '⛺', '🌁', '🌃', '🏙️', '🌄', '🌅', '🌆', '🌇', '🌉', '♨️', '🎠', '🎡', '🎢', '💈', '🎪', '🚂', '🚃', '🚄', '🚅', '🚆', '🚇', '🚈', '🚉', '🚊', '🚝', '🚞', '🚋', '🚌', '🚍', '🚎', '🚐', '🚑', '🚒', '🚓', '🚔', '🚕', '🚖', '🚗', '🚘', '🚚', '🚛', '🚜', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚕', '🚎', '🚌', '🚊', '🚉', '🚁', '🛩️', '✈️', '🛫', '🛬', '🚀', '🛰️', '💺', '🛶', '⛵', '🛥️', '🚤', '⛴️', '🚢', '⚓', '⛽', '🚧', '🚦', '🚥', '🚏', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🏕️', '⛺', '🏠', '🏡', '🏘️', '🏚️', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫', '⛪', '🕌', '🕍', '🛕', '⛩️', '🕋', '♨️', '⛩️', '🎭', '🖼️', '🎨', '🧵', '🪡', '🧶', '🪢', '🧩', '🧸', '🪅', '🪆', '🪁', '🔮', '🪄', '🧿', '🎮', '🕹️', '🎰', '🎲', '🪀', '🎴', '♟️', '🎯', '🎳', '🏈', '🏀', '⚽', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🏓', '🏸', '🥅', '🏒', '🏑', '🥍', '🏏', '🪃', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🏋️‍♀️', '🏋️‍♂️', '🤼‍♀️', '🤼‍♂️', '🤸‍♀️', '🤸‍♂️', '⛹️‍♀️', '⛹️‍♂️', '🤺', '🤾‍♀️', '🤾‍♂️', '🏌️‍♀️', '🏌️‍♂️', '🏇', '🧘‍♀️', '🧘‍♂️', '🏄‍♀️', '🏄‍♂️', '🏊‍♀️', '🏊‍♂️', '🤽‍♀️', '🤽‍♂️', '🚣‍♀️', '🚣‍♂️', '🧗‍♀️', '🧗‍♂️', '🚵‍♀️', '🚵‍♂️', '🚴‍♀️', '🚴‍♂️', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🏵️', '🎗️', '🎫', '🎟️', '🎪', '🤹‍♀️', '🤹‍♂️', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🪘', '🎷', '🎺', '🪗', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🖼️', '🧩', '♟️', '🧩', '♟️'] },
+  { name: "Smileys", icon: "😀", emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '👍', '👎', '❤️', '💔', '💯', '🔥', '🎉', '✨'] },
+  { name: "People", icon: "🧑", emojis: ['👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝', '💅', '🤳', '💪', '🦾', '👀', '👁️', '🧠', '🧑', '👨', '👩', '🧑‍🦰', '👨‍🦰', '👩‍🦰', '🧑‍🦱', '👨‍🦱', '👩‍🦱', '🧑‍🦳', '👨‍🦳', '👩‍🦳'] },
+  { name: "Animals", icon: "🐻", emojis: ['🙈', '🙉', '🙊', '🐵', '🐶', '🐺', '🐱', '🦁', '🐯', '🐴', '🦄', '🐮', '🐷', '🐭', '🐰', '🐻', '🐼', '🐸', '🐧', '🐦', '🦋', '🐞'] },
+  { name: "Food", icon: "🍔", emojis: ['🍇', '🍉', '🍌', '🍎', '🍓', '🍕', '🍔', '🍟', '🍩', '🎂', '☕', '🍺'] },
+  { name: "Symbols", icon: "❤️", emojis: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '✅', '❌', '❓', '❗', '⚠️'] },
 ];
 
 
@@ -116,6 +117,10 @@ export function ChatPageContent({
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null); // For image upload
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
 
   useEffect(() => {
@@ -157,7 +162,6 @@ export function ChatPageContent({
           toast({ variant: "destructive", title: "Fehler", description: "Sitzung nicht gefunden oder wurde gelöscht." });
           router.push("/");
         } else {
-          // Im Admin View nicht direkt weiterleiten, nur loggen oder leere Daten anzeigen
            console.warn("Sitzung nicht gefunden im Admin View für sessionId:", sessionId);
         }
         setSessionData(null);
@@ -175,7 +179,7 @@ export function ChatPageContent({
   }, [sessionId, toast, router, isAdminView]);
 
   useEffect(() => {
-    if (!sessionId || !userId || isAdminView) return; // Mute status nicht für Admin holen/setzen
+    if (!sessionId || !userId || isAdminView) return; 
 
     let unsubscribeParticipant: (() => void) | undefined;
     const findParticipantDocAndListen = async () => {
@@ -247,12 +251,6 @@ export function ChatPageContent({
         fetchedMessages.push({
           ...data,
           id: docSn.id,
-          senderUserId: data.senderUserId,
-          senderName: data.senderName,
-          senderType: data.senderType,
-          avatarFallback: data.avatarFallback,
-          content: data.content,
-          timestamp: data.timestamp,
           isOwn: data.senderUserId === userId,
           timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
         });
@@ -301,9 +299,9 @@ export function ChatPageContent({
     const messageElement = document.getElementById(`msg-${messageId}`);
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      messageElement.classList.add('ring-2', 'ring-primary', 'transition-all', 'duration-1000');
+      messageElement.classList.add('ring-2', 'ring-primary', 'transition-all', 'duration-1000', 'ease-in-out');
       setTimeout(() => {
-        messageElement.classList.remove('ring-2', 'ring-primary', 'transition-all', 'duration-1000');
+        messageElement.classList.remove('ring-2', 'ring-primary', 'transition-all', 'duration-1000', 'ease-in-out');
       }, 1500);
     }
   };
@@ -313,14 +311,14 @@ export function ChatPageContent({
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
   const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): { bg: string, text: string, name: string, ring: string, nameText: string } => {
-    if (isAdminView && pUserId === userId) { // Special case for Admin's own messages in admin view
-       return { bg: "bg-destructive/70", text: "text-destructive-foreground", name: 'admin-self', ring: "ring-destructive", nameText: "text-destructive-foreground/90" };
+    if (isAdminView && pUserId === userId) { 
+       return { bg: "bg-destructive/80", text: "text-destructive-foreground", name: 'admin-self', ring: "ring-destructive", nameText: "text-destructive-foreground/90" };
+    }
+    if (pSenderType === 'admin') { // Admin messages seen by others
+      return { bg: "bg-destructive/70", text: "text-destructive-foreground", name: 'admin', ring: "ring-destructive", nameText: "text-destructive-foreground" };
     }
     if (pSenderType === 'bot') {
-      return { bg: "bg-accent/30", text: "text-accent-foreground", name: 'bot', ring: "ring-accent", nameText: "text-accent" };
-    }
-    if (pSenderType === 'admin') {
-      return { bg: "bg-destructive/30", text: "text-destructive-foreground", name: 'admin', ring: "ring-destructive", nameText: "text-destructive" };
+      return { bg: "bg-accent/60", text: "text-accent-foreground", name: 'bot', ring: "ring-accent", nameText: "text-accent-foreground/90" };
     }
     if (!pUserId) { 
         return participantColors[0];
@@ -329,11 +327,33 @@ export function ChatPageContent({
     return participantColors[colorIndex];
   };
 
+  const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files[0]) {
+      const file = event.target.files[0];
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
+        return;
+      }
+      setSelectedImageFile(file);
+      setImagePreviewUrl(URL.createObjectURL(file));
+    }
+  };
 
-  const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!newMessage.trim() || !userName || !userId || !userAvatarFallback) {
-      toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Nachricht ist leer oder Benutzerdaten fehlen." })
+  const handleRemoveSelectedImage = () => {
+    setSelectedImageFile(null);
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Reset file input
+    }
+  };
+
+  const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
+    if ((!newMessage.trim() && !selectedImageFile) || !userName || !userId || !userAvatarFallback) {
+      toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Nachricht oder Bild fehlt oder Benutzerdaten fehlen." })
       return;
     }
     if (sessionData?.status === "ended") {
@@ -344,14 +364,14 @@ export function ChatPageContent({
       toast({ variant: "destructive", title: "Sitzung pausiert", description: "Nachrichtenversand aktuell nicht möglich." });
       return;
     }
-    if (isMuted && !isAdminView) { // Admin kann immer senden
+    if (isMuted && !isAdminView) { 
       toast({ variant: "destructive", title: "Stummgeschaltet", description: "Sie wurden vom Admin stummgeschaltet." });
       return;
     }
 
     const now = Date.now();
     const cooldownMillis = (sessionData?.messageCooldownSeconds || 0) * 1000;
-    if (now - lastMessageSentAt < cooldownMillis && !isAdminView) { // Admin ignoriert Cooldown
+    if (now - lastMessageSentAt < cooldownMillis && !isAdminView && !selectedImageFile) { // Cooldown doesn't apply if sending image only
       const timeLeft = Math.ceil((cooldownMillis - (now - lastMessageSentAt)) / 1000);
       toast({
         variant: "default",
@@ -362,6 +382,33 @@ export function ChatPageContent({
       return;
     }
 
+    setIsUploadingImage(true); // Set uploading state
+
+    let uploadedImageUrl: string | undefined = undefined;
+    let uploadedImageFileName: string | undefined = undefined;
+
+    if (selectedImageFile) {
+      const file = selectedImageFile;
+      const imageFileName = `${file.name}_${Date.now()}`;
+      const imagePath = `chat_images/${sessionId}/${imageFileName}`;
+      const sRef = storageRef(storage, imagePath);
+
+      try {
+        const uploadTask = uploadBytesResumable(sRef, file);
+        
+        // It's better to await the upload completion directly
+        await uploadTask; 
+        uploadedImageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+        uploadedImageFileName = file.name;
+
+      } catch (error) {
+        console.error("Error uploading image: ", error);
+        toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: "Das Bild konnte nicht hochgeladen werden." });
+        setIsUploadingImage(false);
+        return;
+      }
+    }
+
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const messageData: Omit<MessageType, 'id'> = {
       senderUserId: userId,
@@ -370,6 +417,8 @@ export function ChatPageContent({
       avatarFallback: userAvatarFallback,
       content: newMessage.trim(),
       timestamp: serverTimestamp(),
+      ...(uploadedImageUrl && { imageUrl: uploadedImageUrl }),
+      ...(uploadedImageFileName && { imageFileName: uploadedImageFileName }),
     };
 
     if (replyingTo) {
@@ -383,11 +432,14 @@ export function ChatPageContent({
       setNewMessage("");
       setReplyingTo(null); 
       setQuotingMessage(null); 
+      handleRemoveSelectedImage(); // Clear image selection after sending
       if (!isAdminView) setLastMessageSentAt(Date.now());
       setShowEmojiPicker(false); 
     } catch (error) {
       console.error("Error sending message: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Nachricht konnte nicht gesendet werden." });
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -424,7 +476,7 @@ export function ChatPageContent({
     setNewMessage(prev => prev + emoji);
   };
 
-  if (isLoading && !isAdminView) { // Im AdminView nicht den vollen Ladebildschirm zeigen, da es eingebettet ist
+  if (isLoading && !isAdminView) { 
     return (
       <div className="flex h-screen w-full items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -435,18 +487,16 @@ export function ChatPageContent({
     );
   }
   
-  // Ladezustand für Admin-Ansicht, falls SessionData noch nicht da ist
   if (isAdminView && (!sessionData || !currentScenario)) {
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
 
-
   const isSessionActive = sessionData?.status === "active";
   const canSendBasedOnStatusAndMute = isAdminView || (isSessionActive && !isMuted);
-  const canSendMessage = canSendBasedOnStatusAndMute && (isAdminView || cooldownRemainingSeconds <= 0);
+  const canSendMessage = canSendBasedOnStatusAndMute && (isAdminView || cooldownRemainingSeconds <= 0) && !isUploadingImage;
 
   let sessionStatusMessage = "";
-  let inputPlaceholderText = "Nachricht eingeben...";
+  let inputPlaceholderText = isUploadingImage ? "Bild wird hochgeladen..." : "Nachricht eingeben...";
 
   if (sessionData?.status === "ended") {
     sessionStatusMessage = "Diese Simulation wurde vom Administrator beendet.";
@@ -499,7 +549,7 @@ export function ChatPageContent({
                 <ScrollArea className="h-[calc(100%-80px)]">
                   <div className="space-y-3">
                     {participants.map((p) => {
-                      const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
+                      const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : (p.userId === initialUserId && isAdminView ? 'admin' : 'user')));
                       return (
                         <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
                           <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
@@ -510,6 +560,7 @@ export function ChatPageContent({
                             <p className="text-sm font-medium">
                               {p.name}
                               {p.isBot && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">BOT</Badge>}
+                               {(p.userId === initialUserId && isAdminView) && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">ADMIN</Badge>}
                               {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                             </p>
                             <p className="text-xs text-muted-foreground">{p.role}</p>
@@ -570,7 +621,7 @@ export function ChatPageContent({
                   </div>
                 </CardHeader>
                 <CardContent className="p-3 pt-0">
-                  <ScrollArea className="h-48 text-xs"> 
+                  <ScrollArea className="h-60 text-xs"> 
                       <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                           {currentScenario.langbeschreibung}
                       </CardDescription>
@@ -604,6 +655,7 @@ export function ChatPageContent({
                           >
                             {msg.senderName}
                             {msg.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", msg.isOwn ? "border-primary-foreground/50 text-primary-foreground/80" : "border-accent/50 text-accent")}>BOT</Badge>}
+                            {msg.senderType === 'admin' && !msg.isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1 py-0")}>ADMIN</Badge>}
                           </button>
                           <span className={`text-xs ${msg.isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{msg.timestampDisplay}</span>
                         </div>
@@ -619,7 +671,21 @@ export function ChatPageContent({
                             </div>
                           </div>
                         )}
-                        <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                        {msg.imageUrl && (
+                          <div className="my-2">
+                            <Image 
+                              src={msg.imageUrl} 
+                              alt={msg.imageFileName || "Hochgeladenes Bild"} 
+                              width={300} 
+                              height={200} 
+                              className="rounded-md object-cover cursor-pointer"
+                              onClick={() => window.open(msg.imageUrl, '_blank')}
+                              data-ai-hint="chat image"
+                            />
+                             {msg.imageFileName && <p className="text-xs opacity-70 mt-1">{msg.imageFileName}</p>}
+                          </div>
+                        )}
+                        {msg.content && <p className="text-sm whitespace-pre-wrap">{msg.content}</p>}
                         <div className="flex items-center gap-1 mt-1.5">
                           {!msg.isOwn && (
                             <>
@@ -637,10 +703,12 @@ export function ChatPageContent({
                         </div>
                       </CardContent>
                     </div>
-                    {msg.isOwn && userName && userAvatarFallback && userId && (
-                       <Avatar className={cn("h-10 w-10 border-2 self-end", isAdminView ? getParticipantColorClasses(userId, 'admin').ring : getParticipantColorClasses(userId, 'user').ring)}>
+                     {msg.isOwn && userName && userAvatarFallback && userId && (
+                       <Avatar className={cn("h-10 w-10 border-2 self-end", isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').ring : getParticipantColorClasses(userId, 'user').ring)}>
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                        <AvatarFallback className={`${isAdminView ? getParticipantColorClasses(userId, 'admin').bg : getParticipantColorClasses(userId, 'user').bg} ${isAdminView ? getParticipantColorClasses(userId, 'admin').text : getParticipantColorClasses(userId, 'user').text}`}>{userAvatarFallback}</AvatarFallback>
+                        <AvatarFallback className={`${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').bg : getParticipantColorClasses(userId, 'user').bg} ${isAdminView && msg.senderType === 'admin' ? getParticipantColorClasses(userId, 'admin').text : getParticipantColorClasses(userId, 'user').text}`}>
+                           {msg.senderType === 'admin' && isAdminView ? "AD" : userAvatarFallback}
+                        </AvatarFallback>
                       </Avatar>
                     )}
                   </div>
@@ -684,6 +752,18 @@ export function ChatPageContent({
                 </Button>
               </div>
             )}
+            {imagePreviewUrl && (
+              <div className="mb-2 p-2 border rounded-md bg-muted/50 flex items-center gap-2">
+                <Image src={imagePreviewUrl} alt="Vorschau" width={60} height={60} className="rounded-md object-cover" data-ai-hint="image preview"/>
+                <div className="flex-1 text-sm text-muted-foreground">
+                  <p className="font-semibold">{selectedImageFile?.name}</p>
+                  <p>{selectedImageFile ? (selectedImageFile.size / 1024).toFixed(1) : 0} KB</p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={handleRemoveSelectedImage} className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
             {!canSendBasedOnStatusAndMute && sessionStatusMessage && (
               <Alert variant={sessionData?.status === "ended" || (isMuted && !isAdminView) ? "destructive" : "default"} className="mb-2">
                 {sessionData?.status === "paused" ? <PauseCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
@@ -696,54 +776,51 @@ export function ChatPageContent({
               </Alert>
             )}
             <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
-              {!isAdminView && (
-                <>
-                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Anhang (noch nicht implementiert)"})}>
-                  <Paperclip className="h-5 w-5" />
-                </Button>
+              <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" />
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading || isUploadingImage} onClick={() => fileInputRef.current?.click()}>
+                <Paperclip className="h-5 w-5" />
+              </Button>
 
-                <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading}>
-                      <Smile className="h-5 w-5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
-                    <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-                      <TabsList className="grid w-full grid-cols-5 h-auto p-1">
-                        {emojiCategories.map(category => (
-                          <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
-                            {category.icon}
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
+              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading || isUploadingImage}>
+                    <Smile className="h-5 w-5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
+                  <Tabs defaultValue={emojiCategories[0].name} className="w-full">
+                    <TabsList className="grid w-full grid-cols-5 h-auto p-1">
                       {emojiCategories.map(category => (
-                        <TabsContent key={category.name} value={category.name} className="mt-0">
-                          <ScrollArea className="h-48">
-                            <div className="grid grid-cols-8 gap-0.5 p-2">
-                              {category.emojis.map(emoji => (
-                                <Button
-                                  key={emoji}
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-xl p-0 h-8 w-8"
-                                  onClick={() => {
-                                    handleEmojiSelect(emoji);
-                                  }}
-                                >
-                                  {emoji}
-                                </Button>
-                              ))}
-                            </div>
-                          </ScrollArea>
-                        </TabsContent>
+                        <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
+                          {category.icon}
+                        </TabsTrigger>
                       ))}
-                    </Tabs>
-                  </PopoverContent>
-                </Popover>
-                </>
-              )}
-
+                    </TabsList>
+                    {emojiCategories.map(category => (
+                      <TabsContent key={category.name} value={category.name} className="mt-0">
+                        <ScrollArea className="h-48">
+                          <div className="grid grid-cols-8 gap-0.5 p-2">
+                            {category.emojis.map(emoji => (
+                              <Button
+                                key={emoji}
+                                variant="ghost"
+                                size="icon"
+                                className="text-xl p-0 h-8 w-8"
+                                onClick={() => {
+                                  handleEmojiSelect(emoji);
+                                }}
+                              >
+                                {emoji}
+                              </Button>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </TabsContent>
+                    ))}
+                  </Tabs>
+                </PopoverContent>
+              </Popover>
+              
               <Input
                 ref={inputRef}
                 id="message-input"
@@ -752,15 +829,13 @@ export function ChatPageContent({
                 className="flex-1 text-base"
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                disabled={!canSendMessage || isLoading}
+                disabled={!canSendMessage || isLoading || isUploadingImage}
               />
-               {!isAdminView && (
-                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
-                  <Mic className="h-5 w-5" />
-                </Button>
-               )}
-              <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!canSendMessage || !newMessage.trim() || isLoading} aria-label="Senden">
-                <Send className="h-5 w-5" />
+              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!canSendMessage || isLoading || isUploadingImage} onClick={() => toast({title: "Spracheingabe (noch nicht implementiert)"})}>
+                <Mic className="h-5 w-5" />
+              </Button>
+              <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={!canSendMessage || (!newMessage.trim() && !selectedImageFile) || isLoading || isUploadingImage} aria-label="Senden">
+                {isUploadingImage ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
               </Button>
             </form>
             {cooldownRemainingSeconds > 0 && canSendBasedOnStatusAndMute && !isAdminView &&(
@@ -776,9 +851,8 @@ export function ChatPageContent({
   );
 }
 
-// Hauptkomponente, die die Props für ChatPageContent vorbereitet
-export default function ChatPage({ params }: ChatPageProps) {
-  const sessionId = params.sessionId;
+export default function ChatPage({ params }: { params: ChatPageProps }) {
+  const { sessionId } = params;
 
   return (
     <Suspense fallback={
@@ -793,5 +867,3 @@ export default function ChatPage({ params }: ChatPageProps) {
     </Suspense>
   );
 }
-
-    
