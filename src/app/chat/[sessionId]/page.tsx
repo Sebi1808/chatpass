@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle } from "lucide-react"; 
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus } from "lucide-react"; 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useRouter } from "next/navigation"; 
@@ -24,6 +24,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timest
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 
 interface ChatPageProps {
@@ -44,15 +45,15 @@ interface DisplayParticipant extends ParticipantType {
    id: string; 
 }
 
-const chatBubbleColors = [
-  { bg: "bg-[hsl(var(--chart-1))]", text: "text-primary-foreground" }, // More vibrant blue, ensure text is light
-  { bg: "bg-[hsl(var(--chart-2))]", text: "text-primary-foreground" }, // Greenish, ensure text is light
-  { bg: "bg-[hsl(var(--chart-3))]", text: "text-primary-foreground" }, // Orangeish, text black (primary-foreground is black)
-  { bg: "bg-[hsl(var(--chart-4))]", text: "text-primary-foreground" }, // Purplish, ensure text is light
-  { bg: "bg-[hsl(var(--chart-5))]", text: "text-primary-foreground" }, // Pinkish/reddish, ensure text is light
-  { bg: "bg-teal-700", text: "text-teal-50" },
-  { bg: "bg-indigo-600", text: "text-indigo-50" },
-  { bg: "bg-pink-700", text: "text-pink-50" },
+const participantColors = [
+  { name: 'sky', bg: "bg-sky-600", text: "text-sky-50", ring: "ring-sky-500" },
+  { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", ring: "ring-emerald-500" },
+  { name: 'violet', bg: "bg-violet-600", text: "text-violet-50", ring: "ring-violet-500" },
+  { name: 'rose', bg: "bg-rose-600", text: "text-rose-50", ring: "ring-rose-500" },
+  { name: 'amber', bg: "bg-amber-600", text: "text-amber-50", ring: "ring-amber-500" },
+  { name: 'teal', bg: "bg-teal-600", text: "text-teal-50", ring: "ring-teal-500" },
+  { name: 'indigo', bg: "bg-indigo-600", text: "text-indigo-50", ring: "ring-indigo-500" },
+  { name: 'fuchsia', bg: "bg-fuchsia-600", text: "text-fuchsia-50", ring: "ring-fuchsia-500" },
 ];
 
 // Simple hash function to get a color index consistently for a user
@@ -65,6 +66,8 @@ const simpleHash = (str: string): number => {
   }
   return Math.abs(hash);
 };
+
+const basicEmojis = ['😀', '😂', '👍', '❤️', '🙏', '😢', '😮', '🤔', '🎉', '🔥'];
 
 
 function ChatPageContent({ sessionId }: ChatPageContentProps) { 
@@ -88,6 +91,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
   const [isLoading, setIsLoading] = useState(true); 
   const [isChatDataLoading, setIsChatDataLoading] = useState(true);
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
 
   useEffect(() => {
@@ -185,8 +189,8 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
 
     const unsubscribe = onSnapshot(q_participants, (querySnapshot) => {
       const fetchedParticipants: DisplayParticipant[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedParticipants.push({ id: doc.id, ...doc.data() } as DisplayParticipant);
+      querySnapshot.forEach((docSn) => {
+        fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as DisplayParticipant);
       });
       setParticipants(fetchedParticipants);
       setIsChatDataLoading(false); 
@@ -269,15 +273,15 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
   
-  const getParticipantColorClasses = (senderUserId: string, senderType: 'admin' | 'user' | 'bot'): {bg: string, text: string} => {
+  const getParticipantColorClasses = (senderUserId: string, senderType: 'admin' | 'user' | 'bot'): {bg: string, text: string, name: string, ring: string} => {
     if (senderType === 'bot') {
-      return { bg: "bg-accent/20", text: "text-accent-foreground" }; // Specific style for bots
+      return { bg: "bg-accent/30", text: "text-accent-foreground", name: 'bot', ring: "ring-accent" }; 
     }
     if (senderType === 'admin') {
-      return { bg: "bg-destructive/20", text: "text-destructive-foreground" }; // Specific style for admin
+      return { bg: "bg-destructive/30", text: "text-destructive-foreground", name: 'admin', ring: "ring-destructive" }; 
     }
-    const colorIndex = simpleHash(senderUserId) % chatBubbleColors.length;
-    return chatBubbleColors[colorIndex];
+    const colorIndex = simpleHash(senderUserId) % participantColors.length;
+    return participantColors[colorIndex];
   };
 
 
@@ -335,6 +339,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
       setNewMessage("");
       setReplyingTo(null); // Clear reply state
       setLastMessageSentAt(Date.now());
+      setShowEmojiPicker(false); // Close emoji picker after sending
     } catch (error) {
       console.error("Error sending message: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Nachricht konnte nicht gesendet werden." });
@@ -347,6 +352,10 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
 
   const handleCancelReply = () => {
     setReplyingTo(null);
+  };
+
+  const handleEmojiSelect = (emoji: string) => {
+    setNewMessage(prev => prev + emoji);
   };
   
   if (isLoading || !currentScenario || !userId || !sessionData) { 
@@ -396,7 +405,9 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               <>
                 <Avatar className="h-8 w-8 border hidden sm:flex">
                     <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user"/>
-                    <AvatarFallback>{userAvatarFallback}</AvatarFallback>
+                    <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
+                        {userAvatarFallback}
+                    </AvatarFallback>
                 </Avatar>
                 <span className="text-sm font-medium hidden sm:inline truncate max-w-[100px]">
                   {userName}
@@ -415,18 +426,21 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 </SheetHeader>
                 <ScrollArea className="h-[calc(100%-60px)]">
                   <div className="space-y-3">
-                    {participants.map((p) => (
-                      <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                        <Avatar className="h-9 w-9 border">
-                          <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                          <AvatarFallback>{p.avatarFallback}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="text-sm font-medium">{p.name} {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
-                          <p className="text-xs text-muted-foreground">{p.role} {p.isBot ? <BotIcon className="inline h-3 w-3" /> : <User className="inline h-3 w-3" />}</p>
+                    {participants.map((p) => {
+                      const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
+                      return (
+                        <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
+                          <Avatar className="h-9 w-9 border">
+                            <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
+                            <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="text-sm font-medium">{p.name} {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
+                            <p className="text-xs text-muted-foreground">{p.role} {p.isBot ? <BotIcon className="inline h-3 w-3" /> : <User className="inline h-3 w-3" />}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               </SheetContent>
@@ -441,18 +455,21 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
           <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
           <ScrollArea className="flex-1">
             <div className="space-y-3">
-              {participants.map((p) => (
-                <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
-                  <Avatar className="h-9 w-9 border">
-                    <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user"/>
-                    <AvatarFallback>{p.avatarFallback}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">{p.name} {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
-                     <p className="text-xs text-muted-foreground">{p.role} {p.isBot ? <BotIcon className="inline h-3 w-3" /> : <User className="inline h-3 w-3" />}</p>
+              {participants.map((p) => {
+                const pColor = getParticipantColorClasses(p.userId, p.senderType || (p.isBot ? 'bot' : 'user'));
+                return (
+                  <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
+                    <Avatar className="h-9 w-9 border">
+                      <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user"/>
+                      <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium">{p.name} {p.userId === userId && isMuted && <VolumeX className="inline h-3 w-3 text-destructive" />}</p>
+                       <p className="text-xs text-muted-foreground">{p.role} {p.isBot ? <BotIcon className="inline h-3 w-3" /> : <User className="inline h-3 w-3" />}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </ScrollArea>
           <Separator />
@@ -462,7 +479,9 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                 <div className="flex items-center gap-2">
                    <Avatar className="h-10 w-10 border">
                         <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
-                        <AvatarFallback>{userAvatarFallback}</AvatarFallback>
+                        <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
+                            {userAvatarFallback}
+                        </AvatarFallback>
                     </Avatar>
                     <div>
                         <CardTitle className="text-base">{userName}</CardTitle>
@@ -472,9 +491,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               </CardHeader>
               <CardContent className="p-3 pt-0 text-xs ">
                 <CardDescription className="max-h-24 overflow-y-auto text-muted-foreground border-l-2 border-primary pl-2 italic">
-                    {userRole.toLowerCase().includes("teilnehmer") && currentScenario.langbeschreibung}
-                    {userRole.toLowerCase().includes("bot") && "Sie sind ein Bot und nehmen aktiv an der Diskussion teil, basierend auf Ihrer programmierten Persönlichkeit."}
-                    {userRole.toLowerCase().includes("admin") && "Sie sind Admin und moderieren diese Diskussion."}
+                    {currentScenario.langbeschreibung}
                 </CardDescription>
               </CardContent>
             </Card>
@@ -486,16 +503,16 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
           <ScrollArea className="flex-1 p-4 md:p-6">
             <div className="space-y-6">
               {messages.map((msg) => {
-                  const bubbleColor = msg.isOwn ? {bg: "bg-primary", text: "text-primary-foreground"} : getParticipantColorClasses(msg.senderUserId, msg.senderType);
+                  const bubbleColor = msg.isOwn ? {bg: "bg-primary", text: "text-primary-foreground", name: 'own', ring: "ring-primary"} : getParticipantColorClasses(msg.senderUserId, msg.senderType);
                   return (
                     <div key={msg.id} className={`flex gap-3 ${msg.isOwn ? "justify-end" : "justify-start"}`}>
                       {!msg.isOwn && (
                         <Avatar className="h-10 w-10 border self-end">
                            <AvatarImage src={`https://placehold.co/40x40.png?text=${msg.avatarFallback}`} alt={msg.senderName} data-ai-hint="person user"/>
-                          <AvatarFallback>{msg.avatarFallback}</AvatarFallback>
+                          <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{msg.avatarFallback}</AvatarFallback>
                         </Avatar>
                       )}
-                      <div className={`max-w-xs md:max-w-md lg:max-w-lg rounded-lg shadow-md ${bubbleColor.bg} ${bubbleColor.text}`}>
+                      <div className={`max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md ${bubbleColor.bg} ${bubbleColor.text}`}>
                         <CardContent className="p-3">
                           <div className="flex items-center justify-between mb-1">
                             <span className={`text-xs font-semibold ${msg.isOwn ? "text-primary-foreground/80" : (msg.senderType === 'bot' ? 'text-accent' : 'opacity-80')}`}>
@@ -514,17 +531,23 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
                             </div>
                           )}
                           <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                           {!msg.isOwn && (
-                            <Button variant="ghost" size="icon" className={`mt-1 h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text}`} onClick={() => handleSetReply(msg)} aria-label="Antworten">
-                                <CornerDownLeft className="h-3.5 w-3.5" />
-                            </Button>
-                           )}
+                           <div className="flex items-center gap-1 mt-1.5">
+                             {!msg.isOwn && (
+                              <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => handleSetReply(msg)} aria-label="Antworten">
+                                  <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
+                              </Button>
+                             )}
+                             <Button variant="ghost" size="icon" className={`h-6 w-6 p-0 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={() => alert("Reagieren noch nicht implementiert")} aria-label="Reagieren">
+                                  <SmilePlus className="h-4 w-4" />
+                              </Button>
+                              {/* Weitere Aktionen wie Zitieren könnten hier folgen */}
+                           </div>
                         </CardContent>
                       </div>
                       {msg.isOwn && userName && userAvatarFallback && ( 
                         <Avatar className="h-10 w-10 border self-end">
                           <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
-                          <AvatarFallback>{userAvatarFallback}</AvatarFallback>
+                           <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{userAvatarFallback}</AvatarFallback>
                         </Avatar>
                       )}
                     </div>
@@ -548,7 +571,7 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
           </ScrollArea>
 
           {/* Message Input */}
-          <div className="border-t bg-background p-3 md:p-4">
+          <div className="border-t bg-background p-3 md:p-4 relative">
             {replyingTo && (
               <div className="mb-2 p-2 border rounded-md bg-muted/50 text-sm text-muted-foreground flex justify-between items-center">
                 <div>
@@ -574,9 +597,34 @@ function ChatPageContent({ sessionId }: ChatPageContentProps) {
               <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!canSendMessage || isLoading}>
                 <Paperclip className="h-5 w-5" />
               </Button>
-              <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading}>
-                <Smile className="h-5 w-5" />
-              </Button>
+              
+              <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+                <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!canSendMessage || isLoading}>
+                        <Smile className="h-5 w-5" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-2 mb-1" side="top" align="start">
+                    <div className="grid grid-cols-5 gap-1">
+                        {basicEmojis.map(emoji => (
+                            <Button
+                                key={emoji}
+                                variant="ghost"
+                                size="icon"
+                                className="text-xl p-1 h-8 w-8"
+                                onClick={() => {
+                                    handleEmojiSelect(emoji);
+                                    // Optional: Picker schließen nach Auswahl
+                                    // setShowEmojiPicker(false); 
+                                }}
+                            >
+                                {emoji}
+                            </Button>
+                        ))}
+                    </div>
+                </PopoverContent>
+              </Popover>
+
               <Input
                 type="text"
                 placeholder={inputPlaceholderText}
@@ -620,3 +668,4 @@ export default function ChatPage({ params }: ChatPageProps) {
     </Suspense>
   );
 }
+
