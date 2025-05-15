@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData } from "@/lib/types";
@@ -133,7 +133,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
           const updates: Partial<SessionData> = {};
           if (existingData.invitationLink !== baseLink && baseLink) updates.invitationLink = baseLink;
           if (!existingData.invitationToken) updates.invitationToken = generateToken();
-          if (existingData.scenarioId !== sessionId) updates.scenarioId = sessionId;
+          if (existingData.scenarioId !== sessionId) updates.scenarioId = sessionId; // Ensure scenarioId is correct
           if (typeof existingData.messageCooldownSeconds === 'undefined') updates.messageCooldownSeconds = DEFAULT_COOLDOWN;
           if (Object.keys(updates).length > 0) await updateDoc(sessionDocRef, updates);
         }
@@ -187,7 +187,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       console.log("initializeBotsForSession: Scenario data or bot config missing for scenario ID:", sId);
       return;
     }
-    console.log(`Initializing bots for scenario: ${scenarioToInit.title} (ID: ${sId})`);
+    console.log(`Initializing/syncing bots for scenario: ${scenarioToInit.title} (ID: ${sId})`);
     const scenarioBotsConfig = scenarioToInit.defaultBotsConfig || [];
     const participantsColRef = collection(db, "sessions", sId, "participants");
     const batch = writeBatch(db);
@@ -197,6 +197,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     const firestoreBotsMap = new Map(existingBotsSnap.docs.map(d => [d.data().botScenarioId, d.id]));
     const configBotScenarioIds = new Set(scenarioBotsConfig.map(bc => bc.id));
 
+    // Delete bots from Firestore that are no longer in the scenario config
     existingBotsSnap.docs.forEach(docSnap => {
       const botData = docSnap.data();
       if (botData.botScenarioId && !configBotScenarioIds.has(botData.botScenarioId)) {
@@ -205,48 +206,59 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
       }
     });
 
+    // Add or update bots based on scenario config
     for (const [index, botConfig] of scenarioBotsConfig.entries()) {
-      const botScenarioId = botConfig.id;
+      const botScenarioId = botConfig.id; // This ID comes from the Scenario's defaultBotsConfig
       if (!botScenarioId) {
         console.error("Bot config is missing a unique id:", botConfig);
         continue; 
       }
       const botDisplayName = getBotDisplayName(botConfig, scenarioBotsConfig.length, index);
-      const botParticipantData: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any } = {
-        userId: `bot-${botScenarioId}`,
+      
+      const botParticipantData: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any, botConfig: BotConfig } = {
+        userId: `bot-${botScenarioId}`, // Use botScenarioId for a stable userId
         name: botDisplayName,
         role: `Bot (${botConfig.personality || 'standard'})`,
         avatarFallback: botConfig.avatarFallback || (botConfig.personality || 'standard').substring(0, 2).toUpperCase(),
         isBot: true,
         status: "Aktiv", 
-        botConfig: {
-          ...botConfig,
+        botConfig: { // Store the full bot config from the scenario as the base
+          ...botConfig, // Spread the scenario's botConfig
           isActive: botConfig.isActive ?? true,
           currentEscalation: botConfig.currentEscalation ?? 0,
           autoTimerEnabled: botConfig.autoTimerEnabled ?? false,
           initialMission: botConfig.initialMission || "",
-          currentMission: botConfig.initialMission || "", 
+          currentMission: botConfig.initialMission || "", // Initialize currentMission with initialMission
         },
-        botScenarioId: botScenarioId,
+        botScenarioId: botScenarioId, // Link back to the scenario's bot config ID
       };
 
       const existingBotDocId = firestoreBotsMap.get(botScenarioId);
       if (!existingBotDocId) {
-        const newBotDocRef = doc(collection(db, "sessions", sId, "participants"));
+        // Bot doesn't exist in Firestore, add it
+        const newBotDocRef = doc(collection(db, "sessions", sId, "participants")); // Auto-generate Firestore doc ID
         batch.set(newBotDocRef, { ...botParticipantData, id: newBotDocRef.id, joinedAt: serverTimestamp() });
         console.log(`Adding new bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId}) to session ${sId}`);
       } else {
+        // Bot exists, update it, ensuring botConfig is correctly merged
         const botDocRef = doc(participantsColRef, existingBotDocId);
+        const existingBotData = existingBotsSnap.docs.find(d => d.id === existingBotDocId)?.data() as Participant | undefined;
+        
+        const updatedBotConfig = {
+            ...(existingBotData?.botConfig || {}), // Start with existing config in DB or empty object
+            ...botConfig, // Overlay with scenario config (for defaults like personality, initialMission)
+            // Explicitly keep certain runtime states if they exist, otherwise use scenario defaults
+            isActive: existingBotData?.botConfig?.isActive ?? botConfig.isActive ?? true,
+            currentEscalation: existingBotData?.botConfig?.currentEscalation ?? botConfig.currentEscalation ?? 0,
+            autoTimerEnabled: existingBotData?.botConfig?.autoTimerEnabled ?? botConfig.autoTimerEnabled ?? false,
+            currentMission: existingBotData?.botConfig?.currentMission ?? botConfig.initialMission ?? "",
+        };
+
         const updateData: Partial<Participant> & { [key: string]: any } = {
             name: botDisplayName,
             role: `Bot (${botConfig.personality || 'standard'})`,
             avatarFallback: botConfig.avatarFallback || (botConfig.personality || 'standard').substring(0, 2).toUpperCase(),
-            'botConfig.personality': botConfig.personality || 'standard',
-            'botConfig.isActive': botConfig.isActive ?? true,
-            'botConfig.currentEscalation': botConfig.currentEscalation ?? 0,
-            'botConfig.autoTimerEnabled': botConfig.autoTimerEnabled ?? false,
-            'botConfig.initialMission': botConfig.initialMission || "",
-            'botConfig.currentMission': botConfig.initialMission || "",
+            botConfig: updatedBotConfig, // Use the carefully merged botConfig
         };
         batch.update(botDocRef, updateData);
         console.log(`Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId}) in session ${sId}`);
@@ -254,15 +266,16 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     }
     try {
         await batch.commit();
-        console.log(`Bot initialization/update batch commit successful for session ${sId}.`);
+        console.log(`Bot initialization/sync batch commit successful for session ${sId}.`);
     } catch (e) {
-        console.error(`Error committing bot initialization batch for session ${sId}:`, e);
-        toast({ variant: "destructive", title: "Bot Fehler", description: "Bots konnten nicht initialisiert werden."});
+        console.error(`Error committing bot initialization/sync batch for session ${sId}:`, e);
+        toast({ variant: "destructive", title: "Bot Fehler", description: "Bots konnten nicht initialisiert/synchronisiert werden."});
     }
   }, [getBotDisplayName, toast]);
 
   useEffect(() => {
-    if (currentScenario && sessionId && !isLoadingScenario && sessionData && sessionData.status !== 'ended') {
+    if (currentScenario && sessionId && !isLoadingScenario && sessionData && (sessionData.status === 'active' || sessionData.status === 'paused')) {
+      // Initialize or sync bots only if scenario is loaded and session is not ended
       initializeBotsForSession(currentScenario, sessionId);
     }
   }, [currentScenario, sessionId, isLoadingScenario, sessionData, initializeBotsForSession]);
@@ -271,23 +284,22 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    // Query without composite index for now, sort client-side
-    const participantsQuery = query(participantsColRef, orderBy("joinedAt", "asc"));
+    const participantsQuery = query(participantsColRef, orderBy("isBot", "desc"), orderBy("joinedAt", "asc")); // Bots first, then by join time
     
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
-      
-      // Client-side sorting: bots first, then by joinedAt (which is already Firestore-sorted)
-      fetchedParticipants.sort((a, b) => {
-        if (a.isBot && !b.isBot) return -1;
-        if (!a.isBot && b.isBot) return 1;
-        return 0; // Keep original joinedAt order for same types
-      });
-
       setSessionParticipants(fetchedParticipants);
+      
+      // Update local botMissions state based on Firestore currentMission for each bot
+      const newBotMissions: Record<string, string> = {};
+      fetchedParticipants.filter(p => p.isBot && p.botConfig).forEach(bot => {
+        newBotMissions[bot.id] = bot.botConfig!.currentMission || bot.botConfig!.initialMission || "";
+      });
+      setBotMissions(newBotMissions);
+
       setIsLoadingParticipants(false);
     }, (error) => {
       console.error("Error fetching participants: ", error);
@@ -327,9 +339,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
   }, [sessionId, showParticipantMirrorView, toast]);
 
   useEffect(() => {
-    if (!showParticipantMirrorView && adminChatPreviewEndRef.current) {
-      // Admin preview does not auto-scroll unless explicitly requested
-    }
+    // No auto-scroll for admin preview unless explicitly requested
   }, [chatMessages, showParticipantMirrorView]);
 
 
@@ -522,9 +532,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     try {
       await updateDoc(botDocRef, { "botConfig.isActive": !currentActiveStatus });
       toast({ title: `Bot ${!currentActiveStatus ? 'aktiviert' : 'deaktiviert'}` });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error toggling bot active state: ", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Bot-Status konnte nicht geändert werden." });
+      toast({ variant: "destructive", title: "Fehler", description: `Bot-Status konnte nicht geändert werden: ${error.message}` });
     }
   },[sessionId, sessionData, toast]);
 
@@ -540,9 +550,10 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
 
     try {
       await updateDoc(botDocRef, { "botConfig.currentEscalation": newEscalation });
-    } catch (error) {
+      // Toast not needed, UI updates via onSnapshot
+    } catch (error: any) {
       console.error("Error changing bot escalation: ", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Bot-Eskalation konnte nicht geändert werden." });
+      toast({ variant: "destructive", title: "Fehler", description: `Bot-Eskalation konnte nicht geändert werden: ${error.message}` });
     }
   }, [sessionId, sessionData, sessionParticipants, toast]);
 
@@ -552,9 +563,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     try {
       await updateDoc(botDocRef, { "botConfig.autoTimerEnabled": !currentAutoTimerStatus });
       toast({ title: `Bot Auto-Timer ${!currentAutoTimerStatus ? 'aktiviert' : 'deaktiviert'}` });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error toggling bot auto-timer: ", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Bot Auto-Timer konnte nicht geändert werden." });
+      toast({ variant: "destructive", title: "Fehler", description: `Bot Auto-Timer konnte nicht geändert werden: ${error.message}` });
     }
   }, [sessionId, sessionData, toast]);
 
@@ -562,16 +573,21 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     setBotMissions(prev => ({ ...prev, [botParticipantId]: mission }));
   }, []);
 
-  const handleUpdateBotMissionInFirestore = useCallback(async (botParticipantId: string, mission: string) => {
+  const handleUpdateBotMissionInFirestore = useCallback(async (botParticipantId: string) => {
     if (!sessionId) return;
+    const missionToSave = botMissions[botParticipantId];
+    if (typeof missionToSave === 'undefined') return; // Should not happen if called onBlur from a controlled input
+
     const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipantId);
     try {
-      await updateDoc(botDocRef, { "botConfig.currentMission": mission });
-    } catch (error) {
+      await updateDoc(botDocRef, { "botConfig.currentMission": missionToSave });
+      // Toast for mission save is optional, can be noisy. UI will update via onSnapshot.
+      // toast({ title: "Bot-Mission gespeichert", description: "Die Anweisung für den Bot wurde aktualisiert."});
+    } catch (error: any) {
       console.error("Error updating bot mission in Firestore: ", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Bot-Mission konnte nicht gespeichert werden." });
+      toast({ variant: "destructive", title: "Fehler Bot-Mission", description: `Bot-Mission konnte nicht gespeichert werden: ${error.message}` });
     }
-  }, [sessionId, toast]);
+  }, [sessionId, toast, botMissions]);
 
 
   const handlePostForBot = useCallback(async (botParticipant: Participant) => {
@@ -580,15 +596,13 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         return;
     }
     setIsPostingForBot(botParticipant.id);
-
-    const missionForThisPost = botMissions[botParticipant.id] || botParticipant.botConfig.currentMission || botParticipant.botConfig.initialMission || "";
-    if (botMissions[botParticipant.id] && botMissions[botParticipant.id] !== botParticipant.botConfig.currentMission) {
-        await handleUpdateBotMissionInFirestore(botParticipant.id, botMissions[botParticipant.id]);
-    }
+    
+    // Use the mission from botConfig.currentMission (which should be synced from Firestore)
+    const missionForThisPost = botParticipant.botConfig.currentMission || botParticipant.botConfig.initialMission || "";
 
     try {
       const chatHistoryMessages = chatMessages
-        .slice(-10)
+        .slice(-10) // Take last 10 messages for context
         .map(msg => `${msg.senderName}: ${msg.content}`)
         .join('\n');
 
@@ -604,18 +618,19 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const newMessageData: MessageType = {
-        id: '', // Firestore will generate this
+        id: '', 
         senderUserId: botParticipant.userId,
         senderName: botParticipant.name,
         senderType: 'bot',
         avatarFallback: botParticipant.avatarFallback,
         content: botResponse.message,
         timestamp: serverTimestamp(),
-        botFlag: !!botResponse.bot_flag,
+        botFlag: !!botResponse.bot_flag, // Convert to boolean
         reactions: {},
       };
       await addDoc(messagesColRef, newMessageData);
 
+      // Update bot's escalation level in Firestore if it changed
       if (typeof botResponse.escalationLevel === 'number' && botResponse.escalationLevel !== botParticipant.botConfig.currentEscalation) {
         const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipant.id);
         await updateDoc(botDocRef, { "botConfig.currentEscalation": botResponse.escalationLevel });
@@ -628,7 +643,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     } finally {
       setIsPostingForBot(null);
     }
-  }, [sessionId, currentScenario, sessionData, chatMessages, botMissions, toast, handleUpdateBotMissionInFirestore]);
+  }, [sessionId, currentScenario, sessionData, chatMessages, toast]);
 
 
   const handleRemoveParticipant = useCallback(async (participantId: string) => {
@@ -950,6 +965,19 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                   <div ref={adminChatPreviewEndRef} />
                 </CardContent>
               </Card>
+              
+              <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center"><Wand2 className="mr-2 h-5 w-5 text-primary" /> Ereignis-Steuerung (Zukunft)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                        Hier können Sie bald vordefinierte oder spontane Ereignisse in die laufende Simulation einfügen,
+                        um die Dynamik zu beeinflussen oder spezifische Lernziele zu testen.
+                        (z.B. "Neue Fake News posten", "Account eines Teilnehmers wird 'gehackt'", "Plötzliche positive Wendung").
+                    </p>
+                </CardContent>
+              </Card>
 
               <Card>
                 <CardHeader>
@@ -1132,7 +1160,8 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                      const botIsActive = botConfig.isActive ?? true;
                      const botEscalation = botConfig.currentEscalation ?? 0;
                      const botAutoTimer = botConfig.autoTimerEnabled ?? false;
-                     const currentBotMission = botMissions[botParticipant.id] || botConfig.currentMission || botConfig.initialMission || "";
+                     // Use botMissions for the input field's value to allow local editing before blur
+                     const currentBotMissionForInput = botMissions[botParticipant.id] ?? botConfig.currentMission ?? botConfig.initialMission ?? "";
 
                     return (
                       <div key={botParticipant.id} className="p-3 border rounded-lg space-y-3">
@@ -1166,9 +1195,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                           <Input
                             id={`mission-${botParticipant.id}`}
                             type="text"
-                            value={currentBotMission}
+                            value={currentBotMissionForInput}
                             onChange={(e) => handleBotMissionChange(botParticipant.id, e.target.value)}
-                            onBlur={() => handleUpdateBotMissionInFirestore(botParticipant.id, currentBotMission)}
+                            onBlur={() => handleUpdateBotMissionInFirestore(botParticipant.id)}
                             placeholder="z.B. Frage nach Quellen..."
                             className="mt-1 text-xs h-8"
                             disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !botIsActive}
@@ -1176,7 +1205,12 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                         </div>
                         <div className="flex items-center space-x-2 pt-1">
                           <Label htmlFor={`autotimer-bot-${botParticipant.id}`} className="text-xs">Auto-Timer</Label>
-                          <Switch id={`autotimer-bot-${botParticipant.id}`} checked={botAutoTimer} disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !botIsActive} onCheckedChange={() => handleBotAutoTimerToggle(botParticipant.id, botAutoTimer)}/>
+                          <Switch 
+                            id={`autotimer-bot-${botParticipant.id}`} 
+                            checked={botAutoTimer} 
+                            disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !botIsActive} 
+                            onCheckedChange={() => handleBotAutoTimerToggle(botParticipant.id, botAutoTimer)}
+                          />
                         </div>
                       </div>
                     );
