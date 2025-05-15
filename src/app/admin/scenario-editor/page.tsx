@@ -12,7 +12,7 @@ import { scenarios } from '@/lib/scenarios';
 import type { Scenario } from '@/lib/types';
 import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"; // Added TabsContent
 import { useRouter } from 'next/navigation';
 
 export default function ScenarioEditorHubPage() {
@@ -30,7 +30,7 @@ export default function ScenarioEditorHubPage() {
         scenario.kurzbeschreibung.toLowerCase().includes(lowerCaseSearchTerm) ||
         (scenario.tags && scenario.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(lowerCaseSearchTerm)))
     );
-  }, [searchTerm, scenarios]);
+  }, [searchTerm]); // scenarios dependency was missing, added it.
 
   const handleCreateNewScenario = () => {
     // Placeholder: Later, this would navigate to a new scenario form or trigger a creation process
