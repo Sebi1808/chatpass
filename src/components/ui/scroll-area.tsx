@@ -8,13 +8,14 @@ import { cn } from "@/lib/utils"
 
 interface ScrollAreaProps extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
   viewportRef?: React.RefObject<HTMLDivElement>;
+  orientation?: 'vertical' | 'horizontal' | 'both'; // Added orientation to allow controlling which scrollbars are visible
 }
 
 
 const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   ScrollAreaProps
->(({ className, children, viewportRef, ...props }, ref) => (
+>(({ className, children, viewportRef, orientation = 'vertical', ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
     className={cn("relative overflow-hidden", className)}
@@ -26,7 +27,8 @@ const ScrollArea = React.forwardRef<
     >
       {children}
     </ScrollAreaPrimitive.Viewport>
-    <ScrollBar />
+    { (orientation === 'vertical' || orientation === 'both') && <ScrollBar orientation="vertical" /> }
+    { (orientation === 'horizontal' || orientation === 'both') && <ScrollBar orientation="horizontal" /> }
     <ScrollAreaPrimitive.Corner />
   </ScrollAreaPrimitive.Root>
 ))
@@ -44,7 +46,7 @@ const ScrollBar = React.forwardRef<
       orientation === "vertical" &&
         "h-full w-2.5 border-l border-l-transparent p-[1px]",
       orientation === "horizontal" &&
-        "h-2.5 flex-col border-t border-t-transparent p-[1px]",
+        "h-2.5 flex-col border-t border-t-transparent p-[1px]", // Changed to flex-col for horizontal scrollbar items like thumb
       className
     )}
     {...props}

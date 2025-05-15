@@ -7,6 +7,7 @@ export interface Scenario {
   title: string;
   kurzbeschreibung: string;
   langbeschreibung: string;
+  lernziele?: string[]; // Added for scenario editor
   defaultBots: number;
   standardRollen: number; // Gesamtzahl der Rollen inkl. Bots
   iconName: string;
@@ -15,19 +16,20 @@ export interface Scenario {
 }
 
 export interface BotConfig {
-  id: string; // Eindeutige ID für den Bot innerhalb des Szenarios, z.B. "provokateur-01"
+  id: string; 
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   name?: string;
   avatarFallback?: string;
-  currentEscalation?: number;
-  isActive?: boolean;
-  autoTimerEnabled?: boolean;
-  currentMission?: string;
+  currentEscalation?: number; // Default or initial escalation level
+  isActive?: boolean; // Whether the bot is active by default in a session
+  autoTimerEnabled?: boolean; // For future auto-posting feature
+  initialMission?: string; // An initial mission/prompt for the bot from scenario config
+  currentMission?: string; // For admin to override or set a new mission during a session
 }
 
 export interface SessionData {
   scenarioId: string;
-  createdAt: Timestamp | Date; // Firestore serverTimestamp on creation
+  createdAt: Timestamp | Date; 
   invitationLink: string;
   invitationToken?: string;
   status: "active" | "paused" | "ended";
@@ -35,38 +37,38 @@ export interface SessionData {
 }
 
 export interface Participant {
-  id: string; // Firestore document ID
-  userId: string; // Eindeutige ID des Benutzers (kann generiert werden)
+  id: string; 
+  userId: string; 
   name: string;
   role: string;
   avatarFallback: string;
   isBot: boolean;
-  joinedAt?: Timestamp | Date; // Firestore serverTimestamp on join
+  joinedAt?: Timestamp | Date; 
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
   isMuted?: boolean;
-  botConfig?: BotConfig; // Nur für Bot-Teilnehmer relevant
-  botScenarioId?: string; // ID der Bot-Konfiguration aus dem Szenario
+  botConfig?: BotConfig; 
+  botScenarioId?: string; 
 }
 
 export interface DisplayParticipant extends Participant {
-  // Vorerst keine zusätzlichen Felder benötigt
+  // Potentially add UI-specific participant properties here if needed later
 }
 
 export interface Message {
-  id: string; // Firestore document ID
+  id: string; 
   senderUserId: string;
   senderName: string;
   senderType: 'admin' | 'user' | 'bot';
   avatarFallback: string;
   content: string;
-  timestamp: Timestamp | Date | null; // Kann null sein, bevor der Server-Timestamp gesetzt wird
+  timestamp: Timestamp | Date | null; 
   replyToMessageId?: string;
   replyToMessageContentSnippet?: string;
   replyToMessageSenderName?: string;
   botFlag?: boolean;
   imageUrl?: string;
   imageFileName?: string;
-  reactions?: { [emoji: string]: string[] }; // Emoji-String als Key, Array von UserIDs als Value
+  reactions?: { [emoji: string]: string[] }; 
 }
 
 export interface DisplayMessage extends Message {
