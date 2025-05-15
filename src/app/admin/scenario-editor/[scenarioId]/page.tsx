@@ -14,14 +14,13 @@ import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
 import { humanRoleTemplates } from '@/lib/role-templates';
-import { useEffect, useState, type FormEvent } from 'react';
+import React, { useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { tagTaxonomy } from '@/lib/tag-taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-// import Image from 'next/image'; // Image component from next/image if needed for preview
 
 const availableIcons = [
     { value: 'ShieldAlert', label: '🛡️ ShieldAlert' },
@@ -59,8 +58,7 @@ export default function EditScenarioPage() {
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagsInput, setTagsInput] = useState(''); // For comma-separated tag input
-
+  
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
 
@@ -80,7 +78,6 @@ export default function EditScenarioPage() {
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
         setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
         setSelectedTags(foundScenario.tags || []);
-        setTagsInput(foundScenario.tags?.join(', ') || '');
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
       } else {
@@ -95,9 +92,10 @@ export default function EditScenarioPage() {
     setIsLoading(false);
   }, [scenarioId, toast]);
 
-  const handleBotConfigChange = (index: number, field: keyof BotConfig, value: any) => {
+  const handleBotConfigChange = (index: number, field: keyof BotConfig | `botConfig.${string}`, value: any) => {
     const updatedBots = [...editableBotsConfig];
     if (updatedBots[index]) {
+        // Handle nested botConfig properties if needed, though current BotConfig is flat for these fields
         (updatedBots[index] as any)[field] = value;
         setEditableBotsConfig(updatedBots);
     }
@@ -121,7 +119,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableBotsConfig([...editableBotsConfig, {
         ...template,
-        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for the instance
+        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
       }]);
     }
   };
@@ -152,7 +150,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableHumanRoles([...editableHumanRoles, {
         ...template,
-        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for the instance
+        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       }]);
     }
   };
@@ -186,16 +184,13 @@ export default function EditScenarioPage() {
       tags: selectedTags,
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
-      defaultBots: editableBotsConfig.length, // Dynamically calculate based on current config
-      standardRollen: editableBotsConfig.length + editableHumanRoles.length, // Dynamically calculate
+      defaultBots: editableBotsConfig.length, 
+      standardRollen: editableBotsConfig.length + editableHumanRoles.length, 
     };
 
-    // Simulate saving
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
-    // In a real app, you would save this to a database.
-    // For now, just show a toast.
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -235,7 +230,6 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      {/* Sticky Top Action Bar */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
@@ -258,7 +252,6 @@ export default function EditScenarioPage() {
         </div>
       </div>
 
-      {/* Sticky Shortcut Navigation Bar */}
       <div className="sticky top-[calc(theme(spacing.16)_-_45px)] md:top-[calc(theme(spacing.16)_-_49px)] lg:top-[calc(theme(spacing.16)_-_49px)] z-10 bg-background/90 backdrop-blur-sm border-b px-2 sm:px-4 py-2 mb-6">
         <div className="flex items-center space-x-1 max-w-full overflow-x-auto whitespace-nowrap">
           {editorSections.map(section => (
@@ -273,22 +266,21 @@ export default function EditScenarioPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
-        <div className="space-y-6"> {/* Main container for accordion items */}
+        <div className="space-y-0"> 
           <Accordion type="multiple" defaultValue={["basisinfo", "botconfig", "humanroles", "metadaten", "tags", "originaldaten"]} className="w-full">
 
-            {/* Basisinformationen */}
             <AccordionItem value="basisinfo" id="basisinfo">
-              <AccordionTrigger className="px-0 hover:no-underline">
+              <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                 <CardTitle className="text-lg flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Basisinformationen</CardTitle>
               </AccordionTrigger>
-              <AccordionContent>
+              <AccordionContent className="pt-4 pb-2">
                 <Card className="border-none shadow-none">
-                  <CardHeader className="pt-2 pb-4 px-1">
+                  <CardHeader className="p-0 pb-4">
                     <CardDescription>
                       Grundlegende Details und Beschreibungen des Szenarios.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-6 px-1">
+                  <CardContent className="space-y-6 p-0">
                     <div className="space-y-1.5">
                       <Label htmlFor="title">Titel des Szenarios</Label>
                       <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ein prägnanter Titel" disabled={isSaving}/>
@@ -311,14 +303,13 @@ export default function EditScenarioPage() {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Bot-Konfiguration */}
             <AccordionItem value="botconfig" id="botconfig">
-              <AccordionTrigger className="px-0 hover:no-underline">
+              <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                 <CardTitle className="text-lg flex items-center"><BotIconLucide className="mr-2 h-5 w-5 text-primary"/>Bot-Konfiguration</CardTitle>
               </AccordionTrigger>
-              <AccordionContent>
+              <AccordionContent className="pt-4 pb-2">
                 <Card className="border-none shadow-none">
-                  <CardHeader className="pt-2 pb-4 px-1 flex flex-row items-center justify-between">
+                  <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
                     <div>
                         <CardDescription>Standard-Bots für dieses Szenario. (ID: {currentScenario.id})</CardDescription>
                     </div>
@@ -338,7 +329,7 @@ export default function EditScenarioPage() {
                         </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-6 px-1">
+                  <CardContent className="space-y-6 p-0">
                     {editableBotsConfig.length > 0 ? (
                       editableBotsConfig.map((bot, index) => (
                         <Card key={bot.id || `bot-${index}`} className="p-4 bg-muted/20">
@@ -398,14 +389,13 @@ export default function EditScenarioPage() {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Menschliche Teilnehmerrollen */}
             <AccordionItem value="humanroles" id="humanroles">
-              <AccordionTrigger className="px-0 hover:no-underline">
+              <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                  <CardTitle className="text-lg flex items-center"><UsersIconLucide className="mr-2 h-5 w-5 text-primary"/>Rollen für menschliche Teilnehmer</CardTitle>
               </AccordionTrigger>
-              <AccordionContent>
+              <AccordionContent className="pt-4 pb-2">
                 <Card className="border-none shadow-none">
-                    <CardHeader className="pt-2 pb-4 px-1 flex flex-row items-center justify-between">
+                    <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
                         <div>
                             <CardDescription>Definition der Rollen, ihrer Ziele und Informationen.</CardDescription>
                         </div>
@@ -425,7 +415,7 @@ export default function EditScenarioPage() {
                             </Button>
                         </div>
                     </CardHeader>
-                    <CardContent className="space-y-6 px-1">
+                    <CardContent className="space-y-6 p-0">
                         {editableHumanRoles.length > 0 ? (
                         editableHumanRoles.map((role, index) => (
                             <Card key={role.id || `role-${index}`} className="p-4 bg-muted/20">
@@ -455,24 +445,23 @@ export default function EditScenarioPage() {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Szenario-Metadaten */}
             <AccordionItem value="metadaten" id="metadaten">
-                <AccordionTrigger className="px-0 hover:no-underline">
+                <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                     <CardTitle className="text-lg flex items-center"><SettingsIcon className="mr-2 h-5 w-5 text-primary"/>Szenario-Metadaten</CardTitle>
                 </AccordionTrigger>
-                <AccordionContent>
+                <AccordionContent className="pt-4 pb-2">
                     <Card className="border-none shadow-none">
-                        <CardHeader className="pt-2 pb-4 px-1">
+                        <CardHeader className="p-0 pb-4">
                             <CardDescription>Weitere Einstellungen wie Icon und Vorschaubild.</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-6 px-1">
+                        <CardContent className="space-y-6 p-0">
                             <div className="space-y-1.5">
                                 <Label htmlFor="previewImageUrlInput">Vorschaubild URL</Label>
                                 <Input id="previewImageUrlInput" value={previewImageUrlInput} onChange={(e) => setPreviewImageUrlInput(e.target.value)} placeholder="https://beispiel.com/bild.png" disabled={isSaving} className="mt-1"/>
                                 <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild, das in der Szenario-Übersicht angezeigt wird.</p>
                             </div>
                             <div className="space-y-1.5">
-                                <Label htmlFor="previewImageUpload">Oder Bild hochladen (Zukunft)</Label>
+                                <Label htmlFor="previewImageUpload">Oder Bild hochladen (Platzhalter)</Label>
                                 <Input id="previewImageUpload" type="file" disabled={true} className="mt-1"/>
                                 <p className="text-xs text-muted-foreground mt-1">Funktion zum Hochladen von Vorschaubildern wird später implementiert.</p>
                             </div>
@@ -495,24 +484,23 @@ export default function EditScenarioPage() {
                 </AccordionContent>
             </AccordionItem>
             
-            {/* Themen-Tags */}
             <AccordionItem value="tags" id="tags" className="w-full">
-                <AccordionTrigger className="px-0 hover:no-underline">
+                <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                     <CardTitle className="text-lg flex items-center"><TagsIcon className="mr-2 h-5 w-5 text-primary"/>Themen-Tags</CardTitle>
                 </AccordionTrigger>
-                <AccordionContent>
+                <AccordionContent className="pt-4 pb-2">
                      <Card className="border-none shadow-none w-full">
-                        <CardHeader className="pt-2 pb-4 px-1">
+                        <CardHeader className="p-0 pb-4">
                             <CardDescription>Weisen Sie dem Szenario passende Tags zu, um es besser kategorisieren zu können.</CardDescription>
                         </CardHeader>
-                        <CardContent className="px-1">
+                        <CardContent className="p-0">
                             <div className="mb-4 flex items-center gap-2">
                                 <Input 
                                     placeholder="Tag manuell hinzufügen oder suchen..." 
                                     className="flex-grow text-sm"
-                                    disabled={true} // Vorerst deaktiviert
+                                    disabled={true} 
                                 />
-                                <Button type="button" size="sm" variant="outline" disabled={true}> {/* Vorerst deaktiviert */}
+                                <Button type="button" size="sm" variant="outline" disabled={true}>
                                     <PlusCircle className="mr-2 h-4 w-4" /> Hinzufügen
                                 </Button>
                             </div>
@@ -533,7 +521,7 @@ export default function EditScenarioPage() {
                             <Separator className="my-4" />
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
                             <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
-                                <Accordion type="multiple" className="w-full px-2">
+                                <Accordion type="multiple" className="w-full px-2" defaultValue={tagTaxonomy.map((_,idx) => `category-${idx}`)}>
                                     {tagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName}>
                                             <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline">
@@ -545,7 +533,6 @@ export default function EditScenarioPage() {
                                             <AccordionContent className="pt-1 pb-2 pl-2">
                                                 <div className="flex flex-wrap gap-2">
                                                     {category.tags.map(tag => (
-                                                        // Use React.Fragment or <> for multiple root elements in map
                                                         <> 
                                                             <Badge
                                                                 key={tag.name}
@@ -581,19 +568,18 @@ export default function EditScenarioPage() {
                 </AccordionContent>
             </AccordionItem>
 
-            {/* Originaldaten */}
             <AccordionItem value="originaldaten" id="originaldaten">
-                <AccordionTrigger className="px-0 hover:no-underline">
+                <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                     <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus `scenarios.ts`)</CardTitle>
                 </AccordionTrigger>
-                <AccordionContent>
+                <AccordionContent className="pt-4 pb-2">
                     <Card className="border-none shadow-none">
-                        <CardHeader className="pt-2 pb-4 px-1">
+                        <CardHeader className="p-0 pb-4">
                             <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
                         </CardHeader>
-                        <CardContent className="px-1">
-                            <ScrollArea className="max-h-[300px] md:max-h-[400px]">
-                                <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs overflow-x-auto">
+                        <CardContent className="p-0">
+                            <ScrollArea className="max-h-[300px] md:max-h-[400px]" orientation="both">
+                                <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs overflow-auto">
                                     {JSON.stringify(currentScenario, null, 2)}
                                 </pre>
                             </ScrollArea>
