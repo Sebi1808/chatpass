@@ -1,3 +1,4 @@
+
 import type { Scenario } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,12 +74,12 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col sm:flex-row sm:justify-between gap-2 pt-4">
+      <CardFooter className="flex flex-col items-center sm:flex-row sm:justify-between gap-2 pt-4">
         <Button variant="outline" size="sm" onClick={() => alert(`Details für: ${scenario.title}\n\n${scenario.langbeschreibung}`)}>
             <Info className="mr-2 h-4 w-4" />
             Mehr Infos
         </Button>
-        <Button size="sm" onClick={() => onStartSimulation(scenario.id)} className="w-full sm:w-auto">
+        <Button size="sm" onClick={() => onStartSimulation(scenario.id)} className="sm:w-auto">
           <PlayCircle className="mr-2 h-4 w-4" />
           Simulation starten
         </Button>
