@@ -95,7 +95,6 @@ export default function EditScenarioPage() {
   const handleBotConfigChange = (index: number, field: keyof BotConfig | `botConfig.${string}`, value: any) => {
     const updatedBots = [...editableBotsConfig];
     if (updatedBots[index]) {
-        // Handle nested botConfig properties if needed, though current BotConfig is flat for these fields
         (updatedBots[index] as any)[field] = value;
         setEditableBotsConfig(updatedBots);
     }
@@ -266,8 +265,7 @@ export default function EditScenarioPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
-        <div className="space-y-0"> 
-          <Accordion type="multiple" defaultValue={["basisinfo", "botconfig", "humanroles", "metadaten", "tags", "originaldaten"]} className="w-full">
+        <Accordion type="multiple" defaultValue={["basisinfo", "botconfig", "humanroles", "metadaten", "tags", "originaldaten"]} className="w-full">
 
             <AccordionItem value="basisinfo" id="basisinfo">
               <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
@@ -578,8 +576,8 @@ export default function EditScenarioPage() {
                             <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
                         </CardHeader>
                         <CardContent className="p-0">
-                            <ScrollArea className="max-h-[300px] md:max-h-[400px]" orientation="both">
-                                <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs overflow-auto">
+                           <ScrollArea className="max-h-[300px] md:max-h-[400px]" orientation="both">
+                                <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs">
                                     {JSON.stringify(currentScenario, null, 2)}
                                 </pre>
                             </ScrollArea>
@@ -587,11 +585,8 @@ export default function EditScenarioPage() {
                     </Card>
                 </AccordionContent>
             </AccordionItem>
-
-          </Accordion>
-        </div>
+        </Accordion>
       </div>
     </form>
   );
 }
-
