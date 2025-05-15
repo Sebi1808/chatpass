@@ -8,16 +8,18 @@ export interface ParticipantColor {
 }
 
 // Palette ensures good contrast with light text (e.g., text-gray-100 or text-white)
-// Updated ring classes to be more direct.
+// This participantColors array is now simplified as per new requirements.
+// Specific user colors will be handled differently; "emerald" will be the default for others.
 export const participantColors: ParticipantColor[] = [
-  { name: 'sky', bg: "bg-sky-600", text: "text-sky-50", nameText: "text-sky-100 dark:text-sky-200", ring: "ring-sky-500" },
-  { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100 dark:text-emerald-200", ring: "ring-emerald-500" },
-  { name: 'violet', bg: "bg-violet-600", text: "text-violet-50", nameText: "text-violet-100 dark:text-violet-200", ring: "ring-violet-500" },
-  { name: 'rose', bg: "bg-rose-600", text: "text-rose-50", nameText: "text-rose-100 dark:text-rose-200", ring: "ring-rose-500" },
-  { name: 'amber', bg: "bg-amber-500", text: "text-amber-950", nameText: "text-amber-800 dark:text-amber-700", ring: "ring-amber-500" }, // Amber adjusted for better dark text readability
-  { name: 'teal', bg: "bg-teal-600", text: "text-teal-50", nameText: "text-teal-100 dark:text-teal-200", ring: "ring-teal-500" },
-  { name: 'indigo', bg: "bg-indigo-600", text: "text-indigo-50", nameText: "text-indigo-100 dark:text-indigo-200", ring: "ring-indigo-500" },
-  { name: 'fuchsia', bg: "bg-fuchsia-600", text: "text-fuchsia-50", nameText: "text-fuchsia-100 dark:text-fuchsia-200", ring: "ring-fuchsia-500" },
+  // Only defining a few for fallback, main logic will use specific colors.
+  { name: 'sky', bg: "bg-sky-600 dark:bg-sky-700", text: "text-sky-50", nameText: "text-sky-100 dark:text-sky-200", ring: "ring-sky-500 dark:ring-sky-600" },
+  { name: 'emerald', bg: "bg-emerald-600 dark:bg-emerald-700", text: "text-emerald-50", nameText: "text-emerald-100 dark:text-emerald-200", ring: "ring-emerald-500 dark:ring-emerald-600" },
+  { name: 'violet', bg: "bg-violet-600 dark:bg-violet-700", text: "text-violet-50", nameText: "text-violet-100 dark:text-violet-200", ring: "ring-violet-500 dark:ring-violet-600" },
+  { name: 'rose', bg: "bg-rose-600 dark:bg-rose-700", text: "text-rose-50", nameText: "text-rose-100 dark:text-rose-200", ring: "ring-rose-500 dark:ring-rose-600" },
+  { name: 'amber', bg: "bg-amber-500 dark:bg-amber-600", text: "text-amber-950 dark:text-amber-50", nameText: "text-amber-800 dark:text-amber-200", ring: "ring-amber-500 dark:ring-amber-600" },
+  { name: 'teal', bg: "bg-teal-600 dark:bg-teal-700", text: "text-teal-50", nameText: "text-teal-100 dark:text-teal-200", ring: "ring-teal-500 dark:ring-teal-600" },
+  { name: 'indigo', bg: "bg-indigo-600 dark:bg-indigo-700", text: "text-indigo-50", nameText: "text-indigo-100 dark:text-indigo-200", ring: "ring-indigo-500 dark:ring-indigo-600" },
+  { name: 'fuchsia', bg: "bg-fuchsia-600 dark:bg-fuchsia-700", text: "text-fuchsia-50", nameText: "text-fuchsia-100 dark:text-fuchsia-200", ring: "ring-fuchsia-500 dark:ring-fuchsia-600" },
 ];
 
 export const emojiCategories = [
