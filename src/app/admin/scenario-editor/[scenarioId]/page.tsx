@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area'; // Added import
 import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 import { scenarios } from '@/lib/scenarios'; // Assuming scenarios are statically defined for now
@@ -26,7 +27,7 @@ export default function EditScenarioPage() {
   const [title, setTitle] = useState('');
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
-  const [lernziele, setLernziele] = useState(''); // New state for Lernziele
+  const [lernziele, setLernziele] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [rollenInput, setRollenInput] = useState('');
 
@@ -43,7 +44,7 @@ export default function EditScenarioPage() {
         setTitle(foundScenario.title);
         setKurzbeschreibung(foundScenario.kurzbeschreibung);
         setLangbeschreibung(foundScenario.langbeschreibung);
-        setLernziele(foundScenario.lernziele?.join('\n') || ''); // Assuming lernziele is string[]
+        setLernziele(foundScenario.lernziele?.join('\n') || '');
         setTagsInput(foundScenario.tags.join(', '));
         // Placeholder for more complex role data structure in the future
         setRollenInput(`Rollen für "${foundScenario.title}" hier definieren... (aktuell nur Textarea)\n\nBeispiel:\nRolle: Angegriffene Person\nBeschreibung: Du postest folgendes Bild...\nZiel: Standhaft bleiben.`);
@@ -311,3 +312,5 @@ export default function EditScenarioPage() {
   );
 }
 
+
+    
