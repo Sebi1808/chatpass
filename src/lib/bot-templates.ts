@@ -1,6 +1,7 @@
 
 import type { BotConfig } from './types';
 
+// Ensure each template has a unique templateId
 export const botTemplates: Omit<BotConfig, 'id'>[] = [
   {
     templateId: 'template-prov-std',

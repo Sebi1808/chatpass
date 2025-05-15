@@ -76,10 +76,11 @@ export default function EditScenarioPage() {
         setTitle(foundScenario.title);
         setKurzbeschreibung(foundScenario.kurzbeschreibung);
         setLangbeschreibung(foundScenario.langbeschreibung);
-        setLernziele(foundScenario.lernziele?.join('\n') || '');
+        setLernziele(foundScenario.lernziele?.join('\\n') || '');
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
         setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
         setSelectedTags(foundScenario.tags || []);
+        // Deep copy to prevent direct mutation of imported scenario data
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
       } else {
@@ -94,7 +95,7 @@ export default function EditScenarioPage() {
     setIsLoading(false);
   }, [scenarioId, toast]);
 
-  const handleBotConfigChange = (index: number, field: keyof BotConfig | `botConfig.${string}`, value: any) => {
+  const handleBotConfigChange = (index: number, field: keyof BotConfig, value: any) => {
     const updatedBots = [...editableBotsConfig];
     if (updatedBots[index]) {
         (updatedBots[index] as any)[field] = value;
@@ -104,7 +105,7 @@ export default function EditScenarioPage() {
 
   const handleAddBot = () => {
     setEditableBotsConfig([...editableBotsConfig, {
-        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `bot-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Unique ID for manually added bot
         name: "Neuer Bot",
         personality: "standard",
         avatarFallback: "NB",
@@ -112,6 +113,7 @@ export default function EditScenarioPage() {
         isActive: true,
         initialMission: "",
         autoTimerEnabled: false,
+        // templateId is not set for manually added bots
     }]);
   };
 
@@ -119,8 +121,9 @@ export default function EditScenarioPage() {
     const template = botTemplates.find(t => t.templateId === templateId);
     if (template) {
       setEditableBotsConfig([...editableBotsConfig, {
-        ...template,
-        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
+        ...template, // Spread template properties
+        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // New unique ID for this instance
+        templateId: template.templateId, // Store the ID of the template used
       }]);
     }
   };
@@ -140,9 +143,10 @@ export default function EditScenarioPage() {
 
   const handleAddHumanRole = () => {
     setEditableHumanRoles([...editableHumanRoles, {
-        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `role-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Unique ID for manually added role
         name: "Neue Rolle",
         description: "Beschreibung der neuen Rolle..."
+        // templateId is not set for manually added roles
     }]);
   };
 
@@ -150,8 +154,9 @@ export default function EditScenarioPage() {
     const template = humanRoleTemplates.find(t => t.templateId === templateId);
     if (template) {
       setEditableHumanRoles([...editableHumanRoles, {
-        ...template,
-        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        ...template, // Spread template properties
+        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // New unique ID for this instance
+        templateId: template.templateId, // Store the ID of the template used
       }]);
     }
   };
@@ -174,18 +179,10 @@ export default function EditScenarioPage() {
     const newTags = manualTagInput
       .split(',')
       .map(tag => tag.trim())
-      .filter(tag => tag !== '');
+      .filter(tag => tag !== '' && !selectedTags.includes(tag)); // Avoid duplicates
     
-    setSelectedTags(prevTags => {
-      const combined = [...prevTags];
-      newTags.forEach(nt => {
-        if (!combined.includes(nt)) {
-          combined.push(nt);
-        }
-      });
-      return combined;
-    });
-    setManualTagInput(''); // Clear input after adding
+    setSelectedTags(prevTags => [...prevTags, ...newTags]);
+    setManualTagInput('');
   };
 
 
@@ -199,7 +196,7 @@ export default function EditScenarioPage() {
       title,
       kurzbeschreibung,
       langbeschreibung,
-      lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
+      lernziele: lernziele.split('\\n').map(ziel => ziel.trim()).filter(ziel => ziel),
       previewImageUrl: previewImageUrlInput,
       iconName: iconNameInput,
       tags: selectedTags,
@@ -615,6 +612,3 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-    
-
-    

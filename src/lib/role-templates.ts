@@ -1,6 +1,7 @@
 
 import type { HumanRoleConfig } from './types';
 
+// Ensure each template has a unique templateId
 export const humanRoleTemplates: Omit<HumanRoleConfig, 'id'>[] = [
   {
     templateId: 'template-victim-std',
