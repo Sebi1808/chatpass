@@ -57,7 +57,9 @@ export default function EditScenarioPage() {
   const [lernziele, setLernziele] = useState('');
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value);
+  
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [manualTagInput, setManualTagInput] = useState('');
   
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
@@ -74,7 +76,7 @@ export default function EditScenarioPage() {
         setTitle(foundScenario.title);
         setKurzbeschreibung(foundScenario.kurzbeschreibung);
         setLangbeschreibung(foundScenario.langbeschreibung);
-        setLernziele(foundScenario.lernziele?.join('\\n') || '');
+        setLernziele(foundScenario.lernziele?.join('\n') || '');
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
         setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
         setSelectedTags(foundScenario.tags || []);
@@ -167,6 +169,26 @@ export default function EditScenarioPage() {
     );
   };
 
+  const handleAddManualTags = () => {
+    if (!manualTagInput.trim()) return;
+    const newTags = manualTagInput
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag !== '');
+    
+    setSelectedTags(prevTags => {
+      const combined = [...prevTags];
+      newTags.forEach(nt => {
+        if (!combined.includes(nt)) {
+          combined.push(nt);
+        }
+      });
+      return combined;
+    });
+    setManualTagInput(''); // Clear input after adding
+  };
+
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentScenario) return;
@@ -177,7 +199,7 @@ export default function EditScenarioPage() {
       title,
       kurzbeschreibung,
       langbeschreibung,
-      lernziele: lernziele.split('\\n').map(ziel => ziel.trim()).filter(ziel => ziel),
+      lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
       previewImageUrl: previewImageUrlInput,
       iconName: iconNameInput,
       tags: selectedTags,
@@ -190,6 +212,7 @@ export default function EditScenarioPage() {
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
+    // Simulate saving
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -494,11 +517,13 @@ export default function EditScenarioPage() {
                         <CardContent className="p-0">
                             <div className="mb-4 flex items-center gap-2">
                                 <Input 
-                                    placeholder="Tag manuell hinzufügen oder suchen..." 
+                                    placeholder="Tag manuell hinzufügen (kommagetrennt)..." 
                                     className="flex-grow text-sm"
-                                    disabled={true} 
+                                    value={manualTagInput}
+                                    onChange={(e) => setManualTagInput(e.target.value)}
+                                    disabled={isSaving} 
                                 />
-                                <Button type="button" size="sm" variant="outline" disabled={true}>
+                                <Button type="button" size="sm" variant="outline" onClick={handleAddManualTags} disabled={isSaving || !manualTagInput.trim()}>
                                     <PlusCircle className="mr-2 h-4 w-4" /> Hinzufügen
                                 </Button>
                             </div>
@@ -519,7 +544,7 @@ export default function EditScenarioPage() {
                             <Separator className="my-4" />
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
                             <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
-                                <Accordion type="multiple" className="w-full px-2" defaultValue={tagTaxonomy.map((_,idx) => `category-${idx}`)}>
+                                <Accordion type="multiple" className="w-full px-2" defaultValue={[]}>
                                     {tagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName}>
                                             <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline">
@@ -590,6 +615,6 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-
+    
 
     
