@@ -6,11 +6,12 @@ export interface HumanRoleConfig {
   id: string; // Unique ID for the role instance within the scenario
   name: string;
   description: string;
-  templateId?: string; // Optional: ID of the template this role was created from
+  templateId?: string; // ID of the template in the 'roleTemplates' collection if this role is a template itself
+  templateOriginId?: string; // Optional: ID of the template this role instance was created from
 }
 
 export interface Scenario {
-  id: string;
+  id: string; // Firestore document ID for the scenario
   title: string;
   kurzbeschreibung: string;
   langbeschreibung: string;
@@ -18,28 +19,39 @@ export interface Scenario {
   iconName: string;
   tags: string[];
   previewImageUrl?: string;
-  defaultBotsConfig?: BotConfig[];
-  humanRolesConfig?: HumanRoleConfig[];
-  // defaultBots and standardRollen will be derived dynamically or set upon save
-  defaultBots?: number; 
-  standardRollen?: number;
-  status?: 'draft' | 'published'; // New status field
+  defaultBotsConfig?: BotConfig[]; // Array of BotConfig instances for this scenario
+  humanRolesConfig?: HumanRoleConfig[]; // Array of HumanRoleConfig instances for this scenario
+  status?: 'draft' | 'published';
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+  // defaultBots and standardRollen are derived dynamically or on save, not typically stored directly unless for denormalization.
 }
 
 export interface BotConfig {
   id: string; // Unique ID for the bot instance within the scenario
+  templateId?: string; // ID of the template in the 'botTemplates' collection if this bot is a template itself
+  name: string; // Made mandatory for clarity
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
-  name?: string;
   avatarFallback?: string;
-  currentEscalation?: number;
-  isActive?: boolean;
-  autoTimerEnabled?: boolean;
-  initialMission?: string;
-  currentMission?: string; // For admin override during session
-  templateId?: string; // Optional: ID of the template this bot was created from
+  currentEscalation?: number; // Current escalation level in a running session (part of Participant.botConfig)
+  isActive?: boolean;         // Whether this bot is active by default in a scenario
+  autoTimerEnabled?: boolean; // Whether auto-timer is enabled by default
+  initialMission?: string;    // Initial mission for the bot in a scenario
+  templateOriginId?: string; // Optional: ID of the template this bot instance was created from
 }
+
+
+// Specific types for templates stored in Firestore
+export interface BotTemplate extends Omit<BotConfig, 'id' | 'templateOriginId' | 'currentEscalation' | 'isActive' | 'autoTimerEnabled'> {
+  templateId: string; // This is the primary ID for documents in botTemplates collection
+  // Includes name, personality, avatarFallback, initialMission
+}
+
+export interface RoleTemplate extends Omit<HumanRoleConfig, 'id' | 'templateOriginId'> {
+  templateId: string; // This is the primary ID for documents in roleTemplates collection
+  // Includes name, description
+}
+
 
 export interface SessionData {
   scenarioId: string;
@@ -51,16 +63,23 @@ export interface SessionData {
 }
 
 export interface Participant {
-  id: string; // Firestore document ID
-  userId: string;
+  id: string; // Firestore document ID for the participant in a session
+  userId: string; // Unique user identifier (can be Firebase Auth UID or custom)
   name: string;
-  role: string;
+  role: string; // Role name taken by the human participant or assigned to bot
   avatarFallback: string;
   isBot: boolean;
   joinedAt?: Timestamp | Date | any;
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
   isMuted?: boolean;
-  botConfig?: BotConfig;
+  botConfig?: { // Specific runtime config for a bot participant in a session
+    personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
+    currentEscalation: number;
+    isActive: boolean; // Runtime active state in session
+    autoTimerEnabled: boolean; // Runtime auto-timer state in session
+    initialMission?: string; // From scenario's BotConfig
+    currentMission?: string; // Admin override for next post
+  };
   botScenarioId?: string; // The unique ID from the Scenario's defaultBotsConfig (BotConfig.id)
 }
 

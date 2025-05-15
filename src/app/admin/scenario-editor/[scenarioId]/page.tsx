@@ -9,10 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck } from 'lucide-react';
-import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
-import { botTemplates } from '@/lib/bot-templates';
-import { humanRoleTemplates } from '@/lib/role-templates';
+import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft } from 'lucide-react';
+import type { Scenario, BotConfig, HumanRoleConfig, BotTemplate, RoleTemplate } from '@/lib/types';
+// Bot/Role templates are now fetched from Firestore
 import React, { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
@@ -21,7 +20,7 @@ import { tagTaxonomy } from '@/lib/tag-taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { db } from '@/lib/firebase';
-import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp, Timestamp, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 const availableIcons = [
     { value: 'ShieldAlert', label: '🛡️ ShieldAlert' },
@@ -42,6 +41,7 @@ const editorSections = [
   { id: "humanroles", label: "Menschliche Rollen", icon: <UsersIconLucide className="mr-2 h-4 w-4" /> },
   { id: "metadaten", label: "Metadaten & Status", icon: <SettingsIcon className="mr-2 h-4 w-4" /> },
   { id: "tags", label: "Themen-Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
+  { id: "originaldaten", label: "Originaldaten (DB)", icon: <Database className="mr-2 h-4 w-4" /> },
 ];
 
 const createDefaultScenario = (): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> => ({
@@ -71,7 +71,7 @@ export default function EditScenarioPage() {
   const [title, setTitle] = useState('');
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
-  const [lernziele, setLernziele] = useState('');
+  const [lernziele, setLernziele] = useState(''); // Now a string for Textarea
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value);
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
@@ -84,10 +84,50 @@ export default function EditScenarioPage() {
   const [botSaveAsTemplateFlags, setBotSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
   const [roleSaveAsTemplateFlags, setRoleSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
 
+  const [botTemplates, setBotTemplates] = useState<BotTemplate[]>([]);
+  const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
+
   const [isLoading, setIsLoading] = useState(!isNewScenario);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [originalScenarioData, setOriginalScenarioData] = useState<Scenario | null>(null);
+
+  // Fetch Bot Templates
+  useEffect(() => {
+    const templatesColRef = collection(db, "botTemplates");
+    const q = query(templatesColRef, orderBy("name", "asc"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedTemplates: BotTemplate[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedTemplates.push({ templateId: doc.id, ...doc.data() } as BotTemplate);
+      });
+      setBotTemplates(fetchedTemplates);
+      setIsLoadingTemplates(prev => prev && roleTemplates.length > 0 ? false : prev); // Adjust loading state based on both
+    }, (error) => {
+      console.error("Error fetching bot templates:", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Bot-Vorlagen konnten nicht geladen werden."});
+    });
+    return () => unsubscribe();
+  }, [toast, roleTemplates.length]); // Added roleTemplates.length to re-evaluate loading
+
+  // Fetch Role Templates
+  useEffect(() => {
+    const templatesColRef = collection(db, "roleTemplates");
+    const q = query(templatesColRef, orderBy("name", "asc"));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedTemplates: RoleTemplate[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedTemplates.push({ templateId: doc.id, ...doc.data() } as RoleTemplate);
+      });
+      setRoleTemplates(fetchedTemplates);
+      setIsLoadingTemplates(prev => prev && botTemplates.length > 0 ? false : prev); // Adjust loading state based on both
+    }, (error) => {
+      console.error("Error fetching role templates:", error);
+       toast({ variant: "destructive", title: "Fehler", description: "Rollen-Vorlagen konnten nicht geladen werden."});
+    });
+    return () => unsubscribe();
+  }, [toast, botTemplates.length]); // Added botTemplates.length to re-evaluate loading
 
   useEffect(() => {
     const loadScenario = async () => {
@@ -166,13 +206,13 @@ export default function EditScenarioPage() {
   };
 
   const handleAddBot = () => {
-    const newBotId = `bot-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const newBotId = `bot-inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setEditableBotsConfig([...editableBotsConfig, {
         id: newBotId, 
         name: "Neuer Bot",
         personality: "standard",
         avatarFallback: "NB",
-        currentEscalation: 0,
+        // currentEscalation: 0, // This is a session runtime property, not scenario default
         isActive: true,
         initialMission: "",
         autoTimerEnabled: false,
@@ -183,12 +223,18 @@ export default function EditScenarioPage() {
   const handleAddBotFromTemplate = (templateId: string) => {
     const template = botTemplates.find(t => t.templateId === templateId);
     if (template) {
-      const newBotId = `bot-tpl-${template.templateId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      setEditableBotsConfig([...editableBotsConfig, {
-        ...template, 
-        id: newBotId, 
-        templateId: template.templateId, 
-      }]);
+      const newBotId = `bot-inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newBotFromTemplate: BotConfig = {
+        id: newBotId,
+        name: template.name,
+        personality: template.personality,
+        avatarFallback: template.avatarFallback,
+        initialMission: template.initialMission,
+        isActive: true, // Default for new instance
+        autoTimerEnabled: false, // Default for new instance
+        templateOriginId: template.templateId, // Store origin
+      };
+      setEditableBotsConfig([...editableBotsConfig, newBotFromTemplate]);
       setBotSaveAsTemplateFlags(prev => ({ ...prev, [newBotId]: false }));
     }
   };
@@ -219,7 +265,7 @@ export default function EditScenarioPage() {
   };
 
   const handleAddHumanRole = () => {
-    const newRoleId = `role-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const newRoleId = `role-inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setEditableHumanRoles([...editableHumanRoles, {
         id: newRoleId, 
         name: "Neue Rolle",
@@ -229,14 +275,16 @@ export default function EditScenarioPage() {
   };
 
   const handleAddHumanRoleFromTemplate = (templateId: string) => {
-    const template = humanRoleTemplates.find(t => t.templateId === templateId);
+    const template = roleTemplates.find(t => t.templateId === templateId);
     if (template) {
-      const newRoleId = `role-tpl-${template.templateId}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      setEditableHumanRoles([...editableHumanRoles, {
-        ...template, 
-        id: newRoleId, 
-        templateId: template.templateId, 
-      }]);
+      const newRoleId = `role-inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newRoleFromTemplate: HumanRoleConfig = {
+        id: newRoleId,
+        name: template.name,
+        description: template.description,
+        templateOriginId: template.templateId, // Store origin
+      };
+      setEditableHumanRoles([...editableHumanRoles, newRoleFromTemplate]);
       setRoleSaveAsTemplateFlags(prev => ({ ...prev, [newRoleId]: false }));
     }
   };
@@ -310,14 +358,54 @@ export default function EditScenarioPage() {
       iconName: iconNameInput || availableIcons[availableIcons.length - 1].value,
       status: status || 'draft',
       tags: selectedTags || [],
-      defaultBotsConfig: editableBotsConfig || [],
-      humanRolesConfig: editableHumanRoles || [],
-      defaultBots: editableBotsConfig.length, 
-      standardRollen: editableBotsConfig.length + editableHumanRoles.length, 
+      defaultBotsConfig: editableBotsConfig.map(b => ({ // Ensure only config properties are saved
+        id: b.id,
+        name: b.name,
+        personality: b.personality,
+        avatarFallback: b.avatarFallback,
+        initialMission: b.initialMission,
+        isActive: b.isActive,
+        autoTimerEnabled: b.autoTimerEnabled,
+        templateOriginId: b.templateOriginId,
+      })) || [],
+      humanRolesConfig: editableHumanRoles.map(r => ({ // Ensure only config properties are saved
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        templateOriginId: r.templateOriginId,
+      })) || [],
       updatedAt: Timestamp.now(),
     };
     
     try {
+      // Save Bot Templates if flagged
+      for (const bot of editableBotsConfig) {
+        if (botSaveAsTemplateFlags[bot.id]) {
+          const newBotTemplate: Omit<BotTemplate, 'templateId' | 'createdAt'> = {
+            name: bot.name,
+            personality: bot.personality,
+            avatarFallback: bot.avatarFallback,
+            initialMission: bot.initialMission,
+          };
+          // Firestore auto-generates ID for new docs, which we use as templateId
+          await addDoc(collection(db, "botTemplates"), {...newBotTemplate, createdAt: serverTimestamp()});
+          toast({ title: "Bot-Vorlage gespeichert", description: `Bot "${bot.name}" wurde als neue Vorlage gesichert.` });
+        }
+      }
+
+      // Save Role Templates if flagged
+      for (const role of editableHumanRoles) {
+        if (roleSaveAsTemplateFlags[role.id]) {
+          const newRoleTemplate: Omit<RoleTemplate, 'templateId' | 'createdAt'> = {
+            name: role.name,
+            description: role.description,
+          };
+          await addDoc(collection(db, "roleTemplates"), {...newRoleTemplate, createdAt: serverTimestamp()});
+           toast({ title: "Rollen-Vorlage gespeichert", description: `Rolle "${role.name}" wurde als neue Vorlage gesichert.` });
+        }
+      }
+
+
       if (isNewScenario) {
         const dataWithCreationTimestamp = { ...scenarioDataToSave, createdAt: Timestamp.now() };
         const docRef = await addDoc(collection(db, "scenarios"), dataWithCreationTimestamp);
@@ -325,9 +413,9 @@ export default function EditScenarioPage() {
           title: "Szenario erstellt",
           description: `Das Szenario "${title}" wurde erfolgreich in der Datenbank gespeichert.`,
         });
-        router.push(`/admin/scenario-editor/${docRef.id}`);
+        router.push(`/admin/scenario-editor/${docRef.id}`); // Navigate to the new ID
         setIsNewScenario(false); 
-        setCurrentScenarioId(docRef.id);
+        setCurrentScenarioId(docRef.id); // Update current ID
       } else if (currentScenarioId) {
         const scenarioDocRef = doc(db, "scenarios", currentScenarioId);
         await setDoc(scenarioDocRef, scenarioDataToSave, { merge: true });
@@ -339,15 +427,15 @@ export default function EditScenarioPage() {
         throw new Error("Keine Szenario-ID zum Speichern vorhanden.");
       }
     } catch (err) {
-      console.error("Error saving scenario to Firestore: ", err);
-      setError("Fehler beim Speichern des Szenarios in der Datenbank.");
-      toast({ variant: "destructive", title: "Speicherfehler", description: (err as Error).message || "Szenario konnte nicht gespeichert werden."});
+      console.error("Error saving scenario/templates to Firestore: ", err);
+      setError("Fehler beim Speichern des Szenarios oder der Vorlagen in der Datenbank.");
+      toast({ variant: "destructive", title: "Speicherfehler", description: (err as Error).message || "Szenario/Vorlagen konnten nicht gespeichert werden."});
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading && !isNewScenario) {
+  if ((isLoading || isLoadingTemplates) && !isNewScenario) {
     return (
       <div className="flex items-center justify-center h-full p-6">
         <Card className="w-full max-w-md">
@@ -368,7 +456,7 @@ export default function EditScenarioPage() {
             </CardHeader>
           <CardContent>
             <Button onClick={() => router.push('/admin/scenario-editor')} variant="outline">
-              Zurück zur Szenarienübersicht
+              <ArrowLeft className="mr-2 h-4 w-4"/> Zurück zur Szenarienübersicht
             </Button>
           </CardContent>
         </Card>
@@ -381,6 +469,7 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
+      {/* Sticky Header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
@@ -415,6 +504,7 @@ export default function EditScenarioPage() {
         </div>
       </div>
 
+    {/* Shortcut Navigation Bar */}
       <div className="sticky top-[calc(theme(spacing.16)_-_45px)] md:top-[calc(theme(spacing.16)_-_49px)] lg:top-[calc(theme(spacing.16)_-_49px)] z-10 bg-background/90 backdrop-blur-sm border-b px-2 sm:px-4 py-2 mb-6">
          <ScrollArea orientation="horizontal" className="max-w-full">
             <div className="flex items-center space-x-1 whitespace-nowrap">
@@ -478,9 +568,9 @@ export default function EditScenarioPage() {
                         <CardDescription>Standard-Bots für dieses Szenario.</CardDescription>
                     </div>
                     <div className="flex gap-2">
-                        <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving}>
+                        <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving || isLoadingTemplates}>
                             <SelectTrigger className="w-[230px] text-sm h-9">
-                                <SelectValue placeholder="Bot aus Vorlage wählen..." />
+                                <SelectValue placeholder={isLoadingTemplates ? "Lade Vorlagen..." : "Bot aus Vorlage wählen..."} />
                             </SelectTrigger>
                             <SelectContent>
                                 {botTemplates.map(template => (
@@ -517,7 +607,7 @@ export default function EditScenarioPage() {
                             </div>
                             <div className="space-y-1.5">
                               <Label htmlFor={`bot-personality-${index}`}>Persönlichkeit</Label>
-                              <Select value={bot.personality} onValueChange={(value) => handleBotConfigChange(index, 'personality', value)} disabled={isSaving}>
+                              <Select value={bot.personality} onValueChange={(value) => handleBotConfigChange(index, 'personality', value as any)} disabled={isSaving}>
                                 <SelectTrigger id={`bot-personality-${index}`}>
                                   <SelectValue placeholder="Persönlichkeit wählen" />
                                 </SelectTrigger>
@@ -533,10 +623,7 @@ export default function EditScenarioPage() {
                               <Label htmlFor={`bot-avatar-${index}`}>Avatar Kürzel (max. 2 Zeichen)</Label>
                               <Input id={`bot-avatar-${index}`} value={bot.avatarFallback || ''} onChange={(e) => handleBotConfigChange(index, 'avatarFallback', e.target.value.substring(0,2))} placeholder="BK" maxLength={2} disabled={isSaving}/>
                             </div>
-                            <div className="space-y-1.5">
-                              <Label htmlFor={`bot-escalation-${index}`}>Initiale Eskalation (0-3)</Label>
-                              <Input id={`bot-escalation-${index}`} type="number" min="0" max="3" value={bot.currentEscalation ?? 0} onChange={(e) => handleBotConfigChange(index, 'currentEscalation', parseInt(e.target.value, 10))} disabled={isSaving}/>
-                            </div>
+                            {/* currentEscalation removed as it's a runtime property */}
                             <div className="space-y-1.5 md:col-span-2">
                                <Label htmlFor={`bot-initialMission-${index}`}>Initiale Mission/Anweisung</Label>
                                <Textarea id={`bot-initialMission-${index}`} value={bot.initialMission || ''} onChange={(e) => handleBotConfigChange(index, 'initialMission', e.target.value)} placeholder="Was soll der Bot zu Beginn tun oder sagen?" rows={3} disabled={isSaving}/>
@@ -571,12 +658,12 @@ export default function EditScenarioPage() {
                             <CardDescription>Definition der Rollen, ihrer Ziele und Informationen.</CardDescription>
                         </div>
                         <div className="flex gap-2">
-                            <Select onValueChange={handleAddHumanRoleFromTemplate} disabled={isSaving}>
+                            <Select onValueChange={handleAddHumanRoleFromTemplate} disabled={isSaving || isLoadingTemplates}>
                                 <SelectTrigger className="w-[230px] text-sm h-9">
-                                    <SelectValue placeholder="Rolle aus Vorlage wählen..." />
+                                    <SelectValue placeholder={isLoadingTemplates ? "Lade Vorlagen..." : "Rolle aus Vorlage wählen..."} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {humanRoleTemplates.map(template => (
+                                    {roleTemplates.map(template => (
                                         <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
                                     ))}
                                 </SelectContent>
@@ -718,7 +805,7 @@ export default function EditScenarioPage() {
                             </div>
                             <Separator className="my-4" />
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
-                            <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
+                            <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md"> {/* Added border and rounded-md */}
                                 <Accordion type="multiple" className="w-full px-2" defaultValue={[]}>
                                     {tagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName}>
