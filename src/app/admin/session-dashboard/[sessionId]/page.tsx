@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { scenarios } from "@/lib/scenarios";
@@ -65,6 +65,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const [showParticipantMirrorView, setShowParticipantMirrorView] = useState(false);
   const [isPostingForBot, setIsPostingForBot] = useState<string | null>(null);
   const [botMissions, setBotMissions] = useState<Record<string, string>>({});
+  const [isRemovingParticipant, setIsRemovingParticipant] = useState<string | null>(null);
+  const [isRemovingAllParticipants, setIsRemovingAllParticipants] = useState(false);
 
 
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
@@ -91,7 +93,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const initializeBotsForSession = async (currentScenarioToInit: Scenario, currentSessionId: string) => {
     if (!currentScenarioToInit || !currentScenarioToInit.defaultBotsConfig) {
       console.log("Keine Bot-Konfiguration für dieses Szenario vorhanden oder Szenario nicht gefunden.");
-      // Optionally clear existing bots if scenario has no bots defined
       const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
       const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
       const existingBotsSnap = await getDocs(existingBotsQuery);
@@ -107,19 +108,17 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
     const batch = writeBatch(db);
   
-    // Fetch existing bots from Firestore for this session
     const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
     const existingBotsSnap = await getDocs(existingBotsQuery);
     const firestoreBotsMap = new Map(existingBotsSnap.docs.map(doc => [doc.data().botScenarioId, doc.id]));
-    const firestoreBotIdsOnDb = new Set(existingBotsSnap.docs.map(doc => doc.data().botScenarioId));
+    const firestoreBotScenarioIdsOnDb = new Set(existingBotsSnap.docs.map(doc => doc.data().botScenarioId));
   
-    // Bots defined in the current scenario config
     const scenarioBotsConfig = currentScenarioToInit.defaultBotsConfig || [];
-    const scenarioBotIdsInConfig = new Set(scenarioBotsConfig.map(bc => bc.id));
+    const scenarioBotConfigIds = new Set(scenarioBotsConfig.map(bc => bc.id));
   
     // Delete bots from Firestore that are no longer in the scenario config
-    firestoreBotIdsOnDb.forEach(dbBotScenarioId => {
-      if (!scenarioBotIdsInConfig.has(dbBotScenarioId)) {
+    firestoreBotScenarioIdsOnDb.forEach(dbBotScenarioId => {
+      if (!scenarioBotConfigIds.has(dbBotScenarioId)) {
         const docIdToDelete = firestoreBotsMap.get(dbBotScenarioId);
         if (docIdToDelete) {
           const botDocRef = doc(participantsColRef, docIdToDelete);
@@ -129,7 +128,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       }
     });
   
-    // Add or update bots based on scenario config
     for (const [index, botConfig] of scenarioBotsConfig.entries()) {
       if (!botConfig || typeof botConfig !== 'object') {
         console.error("Ungültige Bot-Konfiguration gefunden:", botConfig);
@@ -148,9 +146,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         role: `Bot (${botConfig.personality})`,
         avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0, 2).toUpperCase(),
         isBot: true,
-        status: "Aktiv", // Default status for bots
+        status: "Aktiv",
         botConfig: {
-          ...botConfig, // Includes personality, id from scenario
+          ...botConfig, 
           isActive: botConfig.isActive ?? true,
           currentEscalation: botConfig.currentEscalation ?? 0,
           autoTimerEnabled: botConfig.autoTimerEnabled ?? false,
@@ -162,19 +160,17 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       const existingBotDocId = firestoreBotsMap.get(botScenarioId);
   
       if (!existingBotDocId) {
-        // Bot does not exist, create it
-        const newBotDocRef = doc(collection(db, "sessions", currentSessionId, "participants")); // Auto-generate ID
+        const newBotDocRef = doc(collection(db, "sessions", currentSessionId, "participants"));
         batch.set(newBotDocRef, { ...botParticipantData, id: newBotDocRef.id, joinedAt: serverTimestamp() });
         console.log(`Adding new bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
       } else {
-        // Bot exists, update it
         const botDocRef = doc(participantsColRef, existingBotDocId);
-        const existingBotSnap = await getDoc(botDocRef); // Get the specific doc to ensure it exists before update
+        const existingBotSnap = await getDoc(botDocRef); 
         if (existingBotSnap.exists()) {
           const existingBotData = existingBotSnap.data() as Participant;
           const missionToSet = botConfig.currentMission || existingBotData.botConfig?.currentMission || "";
           batch.update(botDocRef, {
-            name: botDisplayName, // Ensure name is updated if logic changes
+            name: botDisplayName, 
             role: `Bot (${botConfig.personality})`,
             avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0, 2).toUpperCase(),
             "botConfig.personality": botConfig.personality,
@@ -193,7 +189,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
 
   useEffect(() => {
-    // scenario is already defined outside
     setCurrentScenario(scenario);
 
     if (scenario) {
@@ -234,7 +229,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
               updates.invitationToken = generateToken();
               needsDbUpdate = true;
             }
-             // Ensure scenarioId is always current
             if (existingData.scenarioId !== sessionId) {
                 updates.scenarioId = sessionId;
                 needsDbUpdate = true;
@@ -259,11 +253,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setupSession();
     } else {
       setIsLoadingSessionData(false);
-      setSessionData(null); // Explicitly set to null if no scenario
+      setSessionData(null); 
       toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} nicht gefunden.`})
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, toast]); // scenario is derived from sessionId, so not needed in deps if sessionId is
+  }, [sessionId, toast]); 
 
 
   useEffect(() => {
@@ -290,14 +284,12 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    // Removed orderBy to avoid needing an index for now
     const participantsQuery = query(participantsColRef); 
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
-      // Client-side sorting
       fetchedParticipants.sort((a, b) => {
         if (a.isBot && !b.isBot) return -1;
         if (!a.isBot && b.isBot) return 1;
@@ -391,7 +383,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const sessionUpdateData: Partial<SessionData> = {
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
-        scenarioId: sessionId, // Ensure scenarioId is set/updated
+        scenarioId: sessionId, 
         invitationLink: baseLink,
         invitationToken: newSessionToken,
         createdAt: serverTimestamp(), 
@@ -417,7 +409,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
 
     try {
-      // Delete messages
       const messagesSnap = await getDocs(messagesColRef);
       if (!messagesSnap.empty) {
           const batchMessages = writeBatch(db);
@@ -426,7 +417,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           console.log("All messages deleted for session reset.");
       }
       
-      // Delete participants (including bots)
       const participantsSnap = await getDocs(participantsColRef);
       if (!participantsSnap.empty) {
           const batchParticipants = writeBatch(db);
@@ -448,8 +438,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
       };
-      await setDoc(sessionDocRef, newSessionData); // Overwrite session doc with new data
-      await initializeBotsForSession(currentScenario, sessionId); // Re-initialize bots
+      await setDoc(sessionDocRef, newSessionData); 
+      await initializeBotsForSession(currentScenario, sessionId); 
 
       toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Neuer Link-Token generiert." });
     } catch (error) {
@@ -630,6 +620,48 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   };
 
 
+  const handleRemoveParticipant = async (participantId: string) => {
+    if (!sessionId) return;
+    setIsRemovingParticipant(participantId);
+    try {
+      const participantDocRef = doc(db, "sessions", sessionId, "participants", participantId);
+      await deleteDoc(participantDocRef);
+      toast({ title: "Teilnehmer entfernt", description: "Der Teilnehmer wurde erfolgreich aus der Sitzung entfernt." });
+    } catch (error) {
+      console.error("Error removing participant: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnte nicht entfernt werden." });
+    } finally {
+      setIsRemovingParticipant(null);
+    }
+  };
+
+  const handleRemoveAllParticipants = async () => {
+    if (!sessionId) return;
+    setIsRemovingAllParticipants(true);
+    try {
+      const participantsColRef = collection(db, "sessions", sessionId, "participants");
+      const q = query(participantsColRef, where("isBot", "==", false));
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        toast({ title: "Keine Teilnehmer", description: "Es sind keine menschlichen Teilnehmer zum Entfernen vorhanden." });
+        setIsRemovingAllParticipants(false);
+        return;
+      }
+      const batch = writeBatch(db);
+      querySnapshot.forEach((docSnapshot) => {
+        batch.delete(docSnapshot.ref);
+      });
+      await batch.commit();
+      toast({ title: "Alle Teilnehmer entfernt", description: "Alle menschlichen Teilnehmer wurden aus der Sitzung entfernt." });
+    } catch (error) {
+      console.error("Error removing all participants: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnten nicht entfernt werden." });
+    } finally {
+      setIsRemovingAllParticipants(false);
+    }
+  };
+
+
   const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
   const expectedStudentRoles = currentScenario ? currentScenario.standardRollen - (currentScenario.defaultBotsConfig?.length || 0) : 0;
 
@@ -642,7 +674,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     for (let i = 0; i < expectedStudentRoles && placeholderIndex < placeholdersToAdd; i++) {
         const potentialPlaceholderId = `student-placeholder-${String.fromCharCode(65 + i)}`;
         const roleName = `Teilnehmer ${String.fromCharCode(65 + i)}`;
-        // Check if a real user has already taken this specific role name (e.g., "Teilnehmer A")
         const isRoleTakenByRealUser = sessionParticipants.some(p => !p.isBot && p.role === roleName);
 
         if (!isRoleTakenByRealUser) {
@@ -654,7 +685,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 isBot: false,
                 status: "Nicht beigetreten",
                 avatarFallback: `T${String.fromCharCode(65 + i)}`,
-                joinedAt: new Date(0), // Ensure joinedAt is a Date or Timestamp
+                joinedAt: new Date(0), 
             });
             placeholderIndex++;
         }
@@ -883,6 +914,27 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                         <Button variant="outline" onClick={handleMuteAllUsers} disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}>
                             <VolumeX className="mr-2 h-4 w-4" /> Alle Stummschalten
                         </Button>
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="destructive" className="bg-orange-600 hover:bg-orange-700" disabled={!isSessionInteractable || isRemovingAllParticipants || isLoadingParticipants}>
+                                    <UserX className="mr-2 h-4 w-4" /> Alle Teilnehmer entfernen
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Alle Teilnehmer wirklich entfernen?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        Alle menschlichen Teilnehmer werden aus dieser Sitzung entfernt. Bots bleiben bestehen. Diese Aktion kann nicht rückgängig gemacht werden.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={isRemovingAllParticipants}>Abbrechen</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleRemoveAllParticipants} disabled={isRemovingAllParticipants} className="bg-destructive hover:bg-destructive/90">
+                                        {isRemovingAllParticipants ? "Entferne..." : "Ja, alle entfernen"}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                 </CardContent>
               </Card>
@@ -910,15 +962,41 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                              {p.isMuted && <Badge variant="destructive" className="ml-2 text-xs">🔇 Stumm</Badge>}
                         </p>
                       </div>
-                      <Button
-                        variant={p.isMuted ? "secondary" : "outline"}
-                        size="sm"
-                        onClick={() => handleToggleMuteParticipant(p.id, p.isMuted)}
-                        disabled={!isSessionInteractable || p.id.startsWith("student-placeholder") || isStartingOrRestartingSession || isResettingSession}
-                      >
-                        {p.isMuted ? <Volume2 className="mr-1 h-4 w-4" /> : <VolumeX className="mr-1 h-4 w-4" />}
-                        {p.isMuted ? "Freischalten" : "Stummschalten"}
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                            variant={p.isMuted ? "secondary" : "outline"}
+                            size="sm"
+                            onClick={() => handleToggleMuteParticipant(p.id, p.isMuted)}
+                            disabled={!isSessionInteractable || p.id.startsWith("student-placeholder") || isStartingOrRestartingSession || isResettingSession}
+                        >
+                            {p.isMuted ? <Volume2 className="mr-1 h-4 w-4" /> : <VolumeX className="mr-1 h-4 w-4" />}
+                            {p.isMuted ? "Frei" : "Stumm"}
+                        </Button>
+                        {!p.id.startsWith("student-placeholder") && (
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8" 
+                                 disabled={!isSessionInteractable || isRemovingParticipant === p.id || isStartingOrRestartingSession || isResettingSession}>
+                                    {isRemovingParticipant === p.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Teilnehmer "{p.name}" wirklich entfernen?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        Diese Aktion kann nicht rückgängig gemacht werden. Der Teilnehmer wird aus der Sitzung entfernt.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel disabled={isRemovingParticipant === p.id}>Abbrechen</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleRemoveParticipant(p.id)} disabled={isRemovingParticipant === p.id} className="bg-destructive hover:bg-destructive/90">
+                                        {isRemovingParticipant === p.id ? "Entferne..." : "Ja, entfernen"}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                        )}
+                      </div>
                     </div>
                   ))}
                   {!isLoadingParticipants && expectedStudentRoles === 0 && sessionParticipants.filter(p => !p.isBot).length === 0 && (
@@ -1018,4 +1096,3 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
-

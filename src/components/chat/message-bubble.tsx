@@ -24,7 +24,7 @@ interface MessageBubbleProps {
   onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   emojiCategories: typeof EmojiCategoriesType;
-  // onOpenImageModal: (imageUrl: string, imageFileName?: string) => void; // Removed
+  onOpenImageModal: (imageUrl: string, imageFileName?: string) => void; 
 }
 
 export function MessageBubble({
@@ -37,24 +37,19 @@ export function MessageBubble({
   onScrollToMessage,
   onReaction,
   emojiCategories,
-  // onOpenImageModal, // Removed
+  onOpenImageModal,
 }: MessageBubbleProps) {
   const [showReactionPicker, setShowReactionPicker] = useState(false);
 
-  const isOwn = message.senderUserId === currentUserId && message.senderType !== 'admin'; // Ensure admin messages are not treated as "own" in terms of styling if admin is current user
+  const isOwn = message.senderUserId === currentUserId && message.senderType !== 'admin'; 
   const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
+
 
   const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
     setShowReactionPicker(false);
   };
 
-  // const handleImageClick = (e: MouseEvent<HTMLDivElement | HTMLImageElement>) => {
-  //   e.stopPropagation();
-  //   if (message.imageUrl) {
-  //     // onOpenImageModal(message.imageUrl, message.imageFileName); // Removed
-  //   }
-  // };
 
   return (
     <div
@@ -107,8 +102,8 @@ export function MessageBubble({
             <div
               className={cn(
                 "text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 cursor-pointer",
-                isOwn ? "bg-black/20 hover:bg-black/30" : "bg-black/10 hover:bg-black/20", // Adjusted for better contrast on colored bubbles
-                bubbleColor.text, // Ensure reply snippet text color matches bubble
+                "bg-black/10 hover:bg-black/20", 
+                bubbleColor.text, 
                 "opacity-90"
               )}
               onClick={() => onScrollToMessage(message.replyToMessageId as string)}
@@ -123,15 +118,15 @@ export function MessageBubble({
 
         {message.imageUrl && (
             <div
-              className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group"
-              // onClick={handleImageClick} // Removed onClick for modal
+              className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group cursor-pointer"
+              onClick={() => onOpenImageModal(message.imageUrl!, message.imageFileName)}
             >
               <Image
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
                 width={700} 
-                height={500} // Provide base aspect ratio, next/image will scale
-                className="rounded-md object-contain h-auto w-full" // h-auto to maintain aspect ratio
+                height={500} 
+                className="rounded-md object-contain h-auto w-full" 
                 data-ai-hint="chat image"
                 priority={false}
               />
@@ -153,9 +148,8 @@ export function MessageBubble({
                     size="sm"
                     className={cn(
                       "h-auto px-1.5 py-0.5 rounded-full text-xs border",
-                      currentUserReacted
-                        ? 'bg-black/30 dark:bg-white/30 border-current/50 shadow-md' 
-                        : 'bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20',
+                      "bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20", // Default style
+                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/50 shadow-md', // Highlight if current user reacted
                        bubbleColor.text 
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
