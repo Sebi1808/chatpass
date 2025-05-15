@@ -7,9 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2, NotebookPen, Crown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { useRouter, useParams } from "next/navigation"; 
-import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent, useMemo } from "react";
+import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent, useMemo, useCallback } from "react";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario, Participant as ParticipantType, Message as MessageType, SessionData, DisplayMessage, DisplayParticipant } from "@/lib/types";
 import {
@@ -38,6 +37,10 @@ interface ChatPageUrlParams {
   sessionId: string;
 }
 
+interface ChatPageProps {
+  params: ChatPageUrlParams;
+}
+
 interface ChatPageContentProps {
   sessionId: string;
   initialUserName?: string;
@@ -60,14 +63,14 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: propSessionId, // Renamed to avoid conflict with local state/vars
+  sessionId: propSessionId, 
   initialUserName,
   initialUserRole,
   initialUserId,
   initialUserAvatarFallback,
   isAdminView = false
 }: ChatPageContentProps) {
-  const sessionId = propSessionId; // Use the prop
+  const sessionId = propSessionId; 
   const { toast } = useToast();
   const router = useRouter();
 
@@ -95,8 +98,9 @@ export function ChatPageContent({
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [showEmojiPickerForInput, setShowEmojiPickerForInput] = useState(false);
 
-  const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
-  const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
+  // Removed states for image modal
+  // const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
+  // const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
 
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -300,23 +304,42 @@ export function ChatPageContent({
 
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
     const adminColor: ParticipantColor = { name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
-    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }; // Distinct bot color
+    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }; 
     const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" };
     
-    if (isAdminView && pUserId === initialUserId) return adminColor; // If it's the admin in admin view
-    if (pSenderType === 'admin') return adminColor;
-    if (pSenderType === 'bot' || (pUserId && pUserId.startsWith('bot-'))) return botColor;
+    // Debugging logs
+    // console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}`);
+
+    if (isAdminView && pUserId === initialUserId) {
+        // console.log("Applying adminColor for admin in admin view");
+        return adminColor;
+    }
+    if (pSenderType === 'admin') {
+        // console.log("Applying adminColor for senderType admin");
+        return adminColor;
+    }
+    if (pSenderType === 'bot' || (pUserId && pUserId.startsWith('bot-'))) {
+        // console.log("Applying botColor");
+        return botColor;
+    }
     
     if (!pUserId || !userId) { 
-        const defaultColor = participantColors[0]; 
+        const defaultColor = participantColors[0];
+        // console.log("Applying defaultColor (no pUserId or userId)");
         return { ...defaultColor, ring: defaultColor.ring || "ring-transparent" };
     }
-    if (pUserId === userId && !isAdminView) return ownColor;
+    if (pUserId === userId && !isAdminView) {
+        // console.log("Applying ownColor");
+        return ownColor;
+    }
 
-    const colorIndex = simpleHash(pUserId) % participantColors.length;
+    // Consistent color for other users
+    const hash = simpleHash(pUserId);
+    const colorIndex = hash % participantColors.length;
     const selectedColor = participantColors[colorIndex];
+    // console.log(`Applying selectedColor for user ${pUserId}: index ${colorIndex}, color ${selectedColor.name}`);
     return { ...selectedColor, ring: selectedColor.ring || "ring-transparent" };
-  }, [userId, isAdminView, initialUserId]);
+  }, [userId, isAdminView, initialUserId, participantColors]); // Added participantColors to dependency array
 
 
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -568,7 +591,11 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-       toast({ title: `Reaktion "${emoji}" ${currentReactions[emoji]?.includes(userId) ? 'entfernt' : 'hinzugefügt'}.` });
+       // Find the message locally to check if the user had reacted before to provide better toast
+       const localMessage = messages.find(m => m.id === messageId);
+       const hadReacted = localMessage?.reactions?.[emoji]?.includes(userId);
+
+       toast({ title: `Reaktion "${emoji}" ${hadReacted ? 'entfernt' : 'hinzugefügt'}.` });
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -579,15 +606,9 @@ export function ChatPageContent({
     }
   };
   
-  const handleOpenImageModal = (imageUrl: string, imageFileName?: string) => {
-    setSelectedImageForModal(imageUrl);
-    setSelectedImageFilenameForModal(imageFileName || "Bild");
-  };
-
-  const handleCloseImageModal = () => {
-    setSelectedImageForModal(null);
-    setSelectedImageFilenameForModal(null);
-  };
+  // Removed image modal functionality and related states/handlers
+  // const handleOpenImageModal = (imageUrl: string, imageFileName?: string) => { ... };
+  // const handleCloseImageModal = () => { ... };
 
 
   if (isLoading && !isAdminView) {
@@ -688,7 +709,7 @@ export function ChatPageContent({
                 onOpenReactionPicker={handleOpenReactionPicker}
                 onReaction={handleReaction} 
                 reactingToMessageId={reactingToMessageId}
-                onImageClick={handleOpenImageModal} 
+                // onImageClick removed as modal is removed
               />
             </ScrollArea>
 
@@ -721,43 +742,18 @@ export function ChatPageContent({
             />
           </main>
         </div>
-
-        {selectedImageForModal && (
-            <Dialog open={!!selectedImageForModal} onOpenChange={(open) => !open && handleCloseImageModal()}>
-                <DialogContent className="max-w-[90vw] w-auto h-auto md:max-w-[80vw] lg:max-w-[70vw] max-h-[85vh] p-2 sm:p-4 flex flex-col bg-background/90 backdrop-blur-sm">
-                    <DialogHeader className="flex-shrink-0">
-                        <DialogTitle className="truncate text-sm sm:text-base text-foreground">
-                            {selectedImageFilenameForModal || "Bild"}
-                        </DialogTitle>
-                         <DialogClose className="absolute right-2 top-2 sm:right-4 sm:top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-                            <XCircle className="h-5 w-5 sm:h-6 sm:w-6" />
-                            <span className="sr-only">Schließen</span>
-                        </DialogClose>
-                    </DialogHeader>
-                    <div className="flex-grow relative min-h-0"> {/* Ensure this div can grow and shrink */}
-                        <Image
-                            src={selectedImageForModal}
-                            alt={selectedImageFilenameForModal || "Großansicht Bild"}
-                            layout="fill"
-                            objectFit="contain"
-                            className="rounded"
-                            data-ai-hint="modal image"
-                        />
-                    </div>
-                </DialogContent>
-            </Dialog>
-        )}
-
+      
+        {/* Removed image modal Dialog */}
       </div>
   );
 }
 
 
-interface ChatPageProps {
+interface ChatPageOuterProps { // Renamed to avoid conflict
   params: ChatPageUrlParams;
 }
 
-export default function ChatPage(props: ChatPageProps) { 
+export default function ChatPage(props: ChatPageOuterProps) { 
   const { sessionId } = props.params;
 
   return (
@@ -774,3 +770,4 @@ export default function ChatPage(props: ChatPageProps) {
   );
 }
 
+    
