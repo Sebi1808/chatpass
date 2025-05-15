@@ -20,9 +20,7 @@ interface MessageListProps {
   messagesEndRef: RefObject<HTMLDivElement>;
   isChatDataLoading: boolean;
   isAdminView?: boolean;
-  onOpenReactionPicker: (messageId: string) => void;
-  reactingToMessageId: string | null;
-  handleOpenImageModal: (imageUrl: string, imageFileName?: string) => void;
+  // onOpenImageModal: (imageUrl: string, imageFileName?: string) => void; // Removed
 }
 
 export function MessageList({
@@ -38,9 +36,7 @@ export function MessageList({
   messagesEndRef,
   isChatDataLoading,
   isAdminView = false,
-  onOpenReactionPicker,
-  reactingToMessageId,
-  handleOpenImageModal,
+  // onOpenImageModal, // Removed
 }: MessageListProps) {
   return (
     <div className="space-y-6">
@@ -56,9 +52,7 @@ export function MessageList({
           onScrollToMessage={onScrollToMessage}
           onReaction={onReaction} 
           emojiCategories={emojiCategories} 
-          reactingToMessageId={reactingToMessageId}
-          onOpenReactionPicker={onOpenReactionPicker}
-          handleOpenImageModal={handleOpenImageModal}
+          // onOpenImageModal={onOpenImageModal} // Removed
         />
       ))}
       <div ref={messagesEndRef} />
@@ -78,4 +72,3 @@ export function MessageList({
     </div>
   );
 }
-
