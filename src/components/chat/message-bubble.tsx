@@ -21,12 +21,12 @@ interface MessageBubbleProps {
   onMentionUser: (name: string) => void;
   onSetReply: (message: DisplayMessage) => void;
   onSetQuote: (message: DisplayMessage) => void;
-  onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
-  reactingToMessageId: string | null; 
-  setReactingToMessageId: (messageId: string | null) => void; 
+  reactingToMessageId: string | null;
+  setReactingToMessageId: (messageId: string | null) => void;
   emojiCategories: typeof EmojiCategoriesType;
   isAdminView?: boolean;
+  // onOpenImageModal: (imageUrl: string, imageFileName?: string) => void; // Removed as per request
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -36,23 +36,20 @@ const MessageBubble = memo(function MessageBubble({
   onMentionUser,
   onSetReply,
   onSetQuote,
-  onScrollToMessage,
   onReaction,
   reactingToMessageId,
   setReactingToMessageId,
   emojiCategories,
   isAdminView = false,
+  // onOpenImageModal, // Removed
 }: MessageBubbleProps) {
 
-  const isOwn = message.senderUserId === currentUserId && (!isAdminView || message.senderType !== 'admin');
+  const isOwn = message.senderUserId === currentUserId && (!isAdminView || (isAdminView && message.senderType === 'admin'));
   const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
-
-  // console.log(`MessageBubble for ${message.senderName} (own: ${isOwn}): bg=${bubbleColor.bg}, text=${bubbleColor.text}, nameText=${bubbleColor.nameText}`);
-
 
   const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
-    setReactingToMessageId(null); 
+    setReactingToMessageId(null);
   };
 
   const handleOpenReactionPicker = (e: MouseEvent) => {
@@ -69,7 +66,7 @@ const MessageBubble = memo(function MessageBubble({
         isOwn ? "justify-end pl-10 sm:pl-16" : "justify-start pr-10 sm:pr-16"
       )}
     >
-      {!isOwn && (
+      {!isOwn && message.senderType !== 'admin' && (
         <Avatar className={cn("h-10 w-10 border-2 self-end shrink-0", bubbleColor.ring)}>
           <AvatarImage src={`https://placehold.co/40x40.png?text=${message.avatarFallback}`} alt={message.senderName} data-ai-hint="person user"/>
            <AvatarFallback className={cn("font-semibold", bubbleColor.bg, bubbleColor.text)}>{message.avatarFallback}</AvatarFallback>
@@ -79,8 +76,8 @@ const MessageBubble = memo(function MessageBubble({
         className={cn(
           "max-w-[85%] sm:max-w-[70%] md:max-w-[65%] lg:max-w-[60%]",
           "rounded-xl shadow-md flex flex-col",
-          bubbleColor.bg, 
-          bubbleColor.text  
+          bubbleColor.bg,
+          bubbleColor.text
         )}
       >
         <div className="p-3">
@@ -92,7 +89,7 @@ const MessageBubble = memo(function MessageBubble({
                   "text-xs font-semibold hover:underline",
                   bubbleColor.nameText
                 )}
-                disabled={isOwn}
+                disabled={isOwn && !isAdminView}
               >
                 {message.senderName}
               </button>
@@ -117,7 +114,7 @@ const MessageBubble = memo(function MessageBubble({
                 "bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10",
                 "opacity-90"
               )}
-              onClick={() => onScrollToMessage(message.replyToMessageId as string)}
+              // onClick={() => onScrollToMessage(message.replyToMessageId as string)} // onScrollToMessage not passed yet
               title="Zum Original springen"
             >
               <CornerDownLeft className="h-3 w-3 shrink-0" />
@@ -127,24 +124,24 @@ const MessageBubble = memo(function MessageBubble({
             </div>
           )}
 
-        {message.imageUrl && 
+        {message.imageUrl &&
             <div className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group">
               <NextImage
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
-                width={700} 
-                height={500} 
+                width={700}
+                height={500}
                 className="rounded-md object-contain h-auto w-full"
                 data-ai-hint="chat image"
-                priority={false} 
+                priority={false}
+                // onClick={() => onOpenImageModal(message.imageUrl!, message.imageFileName)} // Removed as per request
               />
             </div>
         }
         {message.imageFileName && !message.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {message.imageFileName}</p>}
 
           {message.content && <p className="text-sm whitespace-pre-wrap">{message.content}</p>}
-          
-          {/* Reactions Display */}
+
           {message.reactions && Object.keys(message.reactions).length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {Object.entries(message.reactions).map(([emoji, reactedUserIds]) => {
@@ -153,26 +150,25 @@ const MessageBubble = memo(function MessageBubble({
                 return (
                   <Button
                     key={emoji}
-                    variant={"ghost"} // Use ghost and style manually for better control
+                    variant="ghost"
                     size="sm"
                     className={cn(
-                      "h-auto px-1.5 py-0.5 rounded-full text-xs border",
-                      "bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20",
-                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/40 ring-1 ring-current/40 shadow-md'
+                      "h-auto px-2 py-1 rounded-full text-sm border", // Slightly larger padding and text
+                      "bg-black/5 dark:bg-white/5 border-current/20 hover:bg-black/10 dark:hover:bg-white/10",
+                      currentUserReacted && 'bg-black/20 dark:bg-white/20 border-current/40 ring-1 ring-current/40 shadow-md'
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
                   >
-                    <span className="text-sm mr-0.5">{emoji}</span>
-                    <span>{reactedUserIds.length}</span>
+                    <span className="text-lg mr-1">{emoji}</span> {/* Larger emoji */}
+                    <span className="text-xs">{reactedUserIds.length}</span>
                   </Button>
                 );
               })}
             </div>
           )}
-          
-          {/* Action buttons */}
+
           <div className="flex items-center gap-1 mt-1.5 -ml-1 opacity-100 transition-opacity duration-150">
-            {!isOwn && (
+            {!isOwn && !isAdminView && ( // Do not show reply/quote for admin's own messages in participant view
               <>
                 <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
                   <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
@@ -184,9 +180,9 @@ const MessageBubble = memo(function MessageBubble({
             )}
             <Popover open={reactingToMessageId === message.id} onOpenChange={(open) => {
                 if (!open) {
-                    setReactingToMessageId(null); 
+                    setReactingToMessageId(null);
                 } else {
-                    setReactingToMessageId(message.id); // Ensure this message's picker is targeted
+                    setReactingToMessageId(message.id);
                 }
             }}>
               <PopoverTrigger asChild>
@@ -200,17 +196,17 @@ const MessageBubble = memo(function MessageBubble({
                   <SmilePlus className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reagieren</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent 
-                className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs z-20" 
-                side="top" 
-                align={isOwn ? "end" : "start"} 
+              <PopoverContent
+                className="w-auto p-0 mb-1 max-w-[320px] sm:max-w-xs z-20" // Increased max-width
+                side="top"
+                align={isOwn ? "end" : "start"}
                 onClick={(e) => e.stopPropagation()}
-                onInteractOutside={() => setReactingToMessageId(null)} // Close on outside click
+                onInteractOutside={() => setReactingToMessageId(null)}
               >
                 <Tabs defaultValue={emojiCategories[0].name} className="w-full">
                   <TabsList className="grid w-full grid-cols-5 h-auto p-1">
                     {emojiCategories.map(category => (
-                      <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
+                      <TabsTrigger key={category.name} value={category.name} className="text-xl p-1.5 h-9" title={category.name}> {/* Increased size */}
                         {category.icon}
                       </TabsTrigger>
                     ))}
@@ -224,7 +220,7 @@ const MessageBubble = memo(function MessageBubble({
                               key={emoji}
                               variant="ghost"
                               size="icon"
-                              className="text-xl p-0 h-8 w-8"
+                              className="text-2xl p-0 h-9 w-9" // Increased size
                               onClick={() => handleLocalEmojiSelectForReaction(emoji)}
                             >
                               {emoji}
@@ -240,12 +236,18 @@ const MessageBubble = memo(function MessageBubble({
           </div>
         </div>
       </div>
-      {isOwn && message.senderName && message.avatarFallback && (
+      {isOwn && message.senderType !== 'admin' && (
         <Avatar className={cn("h-10 w-10 border-2 self-end shrink-0", bubbleColor.ring)}>
           <AvatarImage src={`https://placehold.co/40x40.png?text=${message.avatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
            <AvatarFallback className={cn("font-semibold",bubbleColor.bg, bubbleColor.text)}>
             {message.avatarFallback}
           </AvatarFallback>
+        </Avatar>
+      )}
+       {message.senderType === 'admin' && isOwn && ( // Admin's own messages also show avatar on the right
+        <Avatar className={cn("h-10 w-10 border-2 self-end shrink-0", bubbleColor.ring)}>
+            <AvatarImage src={`https://placehold.co/40x40.png?text=${message.avatarFallback}`} alt={message.senderName} data-ai-hint="person user"/>
+            <AvatarFallback className={cn("font-semibold", bubbleColor.bg, bubbleColor.text)}>{message.avatarFallback}</AvatarFallback>
         </Avatar>
       )}
     </div>
