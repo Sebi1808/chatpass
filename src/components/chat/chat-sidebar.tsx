@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from '@/lib/utils';
 import type { Scenario, DisplayParticipant } from "@/lib/types";
 import type { ParticipantColor } from '@/lib/config';
-import { Bot as BotIcon, User, VolumeX, ShieldCheck } from "lucide-react"; // ShieldCheck for Admin
+import { Bot as BotIcon, User, VolumeX, ShieldCheck, Crown } from "lucide-react";
 
 interface ChatSidebarProps {
   participants: DisplayParticipant[];
@@ -38,23 +38,23 @@ export function ChatSidebar({
     <>
       <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
       <ScrollArea className="flex-1">
-        <div className="space-y-3">
+        <div className="space-y-3 py-2 pr-2">
           {participants.map((p) => {
             const pColor = getParticipantColorClasses(p.userId, p.isBot ? 'bot' : (p.userId === currentUserId && isAdminView ? 'admin' : 'user'));
             const isAdminParticipant = p.userId === currentUserId && isAdminView;
             const isCurrentParticipantMuted = p.isMuted ?? false;
 
             return (
-              <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
+              <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
                 <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                  <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
+                  <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user"/>
                   <AvatarFallback className={cn(pColor.bg, pColor.text)}>{p.avatarFallback}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="text-sm font-medium">
-                    {p.name}
-                    {p.isBot && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent bg-accent/10")}>🤖 BOT</Badge>}
-                    {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">👑 ADMIN</Badge>}
+                  <p className="text-sm font-medium flex items-center">
+                    <span className={cn(pColor.nameText)}>{p.name}</span>
+                    {p.isBot && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent bg-accent/10 flex items-center gap-1")}><BotIcon className="h-3 w-3" />BOT</Badge>}
+                    {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0 flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
                     {p.userId === currentUserId && !isAdminView && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">Du</Badge>}
                     {isCurrentParticipantMuted && !p.isBot && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                   </p>
@@ -65,15 +65,15 @@ export function ChatSidebar({
           })}
         </div>
       </ScrollArea>
-      {!isAdminView && userRole && currentScenario && userName && userId && ( // Added userId check
+      {!isAdminView && userRole && currentScenario && userName && currentUserId && (
         <>
           <Separator />
           <Card className="mt-auto bg-muted/30">
             <CardHeader className="p-3">
               <div className="flex items-center gap-2">
-                <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
-                  <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                  <AvatarFallback className={cn(getParticipantColorClasses(userId, 'user').bg, getParticipantColorClasses(userId, 'user').text)}>
+                <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(currentUserId, 'user').ring)}>
+                  <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
+                  <AvatarFallback className={cn(getParticipantColorClasses(currentUserId, 'user').bg, getParticipantColorClasses(currentUserId, 'user').text)}>
                     {userAvatarFallback}
                   </AvatarFallback>
                 </Avatar>
@@ -84,7 +84,7 @@ export function ChatSidebar({
               </div>
             </CardHeader>
             <CardContent className="p-3 pt-0">
-              <ScrollArea className="h-[150px] text-xs">
+              <ScrollArea className="h-[120px] text-xs">
                 <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                   {currentScenario.langbeschreibung}
                 </CardDescription>
