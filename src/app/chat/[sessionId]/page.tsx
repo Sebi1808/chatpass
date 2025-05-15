@@ -4,21 +4,20 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowDown, XCircle, Users as UsersIcon, Bot as BotIcon, User, VolumeX, ShieldCheck, Crown, CornerDownLeft, Quote, SmilePlus, Paperclip, Send, Mic, Image as ImageIconLucide, AlertTriangle, PauseCircle, Eye, X } from "lucide-react";
+import { ArrowDown, XCircle, Users as UsersIcon, Bot as BotIcon, User, VolumeX, ShieldCheck, Crown, CornerDownLeft, Quote, SmilePlus, Paperclip, Send, Mic, Image as ImageIconLucide, AlertTriangle, PauseCircle, Eye, X, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent, useMemo, useCallback } from "react";
-import NextImage from 'next/image'; // Renamed to avoid conflict if 'Image' is used elsewhere
+import NextImage from 'next/image'; // Renamed to avoid conflict
 import type { Scenario, Participant as ParticipantType, Message as MessageType, SessionData, DisplayMessage, DisplayParticipant } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
-import { participantColors, emojiCategories, ParticipantColor } from '@/lib/config';
+import { participantColors, emojiCategories, type ParticipantColor } from '@/lib/config';
 import { MessageInputBar } from '@/components/chat/message-input-bar';
 import { MessageList } from '@/components/chat/message-list';
 import { ChatSidebar } from '@/components/chat/chat-sidebar';
@@ -51,16 +50,17 @@ const LoadingScreen = () => (
 
 const simpleHash = (str: string): number => {
   let hash = 0;
+  if (!str || str.length === 0) return hash;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = (hash << 5) - hash + char;
     hash |= 0; // Convert to 32bit integer
   }
-  return Math.abs(hash); // Ensure positive for modulo
+  return hash; // Return potentially negative hash, Math.abs will be used later
 };
 
 export function ChatPageContent({
-  sessionId: directSessionId, // Renamed to avoid conflict with state variable
+  sessionId: directSessionId,
   initialUserName: initialUserNameProp,
   initialUserRole: initialUserRoleProp,
   initialUserId: initialUserIdProp,
@@ -70,7 +70,6 @@ export function ChatPageContent({
   const { toast } = useToast();
   const router = useRouter();
 
-  // All useState, useRef calls must be at the top level, unconditionally
   const [userName, setUserName] = useState<string | null>(initialUserNameProp || null);
   const [userRole, setUserRole] = useState<string | null>(initialUserRoleProp || null);
   const [userId, setUserId] = useState<string | null>(initialUserIdProp || null);
@@ -87,8 +86,9 @@ export function ChatPageContent({
   const [newMessage, setNewMessage] = useState("");
   
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
-  const scrollAreaRef = useRef<null | HTMLDivElement>(null); // For ScrollArea component itself
-  const viewportRef = useRef<null | HTMLDivElement>(null); // For ScrollArea.Viewport
+  const scrollAreaRef = useRef<null | HTMLDivElement>(null); 
+  const viewportRef = useRef<null | HTMLDivElement>(null); 
+  const firstTimeMessagesLoadRef = useRef(true);
 
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
 
@@ -106,17 +106,11 @@ export function ChatPageContent({
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
   
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
-
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  
-  // Moved from child, but not used in ChatPageContent directly after removing modal
-  // const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
-  // const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
 
 
   useEffect(() => {
     if (!directSessionId) return;
-    // Dynamic import removed, assuming scenarios are statically available
     import('@/lib/scenarios').then(module => {
       const scenario = module.scenarios.find(s => s.id === directSessionId);
       setCurrentScenario(scenario);
@@ -147,7 +141,7 @@ export function ChatPageContent({
 
   useEffect(() => {
     if (!directSessionId) return;
-    setIsChatDataLoading(true); // Set loading true when starting to listen for session data
+    setIsChatDataLoading(true); 
 
     const sessionDocRef = doc(db, "sessions", directSessionId);
     const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
@@ -166,14 +160,13 @@ export function ChatPageContent({
         }
         setSessionData(null);
       }
-      // Consider moving setIsChatDataLoading to after all initial data is fetched (participants, messages)
     }, (error) => {
       console.error("Error listening to session data: ", error);
       if (!isAdminView) {
         toast({ variant: "destructive", title: "Fehler", description: "Sitzungsstatus konnte nicht geladen werden." });
         router.push("/");
       }
-      setIsChatDataLoading(false); // Ensure loading is false on error
+      setIsChatDataLoading(false); 
     });
     return () => unsubscribeSessionData();
   }, [directSessionId, isAdminView, router, toast]);
@@ -222,7 +215,6 @@ export function ChatPageContent({
 
   useEffect(() => {
     if (!directSessionId) return;
-    // Moved setIsChatDataLoading to the messages useEffect as it's usually the last piece of data
     const participantsColRef = collection(db, "sessions", directSessionId, "participants");
     const q_participants = query(participantsColRef);
 
@@ -249,20 +241,24 @@ export function ChatPageContent({
     return () => unsubscribe();
   }, [directSessionId, toast]);
 
-
   const scrollToBottom = useCallback((force: boolean = false, behavior: 'auto' | 'smooth' = 'smooth') => {
     if (messagesEndRef.current && viewportRef.current) {
+      const scrollContainer = viewportRef.current;
       if (force) {
+        // console.log("Forcing scroll to bottom, behavior:", behavior);
         messagesEndRef.current.scrollIntoView({ behavior });
         return;
       }
       // Check if user is near the bottom.
       // Threshold can be adjusted. 250px means if the user is within 250px from the bottom, auto-scroll.
-      const scrollContainer = viewportRef.current;
       const isNearBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 250;
       
       if (isNearBottom) {
+        // console.log("Near bottom, auto-scrolling, behavior:", behavior);
         messagesEndRef.current.scrollIntoView({ behavior: "auto" }); // Use 'auto' for instant scroll if already near bottom
+      } else {
+        // console.log("Not near bottom, showing scroll to bottom button potentially.");
+        setShowScrollToBottomButton(true);
       }
     }
   }, []);
@@ -277,11 +273,9 @@ export function ChatPageContent({
     const messagesColRef = collection(db, "sessions", directSessionId, "messages");
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
 
-    let firstTimeMessagesLoad = true;
-
     const unsubscribeMessages = onSnapshot(q_msg, (querySnapshot) => {
       const newMessagesData: DisplayMessage[] = [];
-      const prevMessageCount = messages.length; // Store previous message count
+      const prevMessageCount = messages.length; 
 
       querySnapshot.forEach((docSn) => {
         const data = docSn.data() as MessageType;
@@ -289,26 +283,30 @@ export function ChatPageContent({
         newMessagesData.push({
           ...data,
           id: docSn.id,
-          isOwn: data.senderUserId === userId && !isAdminView, // Admin messages are not "own" in participant view
+          isOwn: data.senderUserId === userId && (!isAdminView || data.senderType !== 'admin'),
           timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
         });
       });
       
       setMessages(newMessagesData);
-      setIsChatDataLoading(false); // Set loading to false after messages are processed
+      setIsChatDataLoading(false);
 
-      if (firstTimeMessagesLoad) {
-          scrollToBottom(true, 'auto'); // Force scroll to bottom on initial load with 'auto'
-          firstTimeMessagesLoad = false;
-      } else if (newMessagesData.length > prevMessageCount) { // Only scroll if new messages were actually added
+      if (firstTimeMessagesLoadRef.current) {
+          // console.log("Initial messages loaded, scrolling to bottom (auto).");
+          scrollToBottom(true, 'auto'); 
+          firstTimeMessagesLoadRef.current = false;
+      } else if (newMessagesData.length > prevMessageCount) { 
           const scrollContainer = viewportRef.current;
           if (scrollContainer) {
-              // If user has scrolled up, show button, otherwise scroll smoothly.
-              const isScrolledToVeryBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 10; // stricter check for "at bottom"
-              if (isScrolledToVeryBottom || newMessagesData[newMessagesData.length -1]?.senderUserId === userId) { // If at bottom OR it's own message
+              const lastMessageIsOwn = newMessagesData[newMessagesData.length -1]?.senderUserId === userId;
+              const isScrolledToVeryBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 10; 
+              
+              if (isScrolledToVeryBottom || lastMessageIsOwn) { 
+                  // console.log("New message, at bottom or own message, scrolling (smooth).");
                   scrollToBottom(false, 'smooth'); 
                   setShowScrollToBottomButton(false);
               } else {
+                  // console.log("New message, but user scrolled up, showing button.");
                   setShowScrollToBottomButton(true); 
               }
           }
@@ -320,29 +318,29 @@ export function ChatPageContent({
     });
 
     return () => unsubscribeMessages();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [directSessionId, userId, isAdminView, toast]); // scrollToBottom removed from deps to avoid re-triggering on its own change
+  }, [directSessionId, userId, isAdminView, toast, scrollToBottom, messages.length]); // Added messages.length to re-evaluate on new messages
 
-  // This useEffect handles the scroll to bottom button visibility
+
   useEffect(() => {
     const scrollContainer = viewportRef.current;
     const handleScroll = () => {
       if (scrollContainer) {
-        // Show button if user is scrolled up more than, say, 300px from the bottom
-        const isScrolledUp = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop > 300;
+        const SCROLL_UP_THRESHOLD = 150; // Pixels from bottom to trigger button
+        const isScrolledUp = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop > SCROLL_UP_THRESHOLD;
         setShowScrollToBottomButton(isScrolledUp);
       }
     };
 
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', handleScroll);
+      handleScroll(); // Initial check
     }
     return () => {
       if (scrollContainer) {
         scrollContainer.removeEventListener('scroll', handleScroll);
       }
     };
-  }, []);
+  }, []); // Empty dependency array as viewportRef should be stable
 
 
   useEffect(() => {
@@ -374,22 +372,13 @@ export function ChatPageContent({
     const adminColor: ParticipantColor = { name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
     const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" };
     const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" };
-    
-    // Fallback for "other users"
-    const otherUserDefaultColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-600" };
+    const emeraldColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-600" };
 
-    if (pSenderType === 'admin' || (isAdminView && pUserId === initialUserIdProp)) {
-      return adminColor;
-    }
-    if (pSenderType === 'bot') {
-      return botColor;
-    }
-    if (pUserId === userId && !isAdminView) {
-      return ownColor;
-    }
+    if (pSenderType === 'admin' || (isAdminView && pUserId === initialUserIdProp)) return adminColor;
+    if (pSenderType === 'bot') return botColor;
+    if (pUserId === userId && !isAdminView) return ownColor;
     
-    // For other users, use the Emerald color as a consistent default
-    return otherUserDefaultColor;
+    return emeraldColor; // Default for all other users
 
   }, [userId, isAdminView, initialUserIdProp]);
 
@@ -397,7 +386,7 @@ export function ChatPageContent({
   const isSessionActive = useMemo(() => sessionData?.status === "active", [sessionData]);
 
 
-  const scrollToMessage = useCallback((messageId: string) => {
+  const handleScrollToMessage = useCallback((messageId: string) => {
     const messageElement = document.getElementById(`msg-${messageId}`);
     if (messageElement) {
       messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -481,8 +470,8 @@ export function ChatPageContent({
         const imagePath = `chat_images/${directSessionId}/${imageFileNameForPath}`;
         const sRef = storageRef(storage, imagePath);
         
-        console.log(`Attempting to upload ${file.name} to ${imagePath}`);
-        console.log("Storage reference:", sRef);
+        // console.log(`Attempting to upload ${file.name} to ${imagePath}`);
+        // console.log("Storage reference:", sRef);
 
         const uploadTask = uploadBytesResumable(sRef, file);
 
@@ -490,10 +479,10 @@ export function ChatPageContent({
           uploadTask.on('state_changed',
             (snapshot) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
+              // console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
               setImageUploadProgress(progress);
-              if (snapshot.state === 'paused') console.log('Upload is paused');
-              else if (snapshot.state === 'running') console.log('Upload is running');
+              // if (snapshot.state === 'paused') console.log('Upload is paused');
+              // else if (snapshot.state === 'running') console.log('Upload is running');
             },
             (error) => {
                let errorMessage = `Fehler: ${error.code || 'Unbekannt'}`;
@@ -508,13 +497,13 @@ export function ChatPageContent({
               reject(new Error(errorMessage));
             },
             async () => {
-              console.log('Upload successful, getting download URL...');
+              // console.log('Upload successful, getting download URL...');
               try {
                 const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                console.log('Download URL:', downloadURL);
+                // console.log('Download URL:', downloadURL);
                 uploadedImageUrl = downloadURL;
                 uploadedImageFileName = file.name;
-                console.log("Image upload process finished. URL:", uploadedImageUrl);
+                // console.log("Image upload process finished. URL:", uploadedImageUrl);
                 resolve();
               } catch (getUrlError) {
                 const getUrlErrorTyped = getUrlError as Error & { code?: string };
@@ -526,7 +515,7 @@ export function ChatPageContent({
           );
         });
       } else if (selectedImageFile) {
-        console.error("selectedImageFile is not a File object:", selectedImageFile);
+        // console.error("selectedImageFile is not a File object:", selectedImageFile);
         toast({ variant: "destructive", title: "Ungültige Datei", description: "Das ausgewählte Element ist keine gültige Bilddatei."});
         throw new Error("Ungültige Datei ausgewählt");
       }
@@ -552,19 +541,20 @@ export function ChatPageContent({
         messageData.replyToMessageSenderName = replyingTo.senderName;
       }
 
-      console.log("Adding message to Firestore:", messageData);
+      // console.log("Adding message to Firestore:", messageData);
       await addDoc(messagesColRef, messageData);
-      console.log("Message added to Firestore.");
+      // console.log("Message added to Firestore.");
 
       setNewMessage("");
       setReplyingTo(null);
       setQuotingMessage(null);
       handleRemoveSelectedImage(); 
       if (!isAdminView) setLastMessageSentAt(Date.now());
-
-      // Explicitly scroll to bottom after sending own message
-      // Use a short timeout to ensure the new message is rendered before scrolling
-      setTimeout(() => scrollToBottom(true, 'smooth'), 100);
+      
+      setTimeout(() => {
+        // console.log("Own message sent, forcing scroll to bottom (smooth).");
+        scrollToBottom(true, 'smooth');
+      }, 100);
 
 
     } catch (error) {
@@ -573,11 +563,11 @@ export function ChatPageContent({
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: (error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten.") });
       }
     } finally {
-      console.log("handleSendMessage finally block. Resetting state.");
+      // console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
       setImageUploadProgress(null);
     }
-  }, [newMessage, selectedImageFile, userName, userId, userAvatarFallback, sessionData, isAdminView, isMuted, lastMessageSentAt, directSessionId, toast, replyingTo, handleRemoveSelectedImage, scrollToBottom]); // Added scrollToBottom to dependencies
+  }, [newMessage, selectedImageFile, userName, userId, userAvatarFallback, sessionData, isAdminView, isMuted, lastMessageSentAt, directSessionId, toast, replyingTo, handleRemoveSelectedImage, scrollToBottom]); 
 
   const handleSetReply = useCallback((message: DisplayMessage) => {
     setQuotingMessage(null);
@@ -590,20 +580,18 @@ export function ChatPageContent({
   }, []);
 
   const handleSetQuote = useCallback((message: DisplayMessage) => {
-    setReplyingTo(null); // Cancel any active reply
+    setReplyingTo(null); 
     const quotedText = `> ${message.senderName} schrieb:\n> "${message.content.replace(/\n/g, '\n> ')}"\n\n`;
     setNewMessage(prev => quotedText + prev);
-    setQuotingMessage(message); // Set quoting message to show feedback
+    setQuotingMessage(message); 
     inputRef.current?.focus();
   }, []);
   
   const handleCancelQuote = useCallback(() => {
-    // This logic might be complex if quote is mixed with user's own text.
-    // For simplicity, we'll just clear the quoting state. User can manually delete.
     if (quotingMessage) {
       const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"(\\n){1,2}`;
-      const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), ''); // Make whitespace flexible
-      setNewMessage(prev => prev.replace(regex, "").trimStart()); // Remove and trim potential leading newline
+      const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), ''); 
+      setNewMessage(prev => prev.replace(regex, "").trimStart()); 
     }
     setQuotingMessage(null);
   }, [quotingMessage]);
@@ -633,20 +621,17 @@ export function ChatPageContent({
         let newReactions = { ...currentReactions };
 
         if (usersWhoReactedWithEmoji.includes(userId)) {
-          // User is removing their reaction
           const updatedUserList = usersWhoReactedWithEmoji.filter(uid => uid !== userId);
           if (updatedUserList.length === 0) {
-            delete newReactions[emoji]; // Remove emoji if no users are left
+            delete newReactions[emoji]; 
           } else {
             newReactions[emoji] = updatedUserList;
           }
         } else {
-          // User is adding their reaction
           newReactions[emoji] = [...usersWhoReactedWithEmoji, userId];
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-      // No toast on success to keep UI clean, visual feedback is enough
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -660,7 +645,7 @@ export function ChatPageContent({
 
   const handleEmojiSelectForInput = useCallback((emoji: string) => {
     setNewMessage(prev => prev + emoji);
-    setShowEmojiPicker(false); // Close picker after selection
+    setShowEmojiPicker(false); 
   }, []);
 
 
@@ -669,7 +654,6 @@ export function ChatPageContent({
   }
 
   if (isAdminView && (!sessionData && isLoadingUserDetails)) {
-     // For admin view, we might not need a full loading screen if it's embedded
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
 
@@ -677,7 +661,7 @@ export function ChatPageContent({
   return (
       <div className={cn(
         "flex flex-col bg-muted/40 dark:bg-background/50", 
-        isAdminView ? "h-full" : "min-h-screen h-screen"
+        isAdminView ? "h-full overflow-hidden" : "min-h-screen h-screen overflow-hidden" // Ensure full height and prevent body scroll
       )}>
         {!isAdminView && (
           <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
@@ -690,7 +674,7 @@ export function ChatPageContent({
                   <UsersIcon className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4 flex flex-col"> {/* Added flex flex-col */}
+              <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4 flex flex-col"> 
                  <ChatSidebar
                     participants={participants}
                     currentUserId={userId}
@@ -708,7 +692,7 @@ export function ChatPageContent({
         )}
 
         <div className={cn(
-            "flex flex-1 overflow-hidden", 
+            "flex flex-1 overflow-hidden", // This flex-1 and overflow-hidden is crucial for the main content area
             isAdminView ? "" : "relative" 
         )}>
           {!isAdminView && (
@@ -727,36 +711,36 @@ export function ChatPageContent({
             </aside>
           )}
 
-          <main className="flex flex-1 flex-col min-w-0"> 
+          <main className="flex flex-1 flex-col min-w-0"> {/* min-w-0 is important for flex children */}
             <ScrollArea
-              className={cn("flex-1 p-4 md:p-6", isAdminView ? "bg-background" : "")}
+              className={cn("flex-1", isAdminView ? "bg-background" : "")} // flex-1 ensures ScrollArea takes available space
               ref={scrollAreaRef}
               viewportRef={viewportRef}
-              // onScroll is handled by useEffect now
               >
-              <MessageList
-                messages={messages}
-                currentUserId={userId}
-                getParticipantColorClasses={getParticipantColorClasses}
-                onMentionUser={handleMentionUser}
-                onSetReply={handleSetReply}
-                onSetQuote={handleSetQuote}
-                onScrollToMessage={scrollToMessage}
-                onReaction={handleReaction}
-                reactingToMessageId={reactingToMessageId} 
-                setReactingToMessageId={setReactingToMessageId}
-                emojiCategories={emojiCategories}
-                messagesEndRef={messagesEndRef}
-                isChatDataLoading={isChatDataLoading}
-                isAdminView={isAdminView}
-                // onOpenImageModal={() => {}} // Removed image modal
-              />
+               <div className="p-4 md:p-6"> {/* Added padding here instead of on ScrollArea itself */}
+                <MessageList
+                  messages={messages}
+                  currentUserId={userId}
+                  getParticipantColorClasses={getParticipantColorClasses}
+                  onMentionUser={handleMentionUser}
+                  onSetReply={handleSetReply}
+                  onSetQuote={handleSetQuote}
+                  onScrollToMessage={handleScrollToMessage}
+                  onReaction={handleReaction}
+                  reactingToMessageId={reactingToMessageId} 
+                  setReactingToMessageId={setReactingToMessageId}
+                  emojiCategories={emojiCategories}
+                  messagesEndRef={messagesEndRef}
+                  isChatDataLoading={isChatDataLoading}
+                  isAdminView={isAdminView}
+                />
+               </div>
             </ScrollArea>
             {showScrollToBottomButton && !isAdminView && (
               <Button
                 variant="outline"
                 size="icon"
-                className="absolute bottom-24 right-4 md:right-8 z-10 rounded-full shadow-md bg-background/80 hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted/70 backdrop-blur-sm animate-bounce"
+                className="absolute bottom-24 right-4 md:right-8 z-10 rounded-full shadow-md bg-background/80 hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted/70 backdrop-blur-sm"
                 onClick={() => scrollToBottom(true, 'smooth')}
                 aria-label="Zu neuesten Nachrichten springen"
               >
@@ -814,5 +798,6 @@ export default function ChatPage({ params }: ChatPageProps) {
     </Suspense>
   );
 }
+
 
     
