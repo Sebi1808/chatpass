@@ -3,9 +3,10 @@ import type { LucideIcon } from 'lucide-react';
 import type { Timestamp } from 'firebase/firestore';
 
 export interface HumanRoleConfig {
-  id: string; // Unique ID for the role within the scenario, e.g., "angeklagter", "zeuge-1"
-  name: string; // Display name of the role, e.g., "Angeklagte Person", "Zeuge der Anklage"
-  description: string; // Detailed description, goals, secret information etc. for the participant
+  id: string; // Unique ID for the role instance within the scenario
+  name: string;
+  description: string;
+  templateId?: string; // Optional: ID of the template this role was created from
 }
 
 export interface Scenario {
@@ -14,29 +15,30 @@ export interface Scenario {
   kurzbeschreibung: string;
   langbeschreibung: string;
   lernziele?: string[];
-  defaultBots: number;
-  standardRollen: number; // Gesamtzahl der Rollen inkl. Bots
-  iconName: string; // Should match a key in iconMap in ScenarioCard
+  defaultBots: number; // This will be dynamically calculated based on defaultBotsConfig.length
+  standardRollen: number; // Gesamtzahl der Rollen inkl. Bots - will be dynamically calculated
+  iconName: string;
   tags: string[];
   defaultBotsConfig?: BotConfig[];
-  humanRolesConfig?: HumanRoleConfig[]; // Added for structured human roles
+  humanRolesConfig?: HumanRoleConfig[];
 }
 
 export interface BotConfig {
-  id: string; // e.g., "szenario1-provokateur-0" - MUST be unique within scenario
+  id: string; // Unique ID for the bot instance within the scenario
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
-  name?: string; // Display name for the bot, e.g., "Bot Kevin"
-  avatarFallback?: string; // e.g., "BK"
-  currentEscalation?: number; // Default or initial escalation level (0-3)
-  isActive?: boolean; // Whether the bot is active by default in a session
-  autoTimerEnabled?: boolean; // For future auto-posting feature
-  initialMission?: string; // An initial mission/prompt for the bot from scenario config
-  currentMission?: string; // For admin to override or set a new mission during a session
+  name?: string;
+  avatarFallback?: string;
+  currentEscalation?: number;
+  isActive?: boolean;
+  autoTimerEnabled?: boolean;
+  initialMission?: string;
+  currentMission?: string; // For admin override during session
+  templateId?: string; // Optional: ID of the template this bot was created from
 }
 
 export interface SessionData {
   scenarioId: string;
-  createdAt: Timestamp | Date; // Firestore timestamp or JS Date for client-side creation
+  createdAt: Timestamp | Date;
   invitationLink: string;
   invitationToken?: string;
   status: "active" | "paused" | "ended";
@@ -45,22 +47,19 @@ export interface SessionData {
 
 export interface Participant {
   id: string; // Firestore document ID
-  userId: string; // Unique identifier for the user/bot session (e.g. `user-${name}-${timestamp}` or `bot-${botScenarioId}`)
+  userId: string;
   name: string;
   role: string;
   avatarFallback: string;
   isBot: boolean;
-  joinedAt?: Timestamp | Date | any; // Firestore timestamp or JS Date
+  joinedAt?: Timestamp | Date | any;
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
   isMuted?: boolean;
-  botConfig?: BotConfig; // If isBot is true, this contains the specific bot config
-  botScenarioId?: string; // The unique ID from the Scenario's defaultBotsConfig
+  botConfig?: BotConfig;
+  botScenarioId?: string; // The unique ID from the Scenario's defaultBotsConfig (BotConfig.id)
 }
 
-// For client-side display, potentially with additional UI-related properties
-export interface DisplayParticipant extends Participant {
-  // Potentially add UI-specific participant properties here if needed later
-}
+export interface DisplayParticipant extends Participant {}
 
 export interface Message {
   id: string; // Firestore document ID
@@ -69,18 +68,17 @@ export interface Message {
   senderType: 'admin' | 'user' | 'bot';
   avatarFallback: string;
   content: string;
-  timestamp: Timestamp | Date | null | any; // Firestore timestamp or ServerTimestamp or JS Date
+  timestamp: Timestamp | Date | null | any;
   replyToMessageId?: string;
   replyToMessageContentSnippet?: string;
   replyToMessageSenderName?: string;
-  botFlag?: boolean; // Optional flag for bot messages
+  botFlag?: boolean;
   imageUrl?: string;
   imageFileName?: string;
-  reactions?: { [emoji: string]: string[] }; // emoji_char: [userId1, userId2]
+  reactions?: { [emoji: string]: string[] };
 }
 
 export interface DisplayMessage extends Message {
   isOwn: boolean;
   timestampDisplay: string;
 }
-    

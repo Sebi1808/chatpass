@@ -9,9 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
+import { botTemplates } from '@/lib/bot-templates';
+import { humanRoleTemplates } from '@/lib/role-templates';
 import { useEffect, useState, type FormEvent, type ChangeEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
@@ -29,10 +31,10 @@ export default function EditScenarioPage() {
   const [langbeschreibung, setLangbeschreibung] = useState('');
   const [lernziele, setLernziele] = useState('');
   const [tagsInput, setTagsInput] = useState('');
+  const [iconNameInput, setIconNameInput] = useState(''); // For icon name editing
   
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
-
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -48,11 +50,11 @@ export default function EditScenarioPage() {
         setLangbeschreibung(foundScenario.langbeschreibung);
         setLernziele(foundScenario.lernziele?.join('\n') || '');
         setTagsInput(foundScenario.tags.join(', '));
-        // Deep copy to prevent direct mutation of the imported scenarios
+        setIconNameInput(foundScenario.iconName || '');
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || []))); 
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || []))); 
       } else {
-        setCurrentScenario(null); // Scenario not found
+        setCurrentScenario(null);
       }
     }
     setIsLoading(false);
@@ -60,7 +62,6 @@ export default function EditScenarioPage() {
 
   const handleBotConfigChange = (index: number, field: keyof BotConfig, value: any) => {
     const updatedBots = [...editableBotsConfig];
-    // Ensure the bot object and the field exist
     if (updatedBots[index]) {
         (updatedBots[index] as any)[field] = value;
         setEditableBotsConfig(updatedBots);
@@ -69,7 +70,7 @@ export default function EditScenarioPage() {
 
   const handleAddBot = () => {
     setEditableBotsConfig([...editableBotsConfig, {
-        id: `new-bot-${Date.now()}`, // Simple unique ID for now
+        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
         name: "Neuer Bot",
         personality: "standard",
         avatarFallback: "NB",
@@ -78,6 +79,16 @@ export default function EditScenarioPage() {
         initialMission: "",
         autoTimerEnabled: false,
     }]);
+  };
+
+  const handleAddBotFromTemplate = (templateId: string) => {
+    const template = botTemplates.find(t => t.templateId === templateId);
+    if (template) {
+      setEditableBotsConfig([...editableBotsConfig, {
+        ...template, // Spread template properties
+        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for this instance
+      }]);
+    }
   };
 
   const handleRemoveBot = (index: number) => {
@@ -95,17 +106,26 @@ export default function EditScenarioPage() {
 
   const handleAddHumanRole = () => {
     setEditableHumanRoles([...editableHumanRoles, {
-        id: `new-role-${Date.now()}`,
+        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: "Neue Rolle",
         description: "Beschreibung der neuen Rolle..."
     }]);
+  };
+
+  const handleAddHumanRoleFromTemplate = (templateId: string) => {
+    const template = humanRoleTemplates.find(t => t.templateId === templateId);
+    if (template) {
+      setEditableHumanRoles([...editableHumanRoles, {
+        ...template, // Spread template properties
+        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID
+      }]);
+    }
   };
 
   const handleRemoveHumanRole = (index: number) => {
     const updatedRoles = editableHumanRoles.filter((_, i) => i !== index);
     setEditableHumanRoles(updatedRoles);
   };
-
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -119,9 +139,9 @@ export default function EditScenarioPage() {
       langbeschreibung,
       lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
       tags: tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag),
-      iconName: currentScenario.iconName, // Not editable for now
+      iconName: iconNameInput,
       defaultBots: editableBotsConfig.length, 
-      standardRollen: currentScenario.standardRollen, // This might need adjustment based on human roles count + bots
+      standardRollen: editableBotsConfig.length + editableHumanRoles.length,
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
     };
@@ -129,7 +149,6 @@ export default function EditScenarioPage() {
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
-    // Simulate API call
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -159,7 +178,7 @@ export default function EditScenarioPage() {
           </div>
           <Button variant="outline" onClick={() => router.push('/admin/scenario-editor')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Zurück zur Editor-Übersicht
+            Zur Editor-Übersicht
           </Button>
         </div>
         <Separator />
@@ -171,10 +190,11 @@ export default function EditScenarioPage() {
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg">
-            Editor: <span className="text-foreground">{title || currentScenario.title}</span>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
+            <NotebookPen className="mr-3 h-6 w-6" />
+            Editor: <span className="text-foreground ml-2">{title || currentScenario.title}</span>
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5 ml-9">
             ID: {currentScenario.id}
           </p>
         </div>
@@ -204,49 +224,20 @@ export default function EditScenarioPage() {
               <CardContent className="space-y-6">
                 <div className="space-y-1.5">
                   <Label htmlFor="title">Titel des Szenarios</Label>
-                  <Input 
-                    id="title" 
-                    value={title} 
-                    onChange={(e) => setTitle(e.target.value)} 
-                    placeholder="Ein prägnanter Titel"
-                    disabled={isSaving}
-                  />
+                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ein prägnanter Titel" disabled={isSaving}/>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="kurzbeschreibung">Kurzbeschreibung (für Übersichtskarten)</Label>
-                  <Textarea 
-                    id="kurzbeschreibung" 
-                    value={kurzbeschreibung} 
-                    onChange={(e) => setKurzbeschreibung(e.target.value)} 
-                    placeholder="Eine kurze Zusammenfassung (ca. 1-2 Sätze)."
-                    rows={3}
-                    disabled={isSaving}
-                  />
+                  <Textarea id="kurzbeschreibung" value={kurzbeschreibung} onChange={(e) => setKurzbeschreibung(e.target.value)} placeholder="Eine kurze Zusammenfassung (ca. 1-2 Sätze)." rows={3} disabled={isSaving}/>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="langbeschreibung">Langbeschreibung / Szenariokontext (für Simulation)</Label>
-                  <Textarea 
-                    id="langbeschreibung" 
-                    value={langbeschreibung} 
-                    onChange={(e) => setLangbeschreibung(e.target.value)} 
-                    placeholder="Ausführliche Beschreibung der Ausgangslage, Thema, beteiligte Akteure etc. Dies ist der Hauptkontext für die Simulation und die Bots."
-                    rows={10}
-                    className="min-h-[200px] md:min-h-[250px]"
-                    disabled={isSaving}
-                  />
+                  <Textarea id="langbeschreibung" value={langbeschreibung} onChange={(e) => setLangbeschreibung(e.target.value)} placeholder="Ausführliche Beschreibung der Ausgangslage, Thema, beteiligte Akteure etc. Dies ist der Hauptkontext für die Simulation und die Bots." rows={10} className="min-h-[200px] md:min-h-[250px]" disabled={isSaving}/>
                   <p className="text-xs text-muted-foreground">Markdown-Formatierung wird später unterstützt.</p>
                 </div>
                  <div className="space-y-1.5">
                   <Label htmlFor="lernziele">Lernziele (ein Ziel pro Zeile)</Label>
-                  <Textarea 
-                    id="lernziele" 
-                    value={lernziele} 
-                    onChange={(e) => setLernziele(e.target.value)} 
-                    placeholder="Was sollen die Teilnehmenden lernen?&#10;- Ziel 1&#10;- Ziel 2"
-                    rows={5}
-                    className="min-h-[100px]"
-                    disabled={isSaving}
-                  />
+                  <Textarea id="lernziele" value={lernziele} onChange={(e) => setLernziele(e.target.value)} placeholder="Was sollen die Teilnehmenden lernen?&#10;- Ziel 1&#10;- Ziel 2" rows={5} className="min-h-[100px]" disabled={isSaving}/>
                 </div>
               </CardContent>
             </Card>
@@ -255,13 +246,23 @@ export default function EditScenarioPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                     <CardTitle>Bot-Konfiguration</CardTitle>
-                    <CardDescription>
-                    Standard-Bots für dieses Szenario.
-                    </CardDescription>
+                    <CardDescription>Standard-Bots für dieses Szenario.</CardDescription>
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={handleAddBot} disabled={isSaving}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Bot hinzufügen
-                </Button>
+                <div className="flex gap-2">
+                    <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving}>
+                        <SelectTrigger className="w-[230px] text-sm h-9">
+                            <SelectValue placeholder="Bot aus Vorlage wählen..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {botTemplates.map(template => (
+                                <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button type="button" size="sm" variant="outline" onClick={handleAddBot} disabled={isSaving}>
+                        <PlusCircle className="mr-2 h-4 w-4" /> Bot manuell
+                    </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 {editableBotsConfig.length > 0 ? (
@@ -316,7 +317,7 @@ export default function EditScenarioPage() {
                     </Card>
                   ))
                 ) : (
-                  <p className="text-muted-foreground">Keine Bots für dieses Szenario konfiguriert. Klicken Sie auf "Bot hinzufügen".</p>
+                  <p className="text-muted-foreground">Keine Bots für dieses Szenario konfiguriert. Fügen Sie einen Bot manuell oder aus einer Vorlage hinzu.</p>
                 )}
               </CardContent>
             </Card>
@@ -325,13 +326,23 @@ export default function EditScenarioPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                     <CardTitle>Rollen für menschliche Teilnehmer</CardTitle>
-                    <CardDescription>
-                    Definition der Rollen, ihrer Ziele und Informationen.
-                    </CardDescription>
+                    <CardDescription>Definition der Rollen, ihrer Ziele und Informationen.</CardDescription>
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={handleAddHumanRole} disabled={isSaving}>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Rolle hinzufügen
-                </Button>
+                 <div className="flex gap-2">
+                    <Select onValueChange={handleAddHumanRoleFromTemplate} disabled={isSaving}>
+                        <SelectTrigger className="w-[230px] text-sm h-9">
+                            <SelectValue placeholder="Rolle aus Vorlage wählen..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {humanRoleTemplates.map(template => (
+                                <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button type="button" size="sm" variant="outline" onClick={handleAddHumanRole} disabled={isSaving}>
+                        <PlusCircle className="mr-2 h-4 w-4" /> Rolle manuell
+                    </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 {editableHumanRoles.length > 0 ? (
@@ -350,21 +361,13 @@ export default function EditScenarioPage() {
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor={`role-description-${index}`}>Rollenbeschreibung (Ziele, Infos etc.)</Label>
-                            <Textarea 
-                                id={`role-description-${index}`} 
-                                value={role.description} 
-                                onChange={(e) => handleHumanRoleChange(index, 'description', e.target.value)} 
-                                placeholder="Detailbeschreibung der Rolle, ihrer Ziele, Startinformationen, geheime Infos etc. Dies wird dem Teilnehmer angezeigt."
-                                rows={8}
-                                className="min-h-[150px]"
-                                disabled={isSaving}
-                            />
+                            <Textarea id={`role-description-${index}`} value={role.description} onChange={(e) => handleHumanRoleChange(index, 'description', e.target.value)} placeholder="Detailbeschreibung der Rolle, ihrer Ziele, Startinformationen, geheime Infos etc. Dies wird dem Teilnehmer angezeigt." rows={8} className="min-h-[150px]" disabled={isSaving}/>
                         </div>
                       </CardContent>
                     </Card>
                   ))
                 ) : (
-                     <p className="text-muted-foreground">Keine menschlichen Rollen für dieses Szenario konfiguriert. Klicken Sie auf "Rolle hinzufügen".</p>
+                     <p className="text-muted-foreground">Keine menschlichen Rollen für dieses Szenario konfiguriert. Fügen Sie eine Rolle manuell oder aus einer Vorlage hinzu.</p>
                 )}
               </CardContent>
             </Card>
@@ -374,30 +377,22 @@ export default function EditScenarioPage() {
               <Card>
                   <CardHeader>
                   <CardTitle>Szenario-Metadaten</CardTitle>
-                  <CardDescription>
-                      Weitere Einstellungen wie Icon und Tags.
-                  </CardDescription>
+                  <CardDescription>Weitere Einstellungen wie Icon und Tags.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                       <div className="space-y-1.5">
-                          <Label htmlFor="iconName">Icon Name (aus Lucide-React)</Label>
-                          <Input id="iconName" value={currentScenario.iconName || ''} disabled className="mt-1 bg-muted/80"/>
-                          <p className="text-xs text-muted-foreground mt-1">Bearbeitung/Auswahl des Icons folgt später.</p>
+                          <Label htmlFor="iconNameInput">Icon Name (aus Lucide-React)</Label>
+                          <Input id="iconNameInput" value={iconNameInput} onChange={(e) => setIconNameInput(e.target.value)} placeholder="z.B. ShieldAlert" disabled={isSaving} className="mt-1"/>
+                          <p className="text-xs text-muted-foreground mt-1">Bearbeitung/Auswahl des Icons folgt später. Gültige Namen sind z.B. ShieldAlert, Code2, Users etc.</p>
                       </div>
                        <div className="space-y-1.5">
                           <Label htmlFor="standardRollenGesamt">Standard-Rollenzahl (gesamt)</Label>
-                          <Input id="standardRollenGesamt" type="number" value={currentScenario.standardRollen} disabled className="mt-1 bg-muted/80"/>
-                          <p className="text-xs text-muted-foreground mt-1">Wird später basierend auf Bot-Anzahl und menschlichen Rollen berechnet.</p>
+                          <Input id="standardRollenGesamt" type="number" value={editableBotsConfig.length + editableHumanRoles.length} disabled className="mt-1 bg-muted/80"/>
+                          <p className="text-xs text-muted-foreground mt-1">Wird automatisch aus Bot-Anzahl und menschlichen Rollen berechnet.</p>
                       </div>
                       <div className="space-y-1.5">
                           <Label htmlFor="tagsInput">Tags (kommagetrennt)</Label>
-                          <Input 
-                              id="tagsInput" 
-                              value={tagsInput} 
-                              onChange={(e) => setTagsInput(e.target.value)} 
-                              placeholder="Konflikt, Social Media, Fake News"
-                              disabled={isSaving}
-                          />
+                          <Input id="tagsInput" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="Konflikt, Social Media, Fake News" disabled={isSaving}/>
                           <p className="text-xs text-muted-foreground mt-1">Ein Klick-basiertes Tag-System aus der Taxonomie folgt.</p>
                       </div>
                   </CardContent>
@@ -421,6 +416,3 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-    
-
-    
