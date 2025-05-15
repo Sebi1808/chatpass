@@ -8,6 +8,7 @@ import { ArrowDown, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent, useMemo, useCallback } from "react";
 import type { Scenario, Participant as ParticipantType, Message as MessageType, SessionData, DisplayMessage, DisplayParticipant } from "@/lib/types";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Added import
 
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
@@ -15,7 +16,7 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebas
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
-import { participantColors as defaultParticipantColors, emojiCategories, type ParticipantColor } from '@/lib/config'; // Ensure defaultParticipantColors is imported
+import { participantColors as defaultParticipantColors, emojiCategories, type ParticipantColor } from '@/lib/config';
 import { MessageInputBar } from '@/components/chat/message-input-bar';
 import { MessageList } from '@/components/chat/message-list';
 import { ChatSidebar } from '@/components/chat/chat-sidebar';
@@ -26,7 +27,7 @@ interface ChatPageUrlParams {
 }
 
 interface ChatPageProps {
-  params: ChatPageUrlParams; // Changed from {sessionId: string}
+  params: ChatPageUrlParams;
 }
 
 
@@ -42,6 +43,7 @@ interface ChatPageContentProps {
 const simpleHash = (str: string): number => {
   let hash = 0;
   if (!str || str.length === 0) {
+    console.warn("simpleHash called with empty or null string, returning 0");
     return 0;
   }
   for (let i = 0; i < str.length; i++) {
@@ -55,7 +57,7 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId, // Directly use sessionId prop
+  sessionId, 
   initialUserName,
   initialUserRole,
   initialUserId,
@@ -89,6 +91,8 @@ export function ChatPageContent({
 
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
+  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
+
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -135,7 +139,7 @@ export function ChatPageContent({
     // This useEffect might be better if scenarios were fetched or passed as prop if dynamic
     const scenarioData = defaultParticipantColors.length > 0 ? // A placeholder check, replace with actual scenario loading
       { id: sessionId, title: `Szenario ${sessionId}`, langbeschreibung: `Lange Beschreibung für Szenario ${sessionId}`, defaultBots: 0, standardRollen: 0, iconName: 'Users', tags: [] } : undefined;
-    setCurrentScenario(scenarioData);
+    setCurrentScenario(scenarioData); // This is more of a placeholder if scenarios are not dynamically loaded
 
 
   }, [sessionId, toast, router, isAdminView, initialUserName, initialUserRole, initialUserId, initialUserAvatarFallback]);
@@ -178,7 +182,7 @@ export function ChatPageContent({
     let unsubscribeParticipant: (() => void) | undefined;
     const findParticipantDocAndListen = async () => {
       const participantsColRef = collection(db, "sessions", sessionId, "participants");
-      if (!userId) { // Defensive check
+      if (!userId) { 
         console.warn("Skipping participant listener because userId is null");
         return;
       }
@@ -225,7 +229,6 @@ export function ChatPageContent({
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as DisplayParticipant);
       });
       setParticipants(fetchedParticipants);
-      // console.log("Fetched participants:", fetchedParticipants);
       setIsChatDataLoading(false);
     }, (error) => {
       console.error("Error fetching participants: ", error);
@@ -238,8 +241,25 @@ export function ChatPageContent({
 
   const [isInitialMessagesLoad, setIsInitialMessagesLoad] = useState(true);
 
+  const scrollToBottom = useCallback((force: boolean = false) => {
+    if (messagesEndRef.current) {
+      if (force) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        setShowScrollToBottomButton(false);
+      } else {
+        const scrollContainer = scrollAreaRef.current?.children[0] as HTMLDivElement | undefined;
+        if (scrollContainer) {
+          const isScrolledToBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 150;
+          if (isScrolledToBottom) {
+            messagesEndRef.current.scrollIntoView({ behavior: "auto" }); // Use auto for less jarring scroll if already near bottom
+          }
+        }
+      }
+    }
+  }, []);
+
   useEffect(() => {
-    if (!sessionId || !userId) return; // Ensure userId is available
+    if (!sessionId || !userId) return; 
     setIsChatDataLoading(true);
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
@@ -256,19 +276,24 @@ export function ChatPageContent({
           timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
         });
       });
+      
+      const messagesChanged = fetchedMessages.length !== messages.length || 
+                              (fetchedMessages.length > 0 && messages.length > 0 && fetchedMessages[fetchedMessages.length - 1].id !== messages[messages.length - 1].id);
+
       setMessages(fetchedMessages);
       setIsChatDataLoading(false);
 
-      // Scroll logic
       if (isInitialMessagesLoad) {
-          scrollToBottom(true); // Force scroll on initial load
+          scrollToBottom(true); 
           setIsInitialMessagesLoad(false);
-      } else {
+      } else if (messagesChanged) { // Only scroll if new messages were actually added or significantly changed
           const scrollContainer = scrollAreaRef.current?.children[0] as HTMLDivElement | undefined;
           if (scrollContainer) {
-              const isScrolledToBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 150; // Increased tolerance
-              if (isScrolledToBottom && !showScrollToBottomButton) { // Only auto-scroll if user is near bottom and not intentionally scrolled up
-                  scrollToBottom();
+              const isNearBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 200; // Increased tolerance
+              if (isNearBottom && !showScrollToBottomButton) { 
+                  scrollToBottom(); // Smooth scroll if near bottom
+              } else if (!isNearBottom) {
+                  // setShowScrollToBottomButton(true); // Potentially show button if scrolled up
               }
           }
       }
@@ -279,8 +304,8 @@ export function ChatPageContent({
     });
 
     return () => unsubscribeMessages();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, toast, userId, isInitialMessagesLoad]); // showScrollToBottomButton removed to prevent loop with its own setter
+  }, [sessionId, toast, userId, isInitialMessagesLoad, scrollToBottom, messages.length, showScrollToBottomButton]); // Added messages.length and showScrollToBottomButton to dependencies
+
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -306,26 +331,13 @@ export function ChatPageContent({
     };
   }, [lastMessageSentAt, sessionData?.messageCooldownSeconds, isAdminView]);
 
-
-  const scrollToBottom = useCallback((force: boolean = false) => {
-    if (force) {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        setShowScrollToBottomButton(false); // Hide button when forced to bottom
-    } else {
-      // This part is tricky, as we don't want to scroll if the user has scrolled up.
-      // The logic in onSnapshot for messages now handles conditional auto-scrolling.
-      // This function is mainly for the "scroll to bottom" button.
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // No dependencies needed if it's just scrolling to a ref
-
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
-    const isScrolledToBottom = target.scrollHeight - target.clientHeight <= target.scrollTop + 20;
-    if (isScrolledToBottom) {
+    // A bit more tolerance to ensure the button hides when very close to bottom
+    const isAtBottom = target.scrollHeight - target.clientHeight <= target.scrollTop + 20;
+    if (isAtBottom) {
       setShowScrollToBottomButton(false);
-    } else if (target.scrollTop < target.scrollHeight - target.clientHeight - 100) { // Show if scrolled up significantly
+    } else if (target.scrollTop < target.scrollHeight - target.clientHeight - 150) { // Show if scrolled up significantly
       setShowScrollToBottomButton(true);
     }
   };
@@ -345,13 +357,14 @@ export function ChatPageContent({
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
-    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-red-600", text: "text-red-50", nameText: "text-red-100", ring: "ring-red-500" };
-    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-500" };
+    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
+    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }; // Distinct bot color
     const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" };
-    const emeraldColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-500"};
+    const emeraldColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-600" };
+    const fallbackColor: ParticipantColor = { name: 'fallback', bg: "bg-muted", text: "text-muted-foreground", nameText: "text-muted-foreground", ring: "ring-muted-foreground" };
 
     // console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
-
+    
     if (pSenderType === 'admin' || (isAdminView && pUserId === initialUserId)) {
       // console.log("-> Resolved as ADMIN color");
       return adminColor;
@@ -360,29 +373,33 @@ export function ChatPageContent({
       // console.log("-> Resolved as BOT color");
       return botColor;
     }
-    if (pUserId === userId && !isAdminView) {
+    if (pUserId === userId && !isAdminView) { // Current logged-in user (not admin viewing as themselves)
       // console.log(`-> Resolved as OWN USER color for ${pUserId}`);
       return ownColor;
     }
 
-    // Fallback for other users - always emerald
-    // console.log(`-> Resolved as OTHER USER (Emerald) for ${pUserId}`);
-    return emeraldColor;
+    // For all other users, use the emerald color
+    if (pUserId && pSenderType === 'user') {
+      // console.log(`-> Resolved as OTHER USER (Emerald) for ${pUserId}`);
+      return emeraldColor;
+    }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, isAdminView, initialUserId]); // Removed defaultParticipantColors if not used for dynamic assignment
+    // Fallback if none of the above match (should ideally not happen)
+    // console.warn(`Could not determine color for pUserId: ${pUserId}, pSenderType: ${pSenderType}. Using fallback.`);
+    return fallbackColor; // Fallback color
+  }, [userId, isAdminView, initialUserId]); // Dependencies for useCallback
 
 
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUploadProgress(null);
+      setImageUploadProgress(null); // Reset progress for new file
     }
   };
 
@@ -393,7 +410,7 @@ export function ChatPageContent({
       setImagePreviewUrl(null);
     }
     if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      fileInputRef.current.value = ""; // Reset file input
     }
     setImageUploadProgress(null);
   };
@@ -431,7 +448,7 @@ export function ChatPageContent({
     }
 
     setIsSendingMessage(true);
-    if (selectedImageFile) setImageUploadProgress(0);
+    if (selectedImageFile) setImageUploadProgress(0); // Initialize progress
 
     let uploadedImageUrl: string | undefined = undefined;
     let uploadedImageFileName: string | undefined = undefined;
@@ -439,29 +456,31 @@ export function ChatPageContent({
     try {
       if (selectedImageFile && selectedImageFile instanceof File) {
         const file = selectedImageFile;
+        // Sanitize file name part for the path, keep original for display
         const safeFileNamePart = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const imageFileName = `${safeFileNamePart}_${Date.now()}`;
-        const imagePath = `chat_images/${sessionId}/${imageFileName}`;
+        const imageFileNameForPath = `${safeFileNamePart}_${Date.now()}`;
+        const imagePath = `chat_images/${sessionId}/${imageFileNameForPath}`;
         const sRef = storageRef(storage, imagePath);
         
-        console.log(`Attempting to upload ${file.name} to ${imagePath}`);
-        console.log("Storage reference:", sRef);
+        // console.log(`Attempting to upload ${file.name} to ${imagePath}`);
+        // console.log("Storage reference:", sRef);
 
         const uploadTask = uploadBytesResumable(sRef, file);
 
+        // Wrap uploadTask in a promise to await its completion
         await new Promise<void>((resolve, reject) => {
           uploadTask.on('state_changed',
             (snapshot) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
+              // console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
               setImageUploadProgress(progress);
-              switch (snapshot.state) {
-                case 'paused': console.log('Upload is paused'); break;
-                case 'running': console.log('Upload is running'); break;
-              }
+              // switch (snapshot.state) {
+              //   case 'paused': console.log('Upload is paused'); break;
+              //   case 'running': console.log('Upload is running'); break;
+              // }
             },
             (error) => {
-              console.error("Firebase Storage upload error: ", error);
+              // console.error("Firebase Storage upload error: ", error);
               let errorMessage = `Fehler: ${error.code || 'Unbekannt'}`;
                switch (error.code) {
                 case 'storage/unauthorized': errorMessage = "Fehler: Keine Berechtigung zum Hochladen."; break;
@@ -470,34 +489,35 @@ export function ChatPageContent({
                 default: errorMessage = `Storage Fehler: ${error.code} - ${error.message}`; break;
               }
               toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: errorMessage });
-              reject(new Error(errorMessage));
+              reject(new Error(errorMessage)); // Reject the promise on error
             },
-            async () => {
-              console.log('Upload successful, getting download URL...');
+            async () => { // Completion observer
+              // console.log('Upload successful, getting download URL...');
               try {
                 const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                console.log('Download URL:', downloadURL);
+                // console.log('Download URL:', downloadURL);
                 uploadedImageUrl = downloadURL;
-                uploadedImageFileName = file.name;
-                resolve();
+                uploadedImageFileName = file.name; // Use original file name for display
+                resolve(); // Resolve the promise on success
               } catch (getUrlError) {
                 const getUrlErrorTyped = getUrlError as Error & { code?: string };
-                console.error("Error getting download URL: ", getUrlErrorTyped);
+                // console.error("Error getting download URL: ", getUrlErrorTyped);
                 toast({ variant: "destructive", title: "Bild-URL Abruf fehlgeschlagen", description: `URL konnte nicht abgerufen werden: ${getUrlErrorTyped.message}` });
-                reject(getUrlErrorTyped);
+                reject(getUrlErrorTyped); // Reject if getDownloadURL fails
               }
             }
           );
         });
-        console.log("Image upload process finished. URL:", uploadedImageUrl);
-      } else if (selectedImageFile) {
-        console.error("selectedImageFile is not a File object:", selectedImageFile);
+        // console.log("Image upload process finished. URL:", uploadedImageUrl);
+      } else if (selectedImageFile) { // If selectedImageFile is not null but not a File (should not happen with current logic)
+        // console.error("selectedImageFile is not a File object:", selectedImageFile);
         toast({ variant: "destructive", title: "Ungültige Datei", description: "Das ausgewählte Element ist keine gültige Bilddatei."});
-        setIsSendingMessage(false);
+        setIsSendingMessage(false); // Important: reset sending state
         setImageUploadProgress(null);
-        return;
+        return; // Stop execution
       }
 
+      // Proceed to add message to Firestore
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: MessageType = {
         id: '', // Firestore will generate
@@ -507,7 +527,7 @@ export function ChatPageContent({
         avatarFallback: userAvatarFallback!,
         content: newMessage.trim(),
         timestamp: serverTimestamp(),
-        reactions: {},
+        reactions: {}, // Initialize reactions
       };
 
       if (uploadedImageUrl) messageData.imageUrl = uploadedImageUrl;
@@ -519,31 +539,33 @@ export function ChatPageContent({
         messageData.replyToMessageSenderName = replyingTo.senderName;
       }
 
-      console.log("Adding message to Firestore:", messageData);
+      // console.log("Adding message to Firestore:", messageData);
       await addDoc(messagesColRef, messageData);
-      console.log("Message added to Firestore.");
+      // console.log("Message added to Firestore.");
 
       setNewMessage("");
       setReplyingTo(null);
-      setQuotingMessage(null); // Ensure quotingMessage is also reset
-      handleRemoveSelectedImage(); // Clear image preview and file
+      setQuotingMessage(null); 
+      handleRemoveSelectedImage(); // Clear image preview and file input
       if (!isAdminView) setLastMessageSentAt(Date.now());
-      // scrollToBottom(true); // Already handled by useEffect on messages change
+      // scrollToBottom(true); // Let useEffect handle scrolling based on new messages
 
     } catch (error) {
-      console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
+      // This catch block handles errors from the Promise (upload or getURL) or Firestore addDoc
+      // console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
+      // Avoid double-toasting if already toasted in promise reject
       if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("Bild-URL Abruf fehlgeschlagen") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
       }
     } finally {
-      console.log("handleSendMessage finally block. Resetting state.");
+      // console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
-      setImageUploadProgress(null);
+      setImageUploadProgress(null); // Ensure progress is reset
     }
   };
 
   const handleSetReply = (message: DisplayMessage) => {
-    setQuotingMessage(null);
+    setQuotingMessage(null); // Cancel any active quote
     setReplyingTo(message);
     inputRef.current?.focus();
   };
@@ -561,10 +583,10 @@ export function ChatPageContent({
   };
 
   const handleCancelQuote = () => {
+     // Basic removal; might need more robust logic if user edits the quote heavily
      if (quotingMessage) {
-        // Attempt to remove the quoted text. This is a bit fragile if user edits the quote.
         const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\n\\n`;
-        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), ''); // Remove 'g' for single replacement from start
+        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), ''); 
         setNewMessage(prev => prev.replace(regex, ""));
     }
     setQuotingMessage(null);
@@ -578,8 +600,7 @@ export function ChatPageContent({
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) return;
-    // No scroll to bottom here, as it's handled by message list updates or manual button
-    // console.log(`Handling reaction: msgId=${messageId}, emoji=${emoji}, userId=${userId}`);
+    setReactingToMessageId(null); // Close emoji picker after selection
 
     const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
@@ -600,7 +621,7 @@ export function ChatPageContent({
           // User already reacted with this emoji, remove reaction
           const updatedUserList = usersWhoReactedWithEmoji.filter(uid => uid !== userId);
           if (updatedUserList.length === 0) {
-            delete newReactions[emoji]; // Remove emoji if no one else reacted with it
+            delete newReactions[emoji]; 
           } else {
             newReactions[emoji] = updatedUserList;
           }
@@ -608,10 +629,8 @@ export function ChatPageContent({
           // User has not reacted with this emoji, add reaction
           newReactions[emoji] = [...usersWhoReactedWithEmoji, userId];
         }
-        // console.log("Updating reactions in transaction:", newReactions);
         transaction.update(messageRef, { reactions: newReactions });
       });
-       // console.log("Reaction processed successfully");
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -620,6 +639,10 @@ export function ChatPageContent({
         description: "Ihre Reaktion konnte nicht gespeichert werden.",
       });
     }
+  };
+
+  const handleOpenReactionPicker = (messageId: string) => {
+    setReactingToMessageId(messageId);
   };
 
   const isSessionActive = useMemo(() => sessionData?.status === "active", [sessionData]);
@@ -635,7 +658,7 @@ export function ChatPageContent({
     );
   }
 
-  if (isAdminView && (!sessionData || !currentScenario)) { // Added !currentScenario check for admin view robustness
+  if (isAdminView && (!sessionData)) { 
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
 
@@ -644,11 +667,9 @@ export function ChatPageContent({
       <div className={cn("flex flex-col bg-muted/40 dark:bg-background/50", isAdminView ? "h-full" : "h-screen")}>
         {!isAdminView && (
           <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
-            {/* Header Content */}
             <h1 className="text-lg font-semibold text-primary truncate max-w-[calc(100%-200px)] sm:max-w-none">
               Simulation: {getScenarioTitle()}
             </h1>
-            {/* Other header items */}
           </header>
         )}
 
@@ -683,11 +704,13 @@ export function ChatPageContent({
                 onSetReply={handleSetReply}
                 onSetQuote={handleSetQuote}
                 onScrollToMessage={scrollToMessage}
+                onReaction={handleReaction}
                 emojiCategories={emojiCategories}
                 messagesEndRef={messagesEndRef}
                 isChatDataLoading={isChatDataLoading}
                 isAdminView={isAdminView}
-                onReaction={handleReaction}
+                onOpenReactionPicker={handleOpenReactionPicker}
+                reactingToMessageId={reactingToMessageId}
                 onOpenImageModal={handleOpenImageModal}
               />
             </ScrollArea>
@@ -733,11 +756,11 @@ export function ChatPageContent({
       {selectedImageForModal && (
          <div
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in-50"
-            onClick={handleCloseImageModal} // Close by clicking background
+            onClick={handleCloseImageModal} 
           >
             <div
               className="relative flex flex-col bg-card rounded-lg shadow-xl max-w-[90vw] w-auto max-h-[85vh] h-auto overflow-hidden"
-              onClick={(e) => e.stopPropagation()} // Prevent closing when clicking on the dialog itself
+              onClick={(e) => e.stopPropagation()} 
             >
               <div className="flex items-center justify-between p-3 border-b">
                 <h3 className="text-lg font-semibold text-card-foreground truncate">
@@ -766,8 +789,8 @@ export function ChatPageContent({
 }
 
 
-export default function ChatPage({ params }: ChatPageProps) { // params is used directly
-  const { sessionId } = params; // Destructure here for clarity if preferred
+export default function ChatPage({ params: pageParams }: ChatPageProps) {
+  const { sessionId } = pageParams;
 
   return (
     <Suspense fallback={
@@ -782,3 +805,4 @@ export default function ChatPage({ params }: ChatPageProps) { // params is used 
     </Suspense>
   );
 }
+
