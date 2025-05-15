@@ -12,8 +12,8 @@ export const scenarios: Scenario[] = [
     iconName: 'ShieldAlert',
     tags: ['Konflikt', 'Respekt', 'Online-Sicherheit'],
     defaultBotsConfig: [
-      { personality: 'provokateur' },
-      { personality: 'verteidiger' },
+      { id: '1-prov-0', personality: 'provokateur' },
+      { id: '1-vert-1', personality: 'verteidiger' },
     ]
   },
   {
@@ -26,8 +26,8 @@ export const scenarios: Scenario[] = [
     iconName: 'Code2',
     tags: ['Extremismus', 'Propaganda', 'Medienkompetenz'],
     defaultBotsConfig: [
-      { personality: 'informant' }, // Verbreitet codierte Nachrichten
-      { personality: 'provokateur' } // Stachelt an oder verteidigt
+      { id: '2-info-0', personality: 'informant' }, 
+      { id: '2-prov-1', personality: 'provokateur' } 
     ]
   },
   {
@@ -40,7 +40,7 @@ export const scenarios: Scenario[] = [
     iconName: 'Users',
     tags: ['Soziale Dynamik', 'Kommunikation', 'Alltag'],
     defaultBotsConfig: [
-      { personality: 'standard' } // Ein neutralerer Bot, der Gespräche anstößt
+      { id: '3-std-0', personality: 'standard' } 
     ]
   },
   {
@@ -50,10 +50,10 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Teilnehmende werden mit viralen Falschmeldungen und Desinformation konfrontiert. Ziel ist es, die Mechanismen von Fake News zu verstehen, Quellenkritik zu üben und Strategien zur Verifizierung von Informationen zu erlernen.',
     defaultBots: 1,
     standardRollen: 10,
-    iconName: 'Annoyed', // Lucide 'FileWarning' oder 'AlertTriangle' könnten auch passen
+    iconName: 'Annoyed', 
     tags: ['Desinformation', 'Medienkritik', 'Quellenprüfung'],
     defaultBotsConfig: [
-      { personality: 'informant' } // Verbreitet Fake News
+      { id: '4-info-0', personality: 'informant' } 
     ]
   },
   {
@@ -63,10 +63,10 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Dieses Szenario setzt sich mit der Verbreitung und Wirkung von Verschwörungstheorien auseinander. Teilnehmende analysieren deren typische Merkmale und lernen, kritisch mit solchen Narrativen umzugehen.',
     defaultBots: 1,
     standardRollen: 10,
-    iconName: 'Zap', // Lucide 'Brain' oder 'LightbulbOff' könnten passen
+    iconName: 'Zap', 
     tags: ['Verschwörung', 'Kritisches Denken', 'Manipulation'],
      defaultBotsConfig: [
-      { personality: 'informant' } // Verbreitet Verschwörungstheorien
+      { id: '5-info-0', personality: 'informant' } 
     ]
   },
   {
@@ -74,13 +74,13 @@ export const scenarios: Scenario[] = [
     title: 'Cybermobbing',
     kurzbeschreibung: 'Ausgrenzung und Belästigung Einzelner.',
     langbeschreibung: 'Simuliert eine Situation von Cybermobbing, bei der eine Person online ausgegrenzt, beleidigt oder bedroht wird. Fokus liegt auf Empathie, Zivilcourage und Hilfsangeboten für Betroffene und Beobachtende.',
-    defaultBots: 2, // Ein Mobber-Bot, ein Opfer-Bot (oder Beobachter-Bot)
+    defaultBots: 2, 
     standardRollen: 9,
-    iconName: 'MessageSquare', // Lucide 'UserMinus' oder 'ShieldOff'
+    iconName: 'MessageSquare', 
     tags: ['Mobbing', 'Soziale Verantwortung', 'Hilfe'],
     defaultBotsConfig: [
-      { personality: 'provokateur' }, // Mobber
-      { personality: 'verteidiger' } // Verteidigt oder ist neutraler Beobachter
+      { id: '6-prov-0', personality: 'provokateur' }, 
+      { id: '6-vert-1', personality: 'verteidiger' } 
     ]
   },
   {
@@ -93,8 +93,8 @@ export const scenarios: Scenario[] = [
     iconName: 'Film',
     tags: ['Extremismus', 'Social Media', 'Propaganda'],
     defaultBotsConfig: [
-      { personality: 'informant' }, // Teilt die Inhalte
-      { personality: 'provokateur' } // Provoziert Diskussionen darüber
+      { id: '7-info-0', personality: 'informant' }, 
+      { id: '7-prov-1', personality: 'provokateur' } 
     ]
   },
   {
@@ -107,7 +107,7 @@ export const scenarios: Scenario[] = [
     iconName: 'ShoppingBag',
     tags: ['Werbung', 'Konsumkritik', 'Social Media'],
     defaultBotsConfig: [
-      { personality: 'informant' } // Der Influencer-Bot
+      { id: '8-info-0', personality: 'informant' } 
     ]
   },
   {
@@ -115,13 +115,13 @@ export const scenarios: Scenario[] = [
     title: 'Sextortion',
     kurzbeschreibung: 'Grooming & Erpressung mit intimen Inhalten.',
     langbeschreibung: 'Dieses ernste Szenario simuliert Anbahnungsversuche (Grooming) und Erpressung mit intimen Bildern oder Videos (Sextortion). Es soll für Gefahren sensibilisieren und Handlungsoptionen aufzeigen.',
-    defaultBots: 2, // Ein Täter-Bot, evtl. ein Bot, der warnt oder hilft
+    defaultBots: 2, 
     standardRollen: 8,
     iconName: 'Lock',
     tags: ['Sexuelle Gewalt', 'Erpressung', 'Prävention'],
     defaultBotsConfig: [
-      { personality: 'provokateur' }, // Täter-Bot (vorsichtig formulieren)
-      { personality: 'verteidiger' }  // Freund/Helfer-Bot
+      { id: '9-prov-0', personality: 'provokateur' }, 
+      { id: '9-vert-1', personality: 'verteidiger' }  
     ]
   },
   {
@@ -134,7 +134,7 @@ export const scenarios: Scenario[] = [
     iconName: 'BotMessageSquare',
     tags: ['Künstliche Intelligenz', 'Manipulation', 'Medienkompetenz'],
     defaultBotsConfig: [
-      { personality: 'informant' } // Verbreitet Deepfakes
+      { id: '10-info-0', personality: 'informant' } 
     ]
   },
 ];

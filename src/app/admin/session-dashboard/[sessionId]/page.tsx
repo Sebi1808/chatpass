@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ChatPageContent } from "@/app/chat/[sessionId]/page";
 import { generateBotMessage } from "@/ai/flows/bot-message-generator";
+import Image from 'next/image';
 
 
 interface AdminSessionDashboardPageProps {
@@ -43,7 +45,6 @@ interface AdminDashboardMessage extends MessageType {
 const DEFAULT_COOLDOWN = 0;
 
 const generateToken = () => Math.random().toString(36).substring(2, 10);
-const generateBotId = (scenarioBotId: string) => `bot-${scenarioBotId}-${Date.now().toString().slice(-6)}`;
 
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
@@ -74,9 +75,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     ? `${sessionData.invitationLink}?token=${sessionData.invitationToken}`
     : "Wird generiert...";
 
-  const getBotDisplayName = (botConfig: BotConfig, index?: number): string => {
+  const getBotDisplayName = (botConfig: BotConfig, scenarioBotsConfig: BotConfig[] = [], index?: number): string => {
     if (botConfig.name) return botConfig.name;
-    let nameSuffix = scenario.defaultBotsConfig && scenario.defaultBotsConfig.length > 1 ? ` ${index !== undefined ? index + 1 : ''}` : "";
+    const nameSuffix = scenarioBotsConfig.length > 1 && index !== undefined ? ` ${index + 1}` : "";
     switch (botConfig.personality) {
       case 'provokateur': return `Bot Provokateur${nameSuffix}`;
       case 'verteidiger': return `Bot Verteidiger${nameSuffix}`;
@@ -85,83 +86,104 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   };
   
-  const scenario = scenarios.find(s => s.id === sessionId); // Define scenario once
+  const scenario = scenarios.find(s => s.id === sessionId); 
 
   const initializeBotsForSession = async (currentScenarioToInit: Scenario, currentSessionId: string) => {
-    if (!currentScenarioToInit) return;
-
+    if (!currentScenarioToInit || !currentScenarioToInit.defaultBotsConfig) {
+      console.log("Keine Bot-Konfiguration für dieses Szenario vorhanden oder Szenario nicht gefunden.");
+      // Optionally clear existing bots if scenario has no bots defined
+      const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
+      const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
+      const existingBotsSnap = await getDocs(existingBotsQuery);
+      if (!existingBotsSnap.empty) {
+        const batch = writeBatch(db);
+        existingBotsSnap.forEach(botDoc => batch.delete(botDoc.ref));
+        await batch.commit();
+        console.log("Alle bestehenden Bots für diese Sitzung gelöscht, da das Szenario keine Bots definiert.");
+      }
+      return;
+    }
+  
     const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
     const batch = writeBatch(db);
-
+  
     // Fetch existing bots from Firestore for this session
     const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
     const existingBotsSnap = await getDocs(existingBotsQuery);
     const firestoreBotsMap = new Map(existingBotsSnap.docs.map(doc => [doc.data().botScenarioId, doc.id]));
-
+    const firestoreBotIdsOnDb = new Set(existingBotsSnap.docs.map(doc => doc.data().botScenarioId));
+  
     // Bots defined in the current scenario config
     const scenarioBotsConfig = currentScenarioToInit.defaultBotsConfig || [];
-    const scenarioBotIds = new Set(scenarioBotsConfig.map(bc => bc.id));
-
+    const scenarioBotIdsInConfig = new Set(scenarioBotsConfig.map(bc => bc.id));
+  
     // Delete bots from Firestore that are no longer in the scenario config
-    existingBotsSnap.forEach(botDoc => {
-      const botData = botDoc.data();
-      if (!scenarioBotIds.has(botData.botScenarioId)) {
-        batch.delete(botDoc.ref);
-        console.log(`Deleting bot ${botData.name} (ID: ${botData.botScenarioId}) as it's no longer in scenario config.`);
+    firestoreBotIdsOnDb.forEach(dbBotScenarioId => {
+      if (!scenarioBotIdsInConfig.has(dbBotScenarioId)) {
+        const docIdToDelete = firestoreBotsMap.get(dbBotScenarioId);
+        if (docIdToDelete) {
+          const botDocRef = doc(participantsColRef, docIdToDelete);
+          batch.delete(botDocRef);
+          console.log(`Deleting bot with ScenarioID: ${dbBotScenarioId} as it's no longer in scenario config.`);
+        }
       }
     });
-
+  
     // Add or update bots based on scenario config
     for (const [index, botConfig] of scenarioBotsConfig.entries()) {
-      const botScenarioId = botConfig.id; // This ID must be unique within defaultBotsConfig
+      if (!botConfig || typeof botConfig !== 'object') {
+        console.error("Ungültige Bot-Konfiguration gefunden:", botConfig);
+        continue;
+      }
+      const botScenarioId = botConfig.id;
       if (!botScenarioId) {
         console.error("Bot config is missing a unique id:", botConfig);
-        continue; 
+        continue;
       }
-
+  
+      const botDisplayName = getBotDisplayName(botConfig, scenarioBotsConfig, index);
       const botParticipantData: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any } = {
-        userId: `bot-${botScenarioId}`, // Make userId deterministic based on botScenarioId
-        name: getBotDisplayName(botConfig, index),
+        userId: `bot-${botScenarioId}`, 
+        name: botDisplayName,
         role: `Bot (${botConfig.personality})`,
-        avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0,2).toUpperCase(),
+        avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0, 2).toUpperCase(),
         isBot: true,
-        status: "Aktiv",
+        status: "Aktiv", // Default status for bots
         botConfig: {
-          ...botConfig,
+          ...botConfig, // Includes personality, id from scenario
           isActive: botConfig.isActive ?? true,
           currentEscalation: botConfig.currentEscalation ?? 0,
           autoTimerEnabled: botConfig.autoTimerEnabled ?? false,
-          currentMission: botConfig.currentMission || "", 
+          currentMission: botConfig.currentMission || "",
         },
         botScenarioId: botScenarioId,
       };
-
+  
       const existingBotDocId = firestoreBotsMap.get(botScenarioId);
-
+  
       if (!existingBotDocId) {
         // Bot does not exist, create it
-        const newBotDocRef = doc(participantsColRef); // Let Firestore generate ID
+        const newBotDocRef = doc(collection(db, "sessions", currentSessionId, "participants")); // Auto-generate ID
         batch.set(newBotDocRef, { ...botParticipantData, id: newBotDocRef.id, joinedAt: serverTimestamp() });
         console.log(`Adding new bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
       } else {
         // Bot exists, update it
         const botDocRef = doc(participantsColRef, existingBotDocId);
-        const existingBotSnap = await getDoc(botDocRef); // get the specific doc to ensure it exists before update
-        if (existingBotSnap.exists()){
-            const existingBotData = existingBotSnap.data() as Participant;
-            const missionToSet = botConfig.currentMission || existingBotData.botConfig?.currentMission || "";
-             batch.update(botDocRef, {
-                name: getBotDisplayName(botConfig, index),
-                role: `Bot (${botConfig.personality})`,
-                avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0,2).toUpperCase(),
-                "botConfig.personality": botConfig.personality,
-                "botConfig.isActive": botConfig.isActive ?? existingBotData.botConfig?.isActive ?? true,
-                "botConfig.currentEscalation": botConfig.currentEscalation ?? existingBotData.botConfig?.currentEscalation ?? 0,
-                "botConfig.autoTimerEnabled": botConfig.autoTimerEnabled ?? existingBotData.botConfig?.autoTimerEnabled ?? false,
-                "botConfig.currentMission": missionToSet,
-                // botScenarioId should not change if we're updating based on it
-            });
-            console.log(`Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
+        const existingBotSnap = await getDoc(botDocRef); // Get the specific doc to ensure it exists before update
+        if (existingBotSnap.exists()) {
+          const existingBotData = existingBotSnap.data() as Participant;
+          const missionToSet = botConfig.currentMission || existingBotData.botConfig?.currentMission || "";
+          batch.update(botDocRef, {
+            name: botDisplayName, // Ensure name is updated if logic changes
+            role: `Bot (${botConfig.personality})`,
+            avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0, 2).toUpperCase(),
+            "botConfig.personality": botConfig.personality,
+            "botConfig.isActive": botConfig.isActive ?? existingBotData.botConfig?.isActive ?? true,
+            "botConfig.currentEscalation": botConfig.currentEscalation ?? existingBotData.botConfig?.currentEscalation ?? 0,
+            "botConfig.autoTimerEnabled": botConfig.autoTimerEnabled ?? existingBotData.botConfig?.autoTimerEnabled ?? false,
+            "botConfig.currentMission": missionToSet,
+          });
+          console.log(`Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
         }
       }
     }
@@ -196,6 +218,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
               messageCooldownSeconds: DEFAULT_COOLDOWN,
             };
             await setDoc(sessionDocRef, newSessionData);
+            setSessionData(newSessionData);
             setPaceValue(DEFAULT_COOLDOWN);
             await initializeBotsForSession(scenario, sessionId);
           } else {
@@ -211,14 +234,20 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
               updates.invitationToken = generateToken();
               needsDbUpdate = true;
             }
+             // Ensure scenarioId is always current
+            if (existingData.scenarioId !== sessionId) {
+                updates.scenarioId = sessionId;
+                needsDbUpdate = true;
+            }
+
 
             if (needsDbUpdate) {
               await updateDoc(sessionDocRef, updates);
             }
-
+            
             setSessionData(prev => ({...prev, ...existingData, ...updates})); 
             setPaceValue(existingData.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
-            await initializeBotsForSession(scenario, sessionId); // Always re-sync bots
+            await initializeBotsForSession(scenario, sessionId); 
           }
         } catch (error) {
           console.error("Error managing session document: ", error);
@@ -230,10 +259,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setupSession();
     } else {
       setIsLoadingSessionData(false);
-      setSessionData(null);
+      setSessionData(null); // Explicitly set to null if no scenario
       toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} nicht gefunden.`})
     }
-  }, [sessionId, toast]); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, toast]); // scenario is derived from sessionId, so not needed in deps if sessionId is
 
 
   useEffect(() => {
@@ -260,12 +290,22 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    const participantsQuery = query(participantsColRef, orderBy("isBot", "asc"), orderBy("joinedAt", "asc")); // Sort bots first, then by joinedAt
+    // Removed orderBy to avoid needing an index for now
+    const participantsQuery = query(participantsColRef); 
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
-      const fetchedParticipants: Participant[] = [];
+      let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
+      // Client-side sorting
+      fetchedParticipants.sort((a, b) => {
+        if (a.isBot && !b.isBot) return -1;
+        if (!a.isBot && b.isBot) return 1;
+        const aTimestamp = a.joinedAt instanceof Timestamp ? a.joinedAt.toMillis() : (typeof a.joinedAt === 'object' && a.joinedAt ? (a.joinedAt as any).seconds * 1000 : 0);
+        const bTimestamp = b.joinedAt instanceof Timestamp ? b.joinedAt.toMillis() : (typeof b.joinedAt === 'object' && b.joinedAt ? (b.joinedAt as any).seconds * 1000 : 0);
+        return aTimestamp - bTimestamp;
+      });
+
       setSessionParticipants(fetchedParticipants);
       setIsLoadingParticipants(false);
     }, (error) => {
@@ -351,7 +391,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const sessionUpdateData: Partial<SessionData> = {
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
-        scenarioId: sessionId,
+        scenarioId: sessionId, // Ensure scenarioId is set/updated
         invitationLink: baseLink,
         invitationToken: newSessionToken,
         createdAt: serverTimestamp(), 
@@ -377,18 +417,22 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
 
     try {
+      // Delete messages
       const messagesSnap = await getDocs(messagesColRef);
       if (!messagesSnap.empty) {
           const batchMessages = writeBatch(db);
-          messagesSnap.forEach(doc => batchMessages.delete(doc.ref));
+          messagesSnap.forEach(messageDoc => batchMessages.delete(messageDoc.ref));
           await batchMessages.commit();
+          console.log("All messages deleted for session reset.");
       }
       
+      // Delete participants (including bots)
       const participantsSnap = await getDocs(participantsColRef);
       if (!participantsSnap.empty) {
           const batchParticipants = writeBatch(db);
-          participantsSnap.forEach(doc => batchParticipants.delete(doc.ref));
+          participantsSnap.forEach(participantDoc => batchParticipants.delete(participantDoc.ref));
           await batchParticipants.commit();
+          console.log("All participants deleted for session reset.");
       }
 
       let baseLink = "";
@@ -404,8 +448,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
       };
-      await setDoc(sessionDocRef, newSessionData); 
-      await initializeBotsForSession(currentScenario, sessionId); 
+      await setDoc(sessionDocRef, newSessionData); // Overwrite session doc with new data
+      await initializeBotsForSession(currentScenario, sessionId); // Re-initialize bots
 
       toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Neuer Link-Token generiert." });
     } catch (error) {
@@ -598,6 +642,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     for (let i = 0; i < expectedStudentRoles && placeholderIndex < placeholdersToAdd; i++) {
         const potentialPlaceholderId = `student-placeholder-${String.fromCharCode(65 + i)}`;
         const roleName = `Teilnehmer ${String.fromCharCode(65 + i)}`;
+        // Check if a real user has already taken this specific role name (e.g., "Teilnehmer A")
         const isRoleTakenByRealUser = sessionParticipants.some(p => !p.isBot && p.role === roleName);
 
         if (!isRoleTakenByRealUser) {
@@ -609,7 +654,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 isBot: false,
                 status: "Nicht beigetreten",
                 avatarFallback: `T${String.fromCharCode(65 + i)}`,
-                joinedAt: new Date(0), 
+                joinedAt: new Date(0), // Ensure joinedAt is a Date or Timestamp
             });
             placeholderIndex++;
         }
@@ -973,3 +1018,4 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
+
