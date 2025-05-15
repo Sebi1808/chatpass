@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
@@ -18,9 +18,10 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { tagTaxonomy, type TagCategory, type Tag as TaxonomyTag } from '@/lib/tag-taxonomy';
+import { tagTaxonomy } from '@/lib/tag-taxonomy';
 import { Badge } from '@/components/ui/badge';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import Image from 'next/image';
 
 
 const availableIcons = [
@@ -48,7 +49,7 @@ export default function EditScenarioPage() {
   const [langbeschreibung, setLangbeschreibung] = useState('');
   const [lernziele, setLernziele] = useState('');
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
-  const [iconNameInput, setIconNameInput] = useState('');
+  const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value); // Default to ImageIcon
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
 
@@ -69,7 +70,7 @@ export default function EditScenarioPage() {
         setLangbeschreibung(foundScenario.langbeschreibung);
         setLernziele(foundScenario.lernziele?.join('\\n') || '');
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
-        setIconNameInput(foundScenario.iconName || 'ImageIcon');
+        setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
         setSelectedTags(foundScenario.tags || []);
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
@@ -106,7 +107,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableBotsConfig([...editableBotsConfig, {
         ...template,
-        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for scenario instance
       }]);
     }
   };
@@ -137,7 +138,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableHumanRoles([...editableHumanRoles, {
         ...template,
-        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for scenario instance
       }]);
     }
   };
@@ -173,12 +174,14 @@ export default function EditScenarioPage() {
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
       defaultBots: editableBotsConfig.length,
-      standardRollen: editableBotsConfig.length + editableHumanRoles.length,
+      standardRollen: editableBotsConfig.length + editableHumanRoles.length, // Ensure this is correctly calculated
     };
 
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
+    // Simulate saving to a database or updating a global state
+    // For now, we just log to console and show a toast
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -245,6 +248,7 @@ export default function EditScenarioPage() {
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
 
+          {/* Linke Spalte: Basisinfos, Bots, Menschliche Rollen */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
@@ -405,6 +409,7 @@ export default function EditScenarioPage() {
             </Card>
           </div>
 
+          {/* Rechte Spalte: Metadaten, Tags, Originaldaten */}
           <div className="space-y-6 lg:space-y-8">
               <Card>
                   <CardHeader>
@@ -471,8 +476,9 @@ export default function EditScenarioPage() {
                                 <AccordionContent className="pt-1 pb-2 pl-2">
                                     <div className="flex flex-wrap gap-2">
                                         {category.tags.map(tag => (
-                                            <React.Fragment key={tag.name}>
+                                            <>
                                                 <Badge
+                                                    key={tag.name}
                                                     variant={selectedTags.includes(tag.name) ? "default" : "outline"}
                                                     className="cursor-pointer hover:bg-primary/80"
                                                     onClick={() => handleTagToggle(tag.name)}
@@ -493,7 +499,7 @@ export default function EditScenarioPage() {
                                                     </Badge>
                                                 ))}
                                                 {tag.subTags && tag.subTags.length > 5 && <span className="text-xs text-muted-foreground ml-2">...</span>}
-                                            </React.Fragment>
+                                            </>
                                         ))}
                                     </div>
                                 </AccordionContent>
