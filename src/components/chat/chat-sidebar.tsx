@@ -1,7 +1,7 @@
 
 "use client";
 
-import { memo } from 'react'; // Added memo
+import { memo } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from '@/lib/utils';
 import type { Scenario, DisplayParticipant } from "@/lib/types";
-import type { ParticipantColor } from '@/lib/config';
+import type { ParticipantColor } from '@/lib/config'; // Make sure this type is correctly defined and imported
 import { Bot as BotIcon, User, VolumeX, ShieldCheck, Crown } from "lucide-react";
 
 interface ChatSidebarProps {
@@ -24,7 +24,7 @@ interface ChatSidebarProps {
   isAdminView?: boolean;
 }
 
-const ChatSidebar = memo(function ChatSidebar({ // Wrapped with React.memo
+const ChatSidebar = memo(function ChatSidebar({
   participants,
   currentUserId,
   userName,
@@ -38,8 +38,8 @@ const ChatSidebar = memo(function ChatSidebar({ // Wrapped with React.memo
   return (
     <>
       <h2 className="text-lg font-semibold">Teilnehmende ({participants.length})</h2>
-      <ScrollArea className="flex-1">
-        <div className="space-y-3 py-2 pr-2">
+      <ScrollArea className="flex-1 -mr-2"> {/* Negative margin to hide scrollbar visually if it appears on edge */}
+        <div className="space-y-3 py-2 pr-2"> {/* Padding right for scrollbar space */}
           {participants.map((p) => {
             const pColor = getParticipantColorClasses(p.userId, p.isBot ? 'bot' : (p.userId === currentUserId && isAdminView ? 'admin' : 'user'));
             const isAdminParticipant = p.userId === currentUserId && isAdminView;
@@ -54,8 +54,8 @@ const ChatSidebar = memo(function ChatSidebar({ // Wrapped with React.memo
                 <div>
                   <p className="text-sm font-medium flex items-center">
                     <span className={cn(pColor.nameText)}>{p.name}</span>
-                    {p.isBot && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 border-purple-500/50 text-purple-300 bg-purple-600/30 flex items-center gap-1")}><BotIcon className="h-3 w-3" />BOT</Badge>}
-                    {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0 flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
+                    {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-purple-600/90 text-white border border-purple-900/50 shadow-sm flex items-center gap-1"><BotIcon className="h-3 w-3" />BOT</Badge>}
+                    {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-red-600/90 text-white border border-red-900/50 shadow-sm flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
                     {p.userId === currentUserId && !isAdminView && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">Du</Badge>}
                     {isCurrentParticipantMuted && !p.isBot && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                   </p>
@@ -84,13 +84,15 @@ const ChatSidebar = memo(function ChatSidebar({ // Wrapped with React.memo
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="p-3 pt-0">
-              <ScrollArea className="h-[120px] text-xs">
-                <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
-                  {currentScenario.langbeschreibung}
-                </CardDescription>
-              </ScrollArea>
-            </CardContent>
+            {currentScenario.langbeschreibung && (
+              <CardContent className="p-3 pt-0">
+                  <ScrollArea className="h-[100px] text-xs"> {/* Slightly reduced height for description */}
+                      <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
+                          {currentScenario.langbeschreibung}
+                      </CardDescription>
+                  </ScrollArea>
+              </CardContent>
+            )}
           </Card>
         </>
       )}
@@ -98,6 +100,9 @@ const ChatSidebar = memo(function ChatSidebar({ // Wrapped with React.memo
   );
 });
 
-ChatSidebar.displayName = "ChatSidebar"; // For React DevTools
+ChatSidebar.displayName = "ChatSidebar";
 
 export { ChatSidebar };
+
+
+    

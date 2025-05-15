@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, type MouseEvent, memo } from 'react';
+import { type MouseEvent, memo } from 'react'; // Removed useState as it's handled by parent now for reactingToMessageId
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -23,10 +23,10 @@ interface MessageBubbleProps {
   onSetQuote: (message: DisplayMessage) => void;
   onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
-  reactingToMessageId: string | null;
-  setReactingToMessageId: (messageId: string | null) => void;
+  reactingToMessageId: string | null; // To control which popover is open
+  setReactingToMessageId: (messageId: string | null) => void; // To open/close this specific popover
   emojiCategories: typeof EmojiCategoriesType;
-  onOpenImageModal: (imageUrl: string, imageFileName?: string) => void; // Re-added for new modal
+  // onOpenImageModal was removed
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -41,23 +41,20 @@ const MessageBubble = memo(function MessageBubble({
   reactingToMessageId,
   setReactingToMessageId,
   emojiCategories,
-  onOpenImageModal, // Re-added
 }: MessageBubbleProps) {
-  const [showReactionPicker, setShowReactionPicker] = useState(false);
 
-  const isOwn = message.senderUserId === currentUserId && message.senderType !== 'admin';
+  const isOwn = message.senderUserId === currentUserId && message.senderType !== 'admin'; // Admin messages are not "own" in this context
   const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
 
   const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
-    setShowReactionPicker(false);
-    setReactingToMessageId(null);
+    setReactingToMessageId(null); // Close popover after selection
   };
 
   const handleOpenReactionPicker = (e: MouseEvent) => {
     e.stopPropagation();
-    setReactingToMessageId(message.id);
-    setShowReactionPicker(prev => !prev);
+    // Toggle: if this message's picker is already open, close it. Otherwise, open it.
+    setReactingToMessageId(reactingToMessageId === message.id ? null : message.id);
   };
 
 
@@ -65,8 +62,8 @@ const MessageBubble = memo(function MessageBubble({
     <div
       id={`msg-${message.id}`}
       className={cn(
-        "flex w-full items-end gap-2 group/message",
-        isOwn ? "justify-end" : "justify-start"
+        "flex w-full items-start gap-2 group/message py-1", // Added py-1 for a bit more vertical space around bubbles
+        isOwn ? "justify-end pl-10 sm:pl-16" : "justify-start pr-10 sm:pr-16" // Added padding to prevent full width on mobile
       )}
     >
       {!isOwn && (
@@ -77,32 +74,32 @@ const MessageBubble = memo(function MessageBubble({
       )}
       <div
         className={cn(
-          "max-w-[85%] sm:max-w-[70%] md:max-w-[65%] lg:max-w-[60%]",
+          "max-w-[85%] sm:max-w-[70%] md:max-w-[65%] lg:max-w-[60%]", // Max width for bubbles
           "rounded-xl shadow-md flex flex-col",
-          bubbleColor.bg, // Apply background color
-          bubbleColor.text  // Apply text color
+          bubbleColor.bg, 
+          bubbleColor.text  
         )}
       >
         <div className="p-3">
           <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-1.5"> {/* Ensure vertical alignment for name and badge */}
+            <div className="flex items-center gap-1.5">
               <button
                 onClick={() => !isOwn && onMentionUser(message.senderName)}
                 className={cn(
                   "text-xs font-semibold hover:underline",
-                  bubbleColor.nameText // Apply name text color
+                  bubbleColor.nameText
                 )}
                 disabled={isOwn}
               >
                 {message.senderName}
               </button>
               {message.senderType === 'admin' && (
-                <Badge variant="outline" className="text-xs px-1.5 py-0.5 h-5 leading-tight bg-red-700 text-white border border-red-900 shadow-md flex items-center gap-1">
+                <Badge variant="outline" className="text-xs px-1.5 py-0.5 h-5 leading-tight bg-red-600/90 text-white border border-red-900/50 shadow-sm flex items-center gap-1">
                   <Crown className="h-3 w-3" /> ADMIN
                 </Badge>
               )}
               {message.senderType === 'bot' && (
-                <Badge variant="outline" className="text-xs px-1.5 py-0.5 h-5 leading-tight bg-purple-700 text-white border border-purple-900 shadow-md flex items-center gap-1">
+                <Badge variant="outline" className="text-xs px-1.5 py-0.5 h-5 leading-tight bg-purple-600/90 text-white border border-purple-900/50 shadow-sm flex items-center gap-1">
                   <BotIcon className="h-3 w-3" /> BOT
                 </Badge>
               )}
@@ -114,8 +111,8 @@ const MessageBubble = memo(function MessageBubble({
             <div
               className={cn(
                 "text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 cursor-pointer",
-                "bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10", // Consistent contrast
-                "opacity-90" // Retain opacity from bubbleColor.text if desired, or set explicitly
+                "bg-black/10 hover:bg-black/20 dark:bg-white/5 dark:hover:bg-white/10",
+                "opacity-90"
               )}
               onClick={() => onScrollToMessage(message.replyToMessageId as string)}
               title="Zum Original springen"
@@ -128,18 +125,15 @@ const MessageBubble = memo(function MessageBubble({
           )}
 
         {message.imageUrl && (
-            <div
-              className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group cursor-pointer" // Added cursor-pointer
-              onClick={() => onOpenImageModal(message.imageUrl!, message.imageFileName)} // Re-added onClick for modal
-            >
+            <div className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group">
               <Image
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
                 width={700} 
                 height={500} 
-                className="rounded-md object-contain h-auto w-full"
+                className="rounded-md object-contain h-auto w-full" // Ensure image scales within its container
                 data-ai-hint="chat image"
-                priority={false}
+                priority={false} 
               />
             </div>
           )}
@@ -159,9 +153,8 @@ const MessageBubble = memo(function MessageBubble({
                     size="sm"
                     className={cn(
                       "h-auto px-1.5 py-0.5 rounded-full text-xs border",
-                      // Consistent background for all reaction buttons for better contrast
-                      "bg-black/10 dark:bg-white/10 border-current/30 hover:bg-black/20 dark:hover:bg-white/20",
-                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/50 ring-1 ring-current/50 shadow-md' // Stronger highlight for own reaction
+                      "bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20", // Default style for reaction button
+                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/40 ring-1 ring-current/40 shadow-md' // Highlight for own reaction
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
                   >
@@ -172,33 +165,29 @@ const MessageBubble = memo(function MessageBubble({
               })}
             </div>
           )}
-
+          
           {/* Action buttons always visible */}
           <div className="flex items-center gap-1 mt-1.5 -ml-1 opacity-100 transition-opacity duration-150">
             {!isOwn && (
               <>
-                <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10")} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
+                <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
                   <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
                 </Button>
-                 <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10")} onClick={(e) => { e.stopPropagation(); onSetQuote(message); }} aria-label="Zitieren">
+                 <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")} onClick={(e) => { e.stopPropagation(); onSetQuote(message); }} aria-label="Zitieren">
                   <Quote className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Zitieren</span>
                 </Button>
               </>
             )}
-            <Popover open={showReactionPicker && reactingToMessageId === message.id} onOpenChange={(open) => {
+            <Popover open={reactingToMessageId === message.id} onOpenChange={(open) => {
                 if (!open) {
-                    setShowReactionPicker(false);
-                    setReactingToMessageId(null);
-                } else {
-                    setShowReactionPicker(true);
-                    setReactingToMessageId(message.id);
+                    setReactingToMessageId(null); // Close this specific popover
                 }
             }}>
               <PopoverTrigger asChild>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10")}
+                  className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")}
                   onClick={handleOpenReactionPicker}
                   aria-label="Reagieren"
                 >
@@ -254,3 +243,6 @@ const MessageBubble = memo(function MessageBubble({
 MessageBubble.displayName = "MessageBubble";
 
 export { MessageBubble };
+
+
+    
