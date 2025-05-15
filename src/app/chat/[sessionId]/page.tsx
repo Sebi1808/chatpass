@@ -42,7 +42,7 @@ interface ChatPageProps {
 }
 
 interface ChatPageContentProps {
-  sessionId: string;
+  sessionIdProp: string; // Renamed from sessionId to avoid conflict with destructured params
   initialUserName?: string;
   initialUserRole?: string;
   initialUserId?: string;
@@ -53,7 +53,7 @@ interface ChatPageContentProps {
 const simpleHash = (str: string): number => {
   let hash = 0;
   if (!str || str.length === 0) {
-    console.log("simpleHash: input is empty or null, returning 0");
+    // console.log("simpleHash: input is empty or null, returning 0");
     return 0;
   }
   for (let i = 0; i < str.length; i++) {
@@ -61,20 +61,20 @@ const simpleHash = (str: string): number => {
     hash = (hash << 5) - hash + char;
     hash |= 0; // Convert to 32bit integer
   }
-  console.log(`simpleHash: input='${str}', output=${hash}`);
+  // console.log(`simpleHash: input='${str}', output=${hash}`);
   return hash;
 };
 
 
 export function ChatPageContent({
-  sessionId: propSessionId,
+  sessionIdProp,
   initialUserName,
   initialUserRole,
   initialUserId,
   initialUserAvatarFallback,
   isAdminView = false
 }: ChatPageContentProps) {
-  const sessionId = propSessionId;
+  const sessionId = sessionIdProp; // Use the prop
   const { toast } = useToast();
   const router = useRouter();
 
@@ -111,8 +111,7 @@ export function ChatPageContent({
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
 
-  const isSessionActive = useMemo(() => sessionData?.status === "active", [sessionData]);
-
+  
   // State for the new simple image modal
   const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
   const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
@@ -189,7 +188,6 @@ export function ChatPageContent({
     let unsubscribeParticipant: (() => void) | undefined;
     const findParticipantDocAndListen = async () => {
       const participantsColRef = collection(db, "sessions", sessionId, "participants");
-      // Check if userId is defined before querying
       if (!userId) {
         console.warn("Skipping participant listener because userId is null");
         return;
@@ -320,38 +318,41 @@ export function ChatPageContent({
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
-  const adminColor = useMemo((): ParticipantColor => ({ name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" }), []);
-  const botColor = useMemo((): ParticipantColor => ({ name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }), []);
+
+  // Memoize color objects to prevent re-creation on every render
+  const adminColor = useMemo((): ParticipantColor => ({ name: 'admin', bg: "bg-red-600", text: "text-white", nameText: "text-red-100", ring: "ring-red-600" }), []);
+  const botColor = useMemo((): ParticipantColor => ({ name: 'bot', bg: "bg-purple-600", text: "text-white", nameText: "text-purple-100", ring: "ring-purple-600" }), []);
   const ownColor = useMemo((): ParticipantColor => ({ name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }), []);
 
-
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
-    console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
-
+    // console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
     if (pSenderType === 'admin' || (isAdminView && pUserId === initialUserId)) {
-      console.log(`-> Resolved as ADMIN color`);
-      return adminColor;
+        // console.log(`-> Resolved as ADMIN color`);
+        return adminColor;
     }
     if (pSenderType === 'bot' || (pUserId && pUserId.startsWith('bot-'))) {
-      console.log(`-> Resolved as BOT color`);
-      return botColor;
+        // console.log(`-> Resolved as BOT color`);
+        return botColor;
     }
-    if (!isAdminView && pUserId === userId) {
-      console.log(`-> Resolved as OWN USER color`);
-      return ownColor;
+    // This condition is crucial: check if it's the current user AND NOT in admin view
+    if (pUserId === userId && !isAdminView) {
+        // console.log(`-> Resolved as OWN USER color`);
+        return ownColor;
     }
 
+    // Default for "other users"
     if (pUserId && participantColors.length > 0) {
-      const hash = simpleHash(pUserId);
-      const colorIndex = Math.abs(hash) % participantColors.length;
-      const selected = participantColors[colorIndex];
-      console.log(`-> Resolved as OTHER USER: userId=${pUserId}, hash=${hash}, colorIndex=${colorIndex}, selectedColorName=${selected?.name}`);
-      return selected || participantColors[0]; // Fallback to first color
+        const hash = simpleHash(pUserId);
+        const colorIndex = Math.abs(hash) % participantColors.length;
+        const selected = participantColors[colorIndex];
+        // console.log(`-> Resolved as OTHER USER: userId=${pUserId}, hash=${hash}, colorIndex=${colorIndex}, selectedColorName=${selected?.name}`);
+        return selected || participantColors[0]; // Fallback to first color if something goes wrong
     }
 
-    console.log(`-> Fallback to default color (participantColors[0]) for userId=${pUserId}`);
-    return participantColors.length > 0 ? participantColors[0] : { name: 'default', bg: "bg-gray-500", text: "text-white", nameText: "text-gray-100", ring: "ring-gray-500" }; // Absolute fallback
-  }, [userId, isAdminView, initialUserId, adminColor, botColor, ownColor, participantColors]);
+    // Absolute fallback if no pUserId or participantColors is empty
+    // console.log(`-> Fallback to default color (participantColors[0]) for userId=${pUserId}`);
+    return participantColors.length > 0 ? participantColors[0] : { name: 'default', bg: "bg-gray-500", text: "text-white", nameText: "text-gray-100", ring: "ring-gray-500" };
+  }, [userId, isAdminView, initialUserId, adminColor, botColor, ownColor]); // participantColors is stable from config
 
 
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
@@ -491,10 +492,10 @@ export function ChatPageContent({
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: MessageType = {
         id: '', // Firestore will generate ID
-        senderUserId: userId,
-        senderName: userName,
+        senderUserId: userId!,
+        senderName: userName!,
         senderType: isAdminView ? 'admin' : 'user',
-        avatarFallback: userAvatarFallback,
+        avatarFallback: userAvatarFallback!,
         content: newMessage.trim(),
         timestamp: serverTimestamp(),
         reactions: {},
@@ -522,6 +523,7 @@ export function ChatPageContent({
 
     } catch (error) {
       console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
+      // Avoid double-toasting if already toasted by upload error handler
       if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("Bild-URL Abruf fehlgeschlagen") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
       }
@@ -575,7 +577,7 @@ export function ChatPageContent({
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) return;
-    setReactingToMessageId(null);
+    setReactingToMessageId(null); // Close picker after selection
 
     const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
@@ -592,14 +594,14 @@ export function ChatPageContent({
 
         let newReactions = { ...currentReactions };
 
-        if (usersWhoReactedWithEmoji.includes(userId)) {
+        if (usersWhoReactedWithEmoji.includes(userId)) { // User has reacted with this emoji, remove reaction
           const updatedUserList = usersWhoReactedWithEmoji.filter(uid => uid !== userId);
           if (updatedUserList.length === 0) {
-            delete newReactions[emoji];
+            delete newReactions[emoji]; // Remove emoji if no users left
           } else {
             newReactions[emoji] = updatedUserList;
           }
-        } else {
+        } else { // User has not reacted with this emoji, add reaction
           newReactions[emoji] = [...usersWhoReactedWithEmoji, userId];
         }
         transaction.update(messageRef, { reactions: newReactions });
@@ -617,6 +619,8 @@ export function ChatPageContent({
       });
     }
   };
+
+  const isSessionActive = useMemo(() => sessionData?.status === "active", [sessionData]);
 
 
   if (isLoading && !isAdminView) {
@@ -717,7 +721,7 @@ export function ChatPageContent({
                 onOpenReactionPicker={handleOpenReactionPicker}
                 onReaction={handleReaction}
                 reactingToMessageId={reactingToMessageId}
-                onImageClick={handleOpenImageModal}
+                onImageClick={handleOpenImageModal} // Pass the handler
               />
             </ScrollArea>
 
@@ -744,21 +748,22 @@ export function ChatPageContent({
               handleCancelQuote={handleCancelQuote}
               showEmojiPicker={showEmojiPickerForInput}
               setShowEmojiPicker={setShowEmojiPickerForInput}
-              handleEmojiSelect={handleEmojiSelectForInput}
+              handleEmojiSelect={handleEmojiSelectForInput} // For input
               emojiCategories={emojiCategories}
               messageCooldownSeconds={sessionData?.messageCooldownSeconds}
             />
           </main>
         </div>
 
+      {/* Simple Image Modal */}
       {selectedImageForModal && (
         <div
-          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm"
           onClick={handleCloseImageModal}
         >
           <div
-            className="bg-card rounded-lg shadow-2xl p-4 relative max-w-[90vw] max-h-[90vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking on the image/title area
+            className="bg-card rounded-lg shadow-2xl p-4 relative flex flex-col max-w-[90vw] max-h-[90vh] w-auto h-auto"
+            onClick={(e) => e.stopPropagation()} 
           >
             <div className="flex justify-between items-center mb-2">
                 <h3 className="text-lg font-semibold text-card-foreground truncate">
@@ -768,13 +773,20 @@ export function ChatPageContent({
                     <X className="h-5 w-5" />
                 </Button>
             </div>
-            <div className="relative flex-1 w-full h-full overflow-hidden"> {/* Container for image to respect aspect ratio */}
+            <div className="relative flex-1 w-full h-full overflow-hidden flex items-center justify-center">
               <Image
                 src={selectedImageForModal}
                 alt={selectedImageFilenameForModal || "Großansicht Bild"}
-                layout="fill"
-                objectFit="contain"
-                className="rounded"
+                width={1200} // Provide a large base width
+                height={800} // Provide a large base height
+                style={{ 
+                    maxWidth: '100%', // Allow shrinking
+                    maxHeight: 'calc(90vh - 80px)', // Max height considering header and padding
+                    width: 'auto', // Maintain aspect ratio
+                    height: 'auto', // Maintain aspect ratio
+                    objectFit: 'contain', 
+                    borderRadius: '0.25rem'
+                }}
                 data-ai-hint="modal image"
               />
             </div>
@@ -790,8 +802,8 @@ interface ChatPageOuterProps {
   params: ChatPageUrlParams;
 }
 
-export default function ChatPage({ params: pageParamsOuter }: ChatPageOuterProps) {
-  const { sessionId } = pageParamsOuter;
+export default function ChatPage({ params }: ChatPageOuterProps) {
+  const sessionId = params.sessionId;
 
   return (
     <Suspense fallback={
@@ -802,9 +814,7 @@ export default function ChatPage({ params: pageParamsOuter }: ChatPageOuterProps
         </Card>
       </div>
     }>
-      <ChatPageContent sessionId={sessionId} />
+      <ChatPageContent sessionIdProp={sessionId} />
     </Suspense>
   );
 }
-
-    

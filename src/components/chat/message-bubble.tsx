@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react'; // Keep useState for local state like showReactionPicker
+import { useState, type MouseEvent } from 'react';
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,9 @@ interface MessageBubbleProps {
   onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   emojiCategories: typeof EmojiCategoriesType;
-  onOpenReactionPicker: (messageId: string) => void;
-  onImageClick: (imageUrl: string, imageFileName?: string) => void; // Prop for opening modal
+  // onOpenReactionPicker is handled internally by the popover now
+  // reactingToMessageId is handled internally by the popover now
+  onImageClick: (imageUrl: string, imageFileName?: string) => void;
 }
 
 export function MessageBubble({
@@ -38,31 +39,27 @@ export function MessageBubble({
   onScrollToMessage,
   onReaction,
   emojiCategories,
-  onOpenReactionPicker,
-  onImageClick, // Use this prop
+  onImageClick,
 }: MessageBubbleProps) {
-  const [showReactionPicker, setShowReactionPicker] = useState(false); // Local state for this bubble's picker
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
   const isOwn = message.senderUserId === currentUserId;
-
-  // Determine bubble color. For own messages, check if it's an admin in admin view.
-  let bubbleColor: ParticipantColor;
-  if (isOwn) {
-    // If the current user is an admin (based on senderType from message), use admin color.
-    // This assumes message.senderType is correctly set to 'admin' for admins.
-    if (message.senderType === 'admin') {
-      bubbleColor = getParticipantColorClasses(message.senderUserId, 'admin');
-    } else {
-      // Otherwise, use the 'own' color for regular users.
-      bubbleColor = getParticipantColorClasses(message.senderUserId, 'user'); // Will resolve to ownColor
-    }
-  } else {
-    bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
-  }
+  const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
 
 
   const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
-    setShowReactionPicker(false); // Close picker after reaction
+    setShowReactionPicker(false);
+  };
+
+  const handleImageBubbleClick = (e: MouseEvent<HTMLDivElement>) => {
+    // Prevent event bubbling if the click is on an interactive element within the bubble
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, [role="button"], [data-radix-popover-trigger]')) {
+      return;
+    }
+    if (message.imageUrl) {
+        onImageClick(message.imageUrl, message.imageFileName);
+    }
   };
 
 
@@ -77,7 +74,12 @@ export function MessageBubble({
           <AvatarFallback className={cn(bubbleColor.bg, bubbleColor.text)}>{message.avatarFallback}</AvatarFallback>
         </Avatar>
       )}
-      <div className={cn("max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md", bubbleColor.bg, bubbleColor.text)}>
+      <div className={cn(
+          "max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md flex flex-col", // flex flex-col added
+          bubbleColor.bg, 
+          bubbleColor.text
+        )}
+      >
         <div className="p-3">
           <div className="flex items-center justify-between mb-1">
             <button
@@ -89,7 +91,7 @@ export function MessageBubble({
               {message.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 flex items-center gap-1", isOwn ? "border-primary-foreground/50 text-primary-foreground/80 bg-primary-foreground/10" : `border-accent/50 text-accent bg-accent/10`)}>🤖 BOT</Badge>}
               {message.senderType === 'admin' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 flex items-center gap-1", isOwn ? "border-primary-foreground/70 text-primary-foreground/80 bg-primary-foreground/10" : "border-destructive/70 text-destructive-foreground bg-destructive/20")}>👑 ADMIN</Badge>}
             </button>
-            <span className={`text-xs ${isOwn ? "text-primary-foreground/70" : bubbleColor.text} opacity-70`}>{message.timestampDisplay}</span>
+            <span className={cn("text-xs opacity-70", isOwn ? "text-primary-foreground/70" : bubbleColor.text)}>{message.timestampDisplay}</span>
           </div>
 
           {message.replyToMessageId && message.replyToMessageSenderName && message.replyToMessageContentSnippet && (
@@ -108,14 +110,14 @@ export function MessageBubble({
         {message.imageUrl && (
             <div
               className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group cursor-pointer"
-              onClick={() => onImageClick(message.imageUrl!, message.imageFileName)} // Use onImageClick prop
+              onClick={(e) => handleImageBubbleClick(e)} // Use the new handler
             >
               <Image
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
-                width={700} // Base width for aspect ratio calculation by Next/Image
-                height={500} // Base height
-                className="rounded-md object-contain h-auto" // h-auto is important
+                width={700} 
+                height={500} 
+                className="rounded-md object-contain h-auto w-full" // Ensure full width within container
                 data-ai-hint="chat image"
               />
             </div>
@@ -169,7 +171,6 @@ export function MessageBubble({
                   className={cn("h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100", bubbleColor.text, "hover:bg-black/10")}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onOpenReactionPicker(message.id); // Inform parent which message is being reacted to
                     setShowReactionPicker(true);
                   }}
                   aria-label="Reagieren"
@@ -222,5 +223,3 @@ export function MessageBubble({
     </div>
   );
 }
-
-    
