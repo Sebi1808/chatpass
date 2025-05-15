@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario } from '@/lib/types';
 import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Removed TabsContent as it's not directly used here anymore
 import { useRouter } from 'next/navigation';
 
 export default function ScenarioEditorHubPage() {
@@ -32,7 +32,7 @@ export default function ScenarioEditorHubPage() {
   }, [searchTerm, scenarios]);
 
   const handleCreateNewScenario = () => {
-    alert("Funktion 'Neues Szenario erstellen' ist noch nicht implementiert. Szenarien werden aktuell aus src/lib/scenarios.ts geladen.");
+    router.push('/admin/scenario-editor/new');
   };
 
   return (
@@ -46,7 +46,7 @@ export default function ScenarioEditorHubPage() {
         </div>
         <Button onClick={handleCreateNewScenario} className="w-full sm:w-auto">
           <PlusCircle className="mr-2 h-5 w-5" />
-          Neues Szenario erstellen (Dummy)
+          Neues Szenario erstellen
         </Button>
       </div>
 
@@ -63,8 +63,8 @@ export default function ScenarioEditorHubPage() {
           </TabsTrigger>
         </TabsList>
         
-        <TabsContent value="scenarios" className="mt-4">
-          <Card>
+        {/* Content for "scenarios" tab */}
+        <Card className="mt-4">
             <CardHeader className="pb-4">
               <CardTitle>Vorhandene Szenarien</CardTitle>
               <CardDescription>
@@ -129,18 +129,7 @@ export default function ScenarioEditorHubPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-        {/* Placeholder TabsContent, da die eigentlichen Seiten unter eigenen Routen liegen */}
-        <TabsContent value="bot-templates" className="mt-4">
-          <p className="text-muted-foreground p-4 text-center">
-            Navigieren Sie zur <Link href="/admin/bot-template-editor" className="underline text-primary">Bot-Vorlagen Seite</Link>, um Bot-Vorlagen zu verwalten.
-          </p>
-        </TabsContent>
-        <TabsContent value="role-templates" className="mt-4">
-           <p className="text-muted-foreground p-4 text-center">
-            Navigieren Sie zur <Link href="/admin/role-template-editor" className="underline text-primary">Rollen-Vorlagen Seite</Link>, um Rollen-Vorlagen zu verwalten.
-          </p>
-        </TabsContent>
+        {/* End Content for "scenarios" tab */}
       </Tabs>
     </div>
   );

@@ -9,12 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
 import { humanRoleTemplates } from '@/lib/role-templates';
-import React, { useEffect, useState, type FormEvent } from 'react';
+import React, { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -44,17 +44,37 @@ const editorSections = [
   { id: "originaldaten", label: "Originaldaten", icon: <Database className="mr-2 h-4 w-4" /> },
 ];
 
+const createDefaultScenario = (): Scenario => ({
+  id: `new-${Date.now()}`, // Temporary ID for new scenarios
+  title: '',
+  kurzbeschreibung: '',
+  langbeschreibung: '',
+  lernziele: [],
+  iconName: availableIcons[availableIcons.length - 1].value, // Default icon
+  tags: [],
+  previewImageUrl: '',
+  defaultBots: 0, // Will be derived
+  standardRollen: 0, // Will be derived
+  defaultBotsConfig: [],
+  humanRolesConfig: [],
+});
+
+
 export default function EditScenarioPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
   const scenarioId = params.scenarioId as string;
 
+  const [isNewScenario, setIsNewScenario] = useState(false);
   const [currentScenario, setCurrentScenario] = useState<Scenario | null>(null);
+  const [originalScenarioData, setOriginalScenarioData] = useState<Scenario | null>(null);
+
+  // Form states
   const [title, setTitle] = useState('');
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
-  const [lernziele, setLernziele] = useState('');
+  const [lernziele, setLernziele] = useState(''); // Joined by \n for textarea
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value);
   
@@ -66,41 +86,59 @@ export default function EditScenarioPage() {
   const [botSaveAsTemplateFlags, setBotSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
   const [roleSaveAsTemplateFlags, setRoleSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
 
-
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setIsLoading(true);
     if (scenarioId) {
-      const foundScenario = scenarios.find(s => s.id === scenarioId);
-      if (foundScenario) {
-        setCurrentScenario(foundScenario);
-        setTitle(foundScenario.title);
-        setKurzbeschreibung(foundScenario.kurzbeschreibung);
-        setLangbeschreibung(foundScenario.langbeschreibung);
-        setLernziele(foundScenario.lernziele?.join('\\n') || '');
-        setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
-        setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
-        setSelectedTags(foundScenario.tags || []);
-        
-        const initialBotFlags: Record<string, boolean> = {};
-        (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false);
-        setBotSaveAsTemplateFlags(initialBotFlags);
-
-        const initialRoleFlags: Record<string, boolean> = {};
-        (foundScenario.humanRolesConfig || []).forEach(role => initialRoleFlags[role.id] = false);
-        setRoleSaveAsTemplateFlags(initialRoleFlags);
-
-        setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
-        setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
+      if (scenarioId === 'new') {
+        const newScenario = createDefaultScenario();
+        setCurrentScenario(newScenario);
+        setOriginalScenarioData(JSON.parse(JSON.stringify(newScenario))); // Store a copy
+        setTitle(newScenario.title);
+        setKurzbeschreibung(newScenario.kurzbeschreibung);
+        setLangbeschreibung(newScenario.langbeschreibung);
+        setLernziele((newScenario.lernziele || []).join('\n'));
+        setPreviewImageUrlInput(newScenario.previewImageUrl || '');
+        setIconNameInput(newScenario.iconName || availableIcons[availableIcons.length - 1].value);
+        setSelectedTags(newScenario.tags || []);
+        setEditableBotsConfig(JSON.parse(JSON.stringify(newScenario.defaultBotsConfig || [])));
+        setEditableHumanRoles(JSON.parse(JSON.stringify(newScenario.humanRolesConfig || [])));
+        setIsNewScenario(true);
       } else {
-        setCurrentScenario(null);
-         toast({
-          variant: "destructive",
-          title: "Fehler: Szenario nicht gefunden",
-          description: `Das Szenario mit der ID "${scenarioId}" konnte nicht geladen werden.`,
-        });
+        const foundScenario = scenarios.find(s => s.id === scenarioId);
+        if (foundScenario) {
+          setCurrentScenario(foundScenario);
+          setOriginalScenarioData(JSON.parse(JSON.stringify(foundScenario))); // Store a copy
+          setTitle(foundScenario.title);
+          setKurzbeschreibung(foundScenario.kurzbeschreibung);
+          setLangbeschreibung(foundScenario.langbeschreibung);
+          setLernziele(foundScenario.lernziele?.join('\n') || '');
+          setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
+          setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
+          setSelectedTags(foundScenario.tags || []);
+          
+          const initialBotFlags: Record<string, boolean> = {};
+          (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false);
+          setBotSaveAsTemplateFlags(initialBotFlags);
+
+          const initialRoleFlags: Record<string, boolean> = {};
+          (foundScenario.humanRolesConfig || []).forEach(role => initialRoleFlags[role.id] = false);
+          setRoleSaveAsTemplateFlags(initialRoleFlags);
+
+          setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
+          setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
+          setIsNewScenario(false);
+        } else {
+          setCurrentScenario(null);
+          setOriginalScenarioData(null);
+           toast({
+            variant: "destructive",
+            title: "Fehler: Szenario nicht gefunden",
+            description: `Das Szenario mit der ID "${scenarioId}" konnte nicht geladen werden.`,
+          });
+        }
       }
     }
     setIsLoading(false);
@@ -132,7 +170,7 @@ export default function EditScenarioPage() {
   const handleAddBotFromTemplate = (templateId: string) => {
     const template = botTemplates.find(t => t.templateId === templateId);
     if (template) {
-      const newBotId = `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newBotId = `bot-tpl-${template.templateId}-${Date.now()}`; // More unique ID
       setEditableBotsConfig([...editableBotsConfig, {
         ...template, 
         id: newBotId, 
@@ -180,7 +218,7 @@ export default function EditScenarioPage() {
   const handleAddHumanRoleFromTemplate = (templateId: string) => {
     const template = humanRoleTemplates.find(t => t.templateId === templateId);
     if (template) {
-      const newRoleId = `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newRoleId = `role-tpl-${template.templateId}-${Date.now()}`; // More unique ID
       setEditableHumanRoles([...editableHumanRoles, {
         ...template, 
         id: newRoleId, 
@@ -216,15 +254,37 @@ export default function EditScenarioPage() {
     );
   };
 
-  const handleAddManualTags = () => {
+  const processManualTagInput = () => {
     if (!manualTagInput.trim()) return;
     const newTags = manualTagInput
       .split(',')
-      .map(tag => tag.trim())
+      .map(tag => tag.trim().toLowerCase()) // Standardize to lowercase
       .filter(tag => tag !== '' && !selectedTags.includes(tag)); 
     
-    setSelectedTags(prevTags => [...prevTags, ...newTags]);
+    if (newTags.length > 0) {
+      setSelectedTags(prevTags => [...prevTags, ...newTags]);
+    }
     setManualTagInput('');
+  };
+
+  const handleManualTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value.endsWith(',')) {
+      processManualTagInput(); // Add tags if comma is typed
+    } else {
+      setManualTagInput(value);
+    }
+  };
+
+  const handleManualTagInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault(); // Prevent form submission
+      processManualTagInput();
+    }
+  };
+
+  const handleRemoveSelectedTag = (tagToRemove: string) => {
+    setSelectedTags(prevTags => prevTags.filter(tag => tag !== tagToRemove));
   };
 
 
@@ -238,7 +298,7 @@ export default function EditScenarioPage() {
       title,
       kurzbeschreibung,
       langbeschreibung,
-      lernziele: lernziele.split('\\n').map(ziel => ziel.trim()).filter(ziel => ziel),
+      lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
       previewImageUrl: previewImageUrlInput,
       iconName: iconNameInput,
       tags: selectedTags,
@@ -263,10 +323,14 @@ export default function EditScenarioPage() {
 
     setTimeout(() => {
       toast({
-        title: "Szenario gespeichert (Simulation)",
+        title: `Szenario ${isNewScenario ? 'erstellt' : 'gespeichert'} (Simulation)`,
         description: `Änderungen für "${title}" wurden in der Konsole geloggt. In einer echten Anwendung würden sie in einer Datenbank gespeichert.`,
       });
       setIsSaving(false);
+      if (isNewScenario) {
+        // Potentially redirect or update UI after creating a new scenario
+        // For now, we stay on the page, but the ID would need to be updated if we were truly saving
+      }
     }, 1000);
   };
 
@@ -278,7 +342,7 @@ export default function EditScenarioPage() {
     );
   }
 
-  if (!currentScenario) {
+  if (!currentScenario && !isNewScenario) { // Allow rendering for new scenario even if currentScenario is initially the default blank one
     return (
       <div className="space-y-6 p-4 md:p-6">
         <div className="flex items-center justify-between">
@@ -297,6 +361,9 @@ export default function EditScenarioPage() {
       </div>
     );
   }
+  
+  const displayedTitle = isNewScenario ? (title || "Neues Szenario") : (title || currentScenario?.title || "Szenario laden...");
+
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
@@ -304,10 +371,10 @@ export default function EditScenarioPage() {
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
             <NotebookPen className="mr-3 h-6 w-6" />
-            Editor: <span className="text-foreground ml-2">{title || currentScenario.title}</span>
+            Editor: <span className="text-foreground ml-2">{displayedTitle}</span>
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5 ml-9">
-            ID: {currentScenario.id}
+            ID: {currentScenario?.id || "Wird generiert"}
           </p>
         </div>
         <div className="flex gap-2 md:gap-3">
@@ -317,13 +384,13 @@ export default function EditScenarioPage() {
           </Button>
           <Button type="submit" disabled={isSaving} className="min-w-[150px]">
             <Save className="mr-2 h-4 w-4" />
-            {isSaving ? "Speichert..." : "Änderungen speichern"}
+            {isSaving ? "Speichert..." : (isNewScenario ? "Szenario erstellen" : "Änderungen speichern")}
           </Button>
         </div>
       </div>
 
       <div className="sticky top-[calc(theme(spacing.16)_-_45px)] md:top-[calc(theme(spacing.16)_-_49px)] lg:top-[calc(theme(spacing.16)_-_49px)] z-10 bg-background/90 backdrop-blur-sm border-b px-2 sm:px-4 py-2 mb-6">
-        <div className="flex items-center space-x-1 max-w-full overflow-x-auto whitespace-nowrap">
+         <div className="flex items-center space-x-1 max-w-full overflow-x-auto whitespace-nowrap">
           {editorSections.map(section => (
             <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
               <a href={`#${section.id}`}>
@@ -380,7 +447,7 @@ export default function EditScenarioPage() {
                 <Card className="border-none shadow-none">
                   <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
                     <div>
-                        <CardDescription>Standard-Bots für dieses Szenario. (ID: {currentScenario.id})</CardDescription>
+                        <CardDescription>Standard-Bots für dieses Szenario.</CardDescription>
                     </div>
                     <div className="flex gap-2">
                         <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving}>
@@ -579,13 +646,14 @@ export default function EditScenarioPage() {
                         <CardContent className="p-0">
                             <div className="mb-4 flex items-center gap-2">
                                 <Input 
-                                    placeholder="Tag manuell hinzufügen (kommagetrennt)..." 
+                                    placeholder="Tag manuell hinzufügen (kommagetrennt oder Enter)..." 
                                     className="flex-grow text-sm"
                                     value={manualTagInput}
-                                    onChange={(e) => setManualTagInput(e.target.value)}
+                                    onChange={handleManualTagInputChange}
+                                    onKeyDown={handleManualTagInputKeyDown}
                                     disabled={isSaving} 
                                 />
-                                <Button type="button" size="sm" variant="outline" onClick={handleAddManualTags} disabled={isSaving || !manualTagInput.trim()}>
+                                <Button type="button" size="sm" variant="outline" onClick={processManualTagInput} disabled={isSaving || !manualTagInput.trim()}>
                                     <PlusCircle className="mr-2 h-4 w-4" /> Hinzufügen
                                 </Button>
                             </div>
@@ -594,8 +662,14 @@ export default function EditScenarioPage() {
                                 {selectedTags.length > 0 ? (
                                     <div className="flex flex-wrap gap-2 mt-2">
                                         {selectedTags.map(tag => (
-                                            <Badge key={tag} variant="secondary" className="cursor-pointer hover:bg-destructive/80 hover:text-destructive-foreground text-xs" onClick={() => handleTagToggle(tag)}>
-                                                {tag} <Trash2 className="ml-1.5 h-3 w-3" />
+                                            <Badge 
+                                                key={tag} 
+                                                variant="secondary" 
+                                                className="cursor-pointer group/tag relative hover:bg-destructive/80 hover:text-destructive-foreground text-xs pr-6" // Added pr-6 for X space
+                                                onClick={() => handleRemoveSelectedTag(tag)}
+                                            >
+                                                {tag} 
+                                                <X className="absolute right-1 top-1/2 -translate-y-1/2 ml-1.5 h-3 w-3 opacity-50 group-hover/tag:opacity-100" />
                                             </Badge>
                                         ))}
                                     </div>
@@ -620,9 +694,9 @@ export default function EditScenarioPage() {
                                                     {category.tags.map(tag => (
                                                         <React.Fragment key={tag.name}> 
                                                             <Badge
-                                                                variant={selectedTags.includes(tag.name) ? "default" : "outline"}
+                                                                variant={selectedTags.includes(tag.name.toLowerCase()) ? "default" : "outline"}
                                                                 className="cursor-pointer hover:bg-primary/80 text-xs"
-                                                                onClick={() => handleTagToggle(tag.name)}
+                                                                onClick={() => handleTagToggle(tag.name.toLowerCase())}
                                                             >
                                                                 {tag.emoji && <span className="mr-1.5">{tag.emoji}</span>}
                                                                 {tag.name}
@@ -630,9 +704,9 @@ export default function EditScenarioPage() {
                                                             {tag.subTags && tag.subTags.map(subTag => (
                                                                 <Badge
                                                                     key={subTag.name}
-                                                                    variant={selectedTags.includes(subTag.name) ? "default" : "outline"}
+                                                                    variant={selectedTags.includes(subTag.name.toLowerCase()) ? "default" : "outline"}
                                                                     className="cursor-pointer hover:bg-primary/80 ml-1 text-xs bg-muted/50"
-                                                                    onClick={() => handleTagToggle(subTag.name)}
+                                                                    onClick={() => handleTagToggle(subTag.name.toLowerCase())}
                                                                 >
                                                                     {subTag.emoji && <span className="mr-1">{subTag.emoji}</span>}
                                                                     {subTag.name}
@@ -652,6 +726,7 @@ export default function EditScenarioPage() {
                 </AccordionContent>
             </AccordionItem>
 
+           {(!isNewScenario && originalScenarioData) && (
             <AccordionItem value="originaldaten" id="originaldaten">
               <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                 <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus `scenarios.ts`)</CardTitle>
@@ -664,13 +739,14 @@ export default function EditScenarioPage() {
                   <CardContent className="p-0">
                     <ScrollArea className="w-[200px] h-[200px]" orientation="both">
                       <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs">
-                        {JSON.stringify(currentScenario, null, 2)}
+                        {JSON.stringify(originalScenarioData, null, 2)}
                       </pre>
                     </ScrollArea>
                   </CardContent>
                 </Card>
               </AccordionContent>
             </AccordionItem>
+           )}
         </Accordion>
       </div>
     </form>
