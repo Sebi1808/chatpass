@@ -1,22 +1,61 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { scenarios } from '@/lib/scenarios';
 import type { Scenario } from '@/lib/types';
-import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Removed TabsContent as it's not directly used here anymore
+import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks, Settings2, NotebookPen } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from 'next/navigation';
+import { db } from '@/lib/firebase';
+import { collection, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ScenarioEditorHubPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setIsLoading(true);
+    const scenariosColRef = collection(db, "scenarios");
+    const q = query(scenariosColRef, orderBy("title", "asc")); // Order by title for consistent listing
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedScenarios: Scenario[] = [];
+      querySnapshot.forEach((doc) => {
+        // Convert Firestore Timestamps to Dates or strings if necessary
+        const data = doc.data() as Omit<Scenario, 'id'>; // Firestore data doesn't include id
+        const scenario: Scenario = {
+          id: doc.id,
+          ...data,
+          // Ensure any Timestamp fields are handled if they exist on Scenario directly
+          // For example, if Scenario had createdAt: Timestamp | Date;
+          // createdAt: (data.createdAt as Timestamp)?.toDate ? (data.createdAt as Timestamp).toDate() : data.createdAt,
+        };
+        fetchedScenarios.push(scenario);
+      });
+      setScenarios(fetchedScenarios);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error fetching scenarios from Firestore: ", error);
+      toast({
+        variant: "destructive",
+        title: "Fehler beim Laden der Szenarien",
+        description: "Szenarien konnten nicht aus der Datenbank geladen werden.",
+      });
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [toast]);
 
   const filteredScenarios = useMemo(() => {
     if (!searchTerm.trim()) {
@@ -26,7 +65,7 @@ export default function ScenarioEditorHubPage() {
     return scenarios.filter(
       (scenario) =>
         scenario.title.toLowerCase().includes(lowerCaseSearchTerm) ||
-        scenario.kurzbeschreibung.toLowerCase().includes(lowerCaseSearchTerm) ||
+        (scenario.kurzbeschreibung && scenario.kurzbeschreibung.toLowerCase().includes(lowerCaseSearchTerm)) ||
         (scenario.tags && scenario.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(lowerCaseSearchTerm)))
     );
   }, [searchTerm, scenarios]);
@@ -39,7 +78,9 @@ export default function ScenarioEditorHubPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Szenario Editor Hub</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-primary flex items-center">
+            <NotebookPen className="mr-3 h-8 w-8"/>Szenario Editor Hub
+          </h1>
           <p className="text-muted-foreground mt-2">
             Verwalten Sie Szenarien und Vorlagen für Chat-Simulationen.
           </p>
@@ -63,12 +104,11 @@ export default function ScenarioEditorHubPage() {
           </TabsTrigger>
         </TabsList>
         
-        {/* Content for "scenarios" tab */}
         <Card className="mt-4">
             <CardHeader className="pb-4">
               <CardTitle>Vorhandene Szenarien</CardTitle>
               <CardDescription>
-                Durchsuchen und bearbeiten Sie die aktuell verfügbaren Szenarien (aus `scenarios.ts`).
+                Durchsuchen und bearbeiten Sie die aktuell verfügbaren Szenarien.
               </CardDescription>
               <div className="relative mt-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
@@ -82,7 +122,9 @@ export default function ScenarioEditorHubPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {filteredScenarios.length > 0 ? (
+              {isLoading ? (
+                <p className="text-center text-muted-foreground py-8">Lade Szenarien...</p>
+              ) : filteredScenarios.length > 0 ? (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -123,13 +165,11 @@ export default function ScenarioEditorHubPage() {
                 </div>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  Keine Szenarien gefunden, die Ihrer Suche entsprechen.
-                  {searchTerm === '' && scenarios.length === 0 && " Es sind aktuell keine Szenarien vorhanden."}
+                  {searchTerm === '' ? "Keine Szenarien in der Datenbank gefunden. Erstellen Sie ein neues Szenario." : "Keine Szenarien gefunden, die Ihrer Suche entsprechen." }
                 </p>
               )}
             </CardContent>
           </Card>
-        {/* End Content for "scenarios" tab */}
       </Tabs>
     </div>
   );
