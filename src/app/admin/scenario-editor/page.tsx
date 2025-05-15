@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import type { Scenario } from '@/lib/types';
 import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks, NotebookPen, Trash2, Copy, Eye, ShieldCheck, Loader2 } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Removed TabsContent as it's not used here directly
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, Timestamp, deleteDoc, doc, addDoc, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -39,15 +39,28 @@ export default function ScenarioEditorHubPage() {
   useEffect(() => {
     setIsLoading(true);
     const scenariosColRef = collection(db, "scenarios");
+    // Order by title by default, can be changed if other default sort is preferred
     const q = query(scenariosColRef, orderBy("title", "asc")); 
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedScenarios: Scenario[] = [];
       querySnapshot.forEach((doc) => {
+        // Ensure all fields, especially optional ones, are handled
         const data = doc.data() as Omit<Scenario, 'id'>; 
         const scenario: Scenario = {
           id: doc.id,
-          ...data,
+          title: data.title || "Unbenanntes Szenario",
+          kurzbeschreibung: data.kurzbeschreibung || "",
+          langbeschreibung: data.langbeschreibung || "",
+          lernziele: data.lernziele || [],
+          iconName: data.iconName || "ImageIcon",
+          tags: data.tags || [],
+          previewImageUrl: data.previewImageUrl || "",
+          status: data.status || "draft",
+          defaultBotsConfig: data.defaultBotsConfig || [],
+          humanRolesConfig: data.humanRolesConfig || [],
+          createdAt: data.createdAt, // Keep as is, could be undefined
+          updatedAt: data.updatedAt, // Keep as is, could be undefined
         };
         fetchedScenarios.push(scenario);
       });
@@ -111,10 +124,20 @@ export default function ScenarioEditorHubPage() {
 
       if (scenarioSnap.exists()) {
         const originalScenarioData = scenarioSnap.data() as Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>;
+        // Ensure all fields are carried over, providing defaults for any potentially missing ones
         const duplicatedScenarioData = {
-          ...originalScenarioData,
-          title: `Kopie von ${originalScenarioData.title}`,
-          status: 'draft' as 'draft' | 'published',
+          ...originalScenarioData, // Spread original data first
+          title: `Kopie von ${originalScenarioData.title || 'Unbenanntes Szenario'}`,
+          status: 'draft' as 'draft' | 'published', // New copies are drafts
+          kurzbeschreibung: originalScenarioData.kurzbeschreibung || "",
+          langbeschreibung: originalScenarioData.langbeschreibung || "",
+          lernziele: originalScenarioData.lernziele || [],
+          iconName: originalScenarioData.iconName || "ImageIcon",
+          tags: originalScenarioData.tags || [],
+          previewImageUrl: originalScenarioData.previewImageUrl || "",
+          defaultBotsConfig: originalScenarioData.defaultBotsConfig || [],
+          humanRolesConfig: originalScenarioData.humanRolesConfig || [],
+          // Timestamps will be set by Firestore on creation
           createdAt: serverTimestamp() as Timestamp,
           updatedAt: serverTimestamp() as Timestamp,
         };
@@ -166,6 +189,7 @@ export default function ScenarioEditorHubPage() {
           </TabsTrigger>
         </TabsList>
         
+        {/* Content for "Szenarien" tab is directly here */}
         <Card className="mt-4">
             <CardHeader className="pb-4">
               <CardTitle>Vorhandene Szenarien</CardTitle>
@@ -185,7 +209,10 @@ export default function ScenarioEditorHubPage() {
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <p className="text-center text-muted-foreground py-8">Lade Szenarien...</p>
+                <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                    <p className="text-center text-muted-foreground">Lade Szenarien...</p>
+                </div>
               ) : filteredScenarios.length > 0 ? (
                 <div className="overflow-x-auto">
                   <Table>
@@ -279,3 +306,4 @@ export default function ScenarioEditorHubPage() {
   );
 }
 
+    
