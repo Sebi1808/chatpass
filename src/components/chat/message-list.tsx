@@ -2,6 +2,7 @@
 "use client";
 
 import type { RefObject } from 'react';
+import { memo } from 'react';
 import { MessageSquare } from "lucide-react";
 import { MessageBubble } from './message-bubble';
 import type { DisplayMessage } from '@/lib/types';
@@ -14,24 +15,25 @@ interface MessageListProps {
   onMentionUser: (name: string) => void;
   onSetReply: (message: DisplayMessage) => void;
   onSetQuote: (message: DisplayMessage) => void;
-  onScrollToMessage: (messageId: string) => void;
-  onReaction: (messageId: string, emoji: string) => void; 
+  // onScrollToMessage: (messageId: string) => void; // This was never fully implemented or used
+  onReaction: (messageId: string, emoji: string) => Promise<void>; 
   reactingToMessageId: string | null; 
   setReactingToMessageId: (messageId: string | null) => void;
   emojiCategories: typeof EmojiCategoriesType; 
   messagesEndRef: RefObject<HTMLDivElement>;
   isChatDataLoading: boolean;
   isAdminView?: boolean;
+  onOpenImageModal: (imageUrl: string, imageFileName?: string) => void;
 }
 
-export function MessageList({
+const MessageList = memo(function MessageList({
   messages,
   currentUserId,
   getParticipantColorClasses,
   onMentionUser,
   onSetReply,
   onSetQuote,
-  onScrollToMessage,
+  // onScrollToMessage,
   onReaction, 
   reactingToMessageId,
   setReactingToMessageId,
@@ -39,6 +41,7 @@ export function MessageList({
   messagesEndRef,
   isChatDataLoading,
   isAdminView = false,
+  onOpenImageModal,
 }: MessageListProps) {
   return (
     <div className="space-y-1"> {/* Reduced space-y for tighter packing */}
@@ -51,12 +54,13 @@ export function MessageList({
           onMentionUser={onMentionUser}
           onSetReply={onSetReply}
           onSetQuote={onSetQuote}
-          onScrollToMessage={onScrollToMessage}
+          // onScrollToMessage={onScrollToMessage}
           onReaction={onReaction} 
           reactingToMessageId={reactingToMessageId}
           setReactingToMessageId={setReactingToMessageId}
           emojiCategories={emojiCategories}
           isAdminView={isAdminView}
+          onOpenImageModal={onOpenImageModal}
         />
       ))}
       <div ref={messagesEndRef} />
@@ -67,7 +71,7 @@ export function MessageList({
           {!isAdminView && <p>Sei der Erste, der eine Nachricht sendet!</p>}
         </div>
       )}
-      {isChatDataLoading && (
+      {isChatDataLoading && messages.length === 0 && ( // Show loading only if no messages yet
         <div className="text-center text-muted-foreground py-8">
           <MessageSquare className="mx-auto h-12 w-12 mb-2 opacity-50 animate-pulse" />
           <p>Lade Chat-Nachrichten...</p>
@@ -75,4 +79,8 @@ export function MessageList({
       )}
     </div>
   );
-}
+});
+
+MessageList.displayName = "MessageList";
+
+export { MessageList };

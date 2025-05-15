@@ -2,6 +2,7 @@
 "use client";
 
 import type { ChangeEvent, FormEvent, RefObject } from 'react';
+import { memo } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Paperclip, Send, Smile, Mic, XCircle, ImageIcon, Trash2, PauseCircle, AlertTriangle, VolumeX } from "lucide-react";
@@ -38,12 +39,12 @@ interface MessageInputBarProps {
   handleCancelQuote: () => void;
   showEmojiPicker: boolean;
   setShowEmojiPicker: (value: boolean) => void;
-  handleEmojiSelect: (emoji: string) => void; // For adding emoji to input
+  handleEmojiSelect: (emoji: string) => void; 
   emojiCategories: typeof EmojiCategoriesType;
   messageCooldownSeconds: number | undefined;
 }
 
-export function MessageInputBar({
+const MessageInputBar = memo(function MessageInputBar({
   newMessage,
   setNewMessage,
   handleSendMessage,
@@ -66,7 +67,7 @@ export function MessageInputBar({
   handleCancelQuote,
   showEmojiPicker,
   setShowEmojiPicker,
-  handleEmojiSelect, // For input
+  handleEmojiSelect, 
   emojiCategories,
   messageCooldownSeconds,
 }: MessageInputBarProps) {
@@ -78,7 +79,7 @@ export function MessageInputBar({
     inputPlaceholderText = "Nachricht wird gesendet...";
   } else if (sessionStatus === "ended") {
     inputPlaceholderText = "Simulation beendet";
-  } else if (sessionStatus === "paused") {
+  } else if (sessionStatus === "paused" && !isAdminView) {
     inputPlaceholderText = "Simulation pausiert";
   } else if (isMuted && !isAdminView) {
     inputPlaceholderText = "Sie sind stummgeschaltet";
@@ -87,8 +88,8 @@ export function MessageInputBar({
   }
 
   const isSendButtonDisabled = !canTryToSend || (!newMessage.trim() && !selectedImageFile) || isSendingMessage;
-  const isInputDisabled = !canTryToSend || isSendingMessage || (isAdminView && !sessionStatus && sessionStatus !== 'ended');
-  const showAttachmentAndEmojiButtons = canTryToSend && !isSendingMessage && !(isAdminView && !sessionStatus && sessionStatus !== 'ended');
+  const isInputDisabled = !canTryToSend || isSendingMessage || (isAdminView && !sessionData && sessionStatus !== 'ended'); // sessionData check was missing
+  const showAttachmentAndEmojiButtons = canTryToSend && !isSendingMessage && !(isAdminView && !sessionData && sessionStatus !== 'ended');
 
 
   return (
@@ -153,47 +154,52 @@ export function MessageInputBar({
       )}
       <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
         <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!showAttachmentAndEmojiButtons} />
-        <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!showAttachmentAndEmojiButtons} onClick={() => fileInputRef.current?.click()}>
-          <Paperclip className="h-5 w-5" />
-        </Button>
-
-        <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!showAttachmentAndEmojiButtons}>
-              <Smile className="h-5 w-5" />
+        
+        { (!isAdminView || (isAdminView && showAttachmentAndEmojiButtons)) && (
+          <>
+            <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!showAttachmentAndEmojiButtons} onClick={() => fileInputRef.current?.click()}>
+              <Paperclip className="h-5 w-5" />
             </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
-            <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-              <TabsList className="grid w-full grid-cols-5 h-auto p-1">
-                {emojiCategories.map(category => (
-                  <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
-                    {category.icon}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {emojiCategories.map(category => (
-                <TabsContent key={category.name} value={category.name} className="mt-0">
-                  <ScrollArea className="h-48">
-                    <div className="grid grid-cols-8 gap-0.5 p-2">
-                      {category.emojis.map(emoji => (
-                        <Button
-                          key={emoji}
-                          variant="ghost"
-                          size="icon"
-                          className="text-xl p-0 h-8 w-8"
-                          onClick={() => handleEmojiSelect(emoji)}
-                        >
-                          {emoji}
-                        </Button>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-              ))}
-            </Tabs>
-          </PopoverContent>
-        </Popover>
+
+            <Popover open={showEmojiPicker} onOpenChange={setShowEmojiPicker}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Emoji" disabled={!showAttachmentAndEmojiButtons}>
+                  <Smile className="h-5 w-5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs" side="top" align="start">
+                <Tabs defaultValue={emojiCategories[0].name} className="w-full">
+                  <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                    {emojiCategories.map(category => (
+                      <TabsTrigger key={category.name} value={category.name} className="text-lg p-1 h-8" title={category.name}>
+                        {category.icon}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {emojiCategories.map(category => (
+                    <TabsContent key={category.name} value={category.name} className="mt-0">
+                      <ScrollArea className="h-48">
+                        <div className="grid grid-cols-8 gap-0.5 p-2">
+                          {category.emojis.map(emoji => (
+                            <Button
+                              key={emoji}
+                              variant="ghost"
+                              size="icon"
+                              className="text-xl p-0 h-8 w-8" // Smaller emoji text in picker
+                              onClick={() => handleEmojiSelect(emoji)}
+                            >
+                              {emoji}
+                            </Button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </PopoverContent>
+            </Popover>
+          </>
+        )}
 
         <Input
           ref={inputRef}
@@ -205,9 +211,11 @@ export function MessageInputBar({
           onChange={(e) => setNewMessage(e.target.value)}
           disabled={isInputDisabled}
         />
-        <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!showAttachmentAndEmojiButtons} onClick={() => alert("Spracheingabe (noch nicht implementiert)")}>
-          <Mic className="h-5 w-5" />
-        </Button>
+        { (!isAdminView || (isAdminView && showAttachmentAndEmojiButtons)) && (
+            <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!showAttachmentAndEmojiButtons} onClick={() => alert("Spracheingabe (noch nicht implementiert)")}>
+            <Mic className="h-5 w-5" />
+            </Button>
+        )}
         <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
           {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
         </Button>
@@ -220,4 +228,8 @@ export function MessageInputBar({
       )}
     </div>
   );
-}
+});
+
+MessageInputBar.displayName = "MessageInputBar";
+
+export { MessageInputBar };

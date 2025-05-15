@@ -21,7 +21,8 @@ import { participantColors, emojiCategories, type ParticipantColor } from '@/lib
 import { MessageInputBar } from '@/components/chat/message-input-bar';
 import { MessageList } from '@/components/chat/message-list';
 import { ChatSidebar } from '@/components/chat/chat-sidebar';
-import { scenarios } from "@/lib/scenarios"; // Ensure scenarios is imported
+import { scenarios } from "@/lib/scenarios"; 
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"; // For image modal
 
 
 interface ChatPageUrlParams {
@@ -56,7 +57,7 @@ const simpleHash = (str: string): number => {
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = (hash << 5) - hash + char;
-    hash |= 0; // Convert to 32bit integer
+    hash |= 0; 
   }
   // console.log(`simpleHash: input='${str}', output=${hash}`);
   return hash;
@@ -64,18 +65,18 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: directSessionId,
+  sessionId: directSessionId, // Renamed to avoid conflict if params is also destructured
   initialUserName: initialUserNameProp,
   initialUserRole: initialUserRoleProp,
   initialUserId: initialUserIdProp,
   initialUserAvatarFallback: initialUserAvatarFallbackProp,
   isAdminView = false
 }: ChatPageContentProps) {
-
+  
+  // ALL HOOKS AT THE TOP
   const { toast } = useToast();
   const router = useRouter();
 
-  // All useState, useRef, useContext calls must be at the top level
   const [userName, setUserName] = useState<string | null>(initialUserNameProp || null);
   const [userRole, setUserRole] = useState<string | null>(initialUserRoleProp || null);
   const [userId, setUserId] = useState<string | null>(initialUserIdProp || null);
@@ -109,32 +110,38 @@ export function ChatPageContent({
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
-
+  
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  // For image modal
+  const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
+  const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
 
-  // DERIVED STATE (useMemo or direct calculation if simple)
+
+  const sessionId = directSessionId; // Use the prop directly
+
+  // DERIVED STATE
   const isSessionActive = useMemo(() => sessionData?.status === "active", [sessionData]);
 
   // EFFECT HOOKS
   useEffect(() => {
-    if (!directSessionId) return;
-    const scenarioFromLib = scenarios.find(s => s.id === directSessionId);
+    if (!sessionId) return;
+    const scenarioFromLib = scenarios.find(s => s.id === sessionId);
     setCurrentScenario(scenarioFromLib);
-  }, [directSessionId]);
+  }, [sessionId]);
 
 
   useEffect(() => {
     if (!isAdminView && (!initialUserNameProp || !initialUserRoleProp || !initialUserIdProp || !initialUserAvatarFallbackProp)) {
-      const nameFromStorage = localStorage.getItem(`chatUser_${directSessionId}_name`);
-      const roleFromStorage = localStorage.getItem(`chatUser_${directSessionId}_role`);
-      const userIdFromStorage = localStorage.getItem(`chatUser_${directSessionId}_userId`);
-      const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${directSessionId}_avatarFallback`);
+      const nameFromStorage = localStorage.getItem(`chatUser_${sessionId}_name`);
+      const roleFromStorage = localStorage.getItem(`chatUser_${sessionId}_role`);
+      const userIdFromStorage = localStorage.getItem(`chatUser_${sessionId}_userId`);
+      const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${sessionId}_avatarFallback`);
 
       if (!nameFromStorage || !roleFromStorage || !userIdFromStorage || !avatarFallbackFromStorage) {
         toast({ variant: "destructive", title: "Fehler", description: "Benutzerdetails nicht gefunden. Bitte treten Sie der Sitzung erneut bei." });
-        if (directSessionId) router.push(`/join/${directSessionId}`); else router.push('/');
+        if (sessionId) router.push(`/join/${sessionId}`); else router.push('/');
         return;
       }
       setUserName(nameFromStorage);
@@ -143,27 +150,30 @@ export function ChatPageContent({
       setUserAvatarFallback(avatarFallbackFromStorage);
     }
     setIsLoadingUserDetails(false);
-  }, [directSessionId, isAdminView, initialUserNameProp, initialUserRoleProp, initialUserIdProp, initialUserAvatarFallbackProp, router, toast]);
+  }, [sessionId, isAdminView, initialUserNameProp, initialUserRoleProp, initialUserIdProp, initialUserAvatarFallbackProp, router, toast]);
 
 
   useEffect(() => {
-    if (!directSessionId) return;
+    if (!sessionId) return;
+    // console.log(`Setting up Firestore listener for session: ${sessionId}`);
     setIsChatDataLoading(true);
 
-    const sessionDocRef = doc(db, "sessions", directSessionId);
+    const sessionDocRef = doc(db, "sessions", sessionId);
     const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as SessionData;
+        // console.log("Session data received:", data);
         setSessionData(data);
         if (data.status === "ended" && !isAdminView) {
           toast({ variant: "destructive", title: "Sitzung beendet", description: "Diese Sitzung wurde vom Administrator beendet." });
         }
       } else {
+        // console.warn(`Session document for ${sessionId} does not exist.`);
         if (!isAdminView) {
           toast({ variant: "destructive", title: "Fehler", description: "Sitzung nicht gefunden oder wurde gelöscht." });
           router.push("/");
         } else {
-           console.warn("Sitzung nicht gefunden im Admin View für sessionId:", directSessionId);
+           console.warn("Sitzung nicht gefunden im Admin View für sessionId:", sessionId);
         }
         setSessionData(null);
       }
@@ -173,18 +183,21 @@ export function ChatPageContent({
         toast({ variant: "destructive", title: "Fehler", description: "Sitzungsstatus konnte nicht geladen werden." });
         router.push("/");
       }
-      setIsChatDataLoading(false);
+      setIsChatDataLoading(false); // Ensure loading is false on error
     });
-    return () => unsubscribeSessionData();
-  }, [directSessionId, isAdminView, router, toast]);
+    return () => {
+      // console.log(`Cleaning up Firestore listener for session: ${sessionId}`);
+      unsubscribeSessionData();
+    }
+  }, [sessionId, isAdminView, router, toast]);
 
 
   useEffect(() => {
-    if (!directSessionId || !userId || isAdminView) return;
+    if (!sessionId || !userId || isAdminView) return;
 
     let unsubscribeParticipant: (() => void) | undefined;
     const findParticipantDocAndListen = async () => {
-      const participantsColRef = collection(db, "sessions", directSessionId, "participants");
+      const participantsColRef = collection(db, "sessions", sessionId, "participants");
       if (!userId) {
         console.warn("Skipping participant listener because userId is null");
         return;
@@ -204,7 +217,8 @@ export function ChatPageContent({
             console.error("Error listening to own participant data: ", error);
           });
         } else {
-          console.warn("Could not find participant document for userId:", userId);
+          // This can happen if the participant doc is not yet created or was deleted
+          // console.warn("Could not find participant document for userId:", userId, "in session:", sessionId);
         }
       } catch (error) {
          console.error("Error querying for participant document:", error);
@@ -217,13 +231,13 @@ export function ChatPageContent({
         unsubscribeParticipant();
       }
     };
-  }, [directSessionId, userId, isAdminView]);
+  }, [sessionId, userId, isAdminView]);
 
 
   useEffect(() => {
-    if (!directSessionId) return;
-    const participantsColRef = collection(db, "sessions", directSessionId, "participants");
-    const q_participants = query(participantsColRef);
+    if (!sessionId) return;
+    const participantsColRef = collection(db, "sessions", sessionId, "participants");
+    const q_participants = query(participantsColRef); // No ordering to avoid index need, sort client-side
 
     const unsubscribe = onSnapshot(q_participants, (querySnapshot) => {
       const fetchedParticipants: DisplayParticipant[] = [];
@@ -231,6 +245,7 @@ export function ChatPageContent({
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as DisplayParticipant);
       });
 
+      // Client-side sorting: Bots first, then by joinedAt
       fetchedParticipants.sort((a, b) => {
         const aTimestamp = a.joinedAt instanceof Timestamp ? a.joinedAt.toMillis() : (typeof a.joinedAt === 'object' && a.joinedAt ? (a.joinedAt as any).seconds * 1000 : 0);
         const bTimestamp = b.joinedAt instanceof Timestamp ? b.joinedAt.toMillis() : (typeof b.joinedAt === 'object' && b.joinedAt ? (b.joinedAt as any).seconds * 1000 : 0);
@@ -238,7 +253,7 @@ export function ChatPageContent({
         if (!a.isBot && b.isBot) return 1;
         return aTimestamp - bTimestamp;
       });
-
+      
       setParticipants(fetchedParticipants);
     }, (error) => {
       console.error("Error fetching participants: ", error);
@@ -246,43 +261,37 @@ export function ChatPageContent({
     });
 
     return () => unsubscribe();
-  }, [directSessionId, toast]);
+  }, [sessionId, toast]);
+
 
   const scrollToBottom = useCallback((force: boolean = false, behavior: 'auto' | 'smooth' = 'smooth') => {
     if (messagesEndRef.current && viewportRef.current) {
       const scrollContainer = viewportRef.current;
-      if (force) {
-        messagesEndRef.current.scrollIntoView({ behavior });
-        setShowScrollToBottomButton(false); // Hide button when forced to bottom
-        return;
-      }
-
-      // Check if near bottom with a threshold
-      const isNearBottomThreshold = 250; // px from bottom
+      const isNearBottomThreshold = 250; 
       const isScrolledToBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + isNearBottomThreshold;
 
-      if (isScrolledToBottom) {
-        messagesEndRef.current.scrollIntoView({ behavior: "auto" }); // Use 'auto' for less noticeable jumps if already near
-        setShowScrollToBottomButton(false);
+      if (force || isScrolledToBottom) {
+        messagesEndRef.current.scrollIntoView({ behavior: force ? behavior : "auto" });
+        if (isScrolledToBottom && !force) setShowScrollToBottomButton(false); // Hide if already near bottom and not forced
       } else {
-        setShowScrollToBottomButton(true);
+         setShowScrollToBottomButton(true); // Show if scrolled up
       }
     }
-  }, []);
+  }, [viewportRef, messagesEndRef, setShowScrollToBottomButton]);
 
 
   useEffect(() => {
-    if (!directSessionId || !userId) {
+    if (!sessionId || !userId) {
       setIsChatDataLoading(false);
       return;
     }
     setIsChatDataLoading(true);
-    const messagesColRef = collection(db, "sessions", directSessionId, "messages");
+    const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
 
     const unsubscribeMessages = onSnapshot(q_msg, (querySnapshot) => {
       const newMessagesData: DisplayMessage[] = [];
-      const prevMessageCount = messages.length;
+      const prevMessageCount = messages.length; // Store previous count to detect new messages
 
       querySnapshot.forEach((docSn) => {
         const data = docSn.data() as MessageType;
@@ -290,26 +299,26 @@ export function ChatPageContent({
         newMessagesData.push({
           ...data,
           id: docSn.id,
-          isOwn: data.senderUserId === userId && (!isAdminView || (isAdminView && data.senderType === 'admin')), // Corrected isAdminView logic for own messages
+          isOwn: data.senderUserId === userId && (!isAdminView || (isAdminView && data.senderType === 'admin')),
           timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
         });
       });
 
       setMessages(newMessagesData);
       setIsChatDataLoading(false);
-
+      
+      // Scroll logic
       if (firstTimeMessagesLoadRef.current && newMessagesData.length > 0) {
-          setTimeout(() => scrollToBottom(true, 'auto'), 100); // Ensure it happens after initial render
+          setTimeout(() => scrollToBottom(true, 'auto'), 100);
           firstTimeMessagesLoadRef.current = false;
-      } else if (newMessagesData.length > prevMessageCount) {
+      } else if (newMessagesData.length > prevMessageCount) { // Only scroll if new messages were added
           const scrollContainer = viewportRef.current;
           if (scrollContainer) {
               const lastMessageIsOwn = newMessagesData[newMessagesData.length -1]?.senderUserId === userId;
-              const isScrolledToVeryBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 50;
+              const isScrolledToVeryBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 50; // Smaller threshold for "at bottom"
 
               if (isScrolledToVeryBottom || lastMessageIsOwn) {
-                  setTimeout(() => scrollToBottom(false, lastMessageIsOwn ? 'smooth' : 'auto'), 50); // Use smooth for own, auto for others if already at bottom
-                  setShowScrollToBottomButton(false);
+                  setTimeout(() => scrollToBottom(false, lastMessageIsOwn ? 'smooth' : 'auto'), 50);
               } else {
                   setShowScrollToBottomButton(true);
               }
@@ -322,29 +331,30 @@ export function ChatPageContent({
     });
 
     return () => unsubscribeMessages();
-  }, [directSessionId, userId, isAdminView, toast, scrollToBottom, messages.length]); // messages.length ensures re-check
+  // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, [sessionId, userId, isAdminView, toast, scrollToBottom]); // Removed messages.length to prevent loops with scrollToBottom modifications
 
 
   useEffect(() => {
     const scrollContainer = viewportRef.current;
     const handleScroll = () => {
       if (scrollContainer) {
-        const SCROLL_UP_THRESHOLD = 150;
-        const isScrolledUp = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop > SCROLL_UP_THRESHOLD;
-        setShowScrollToBottomButton(isScrolledUp);
+        const SCROLL_UP_THRESHOLD = 150; 
+        const isNearBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight - scrollContainer.scrollTop <= SCROLL_UP_THRESHOLD;
+        setShowScrollToBottomButton(!isNearBottom);
       }
     };
 
     if (scrollContainer) {
       scrollContainer.addEventListener('scroll', handleScroll);
-      handleScroll();
+      handleScroll(); // Initial check
     }
     return () => {
       if (scrollContainer) {
         scrollContainer.removeEventListener('scroll', handleScroll);
       }
     };
-  }, []);
+  }, [viewportRef, setShowScrollToBottomButton]); // Added viewportRef and setShowScrollToBottomButton dependencies
 
 
   useEffect(() => {
@@ -371,48 +381,50 @@ export function ChatPageContent({
     };
   }, [lastMessageSentAt, sessionData?.messageCooldownSeconds, isAdminView]);
 
-
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
     // console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
-
-    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-red-600/90", text: "text-red-50", nameText: "text-red-100", ring: "ring-red-600" };
-    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }; // Distinct bot color
+    
+    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
+    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }; 
     const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" };
-    const emeraldColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-600" };
+    
+    // Fallback for "other users" - Emerald Green
+    const otherUserColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-600" };
 
-    if (pSenderType === 'admin' || (isAdminView && pUserId === initialUserIdProp)) {
-      // console.log(`-> Resolved as ADMIN color for ${pUserId}`);
-      return adminColor;
+    if (isAdminView && pUserId === initialUserIdProp) { // Admin in admin view
+        // console.log(`-> Resolved as ADMIN (in admin view) for ${pUserId}`);
+        return adminColor;
+    }
+    if (pSenderType === 'admin') { // Any message from an admin
+        // console.log(`-> Resolved as ADMIN (senderType) for ${pUserId}`);
+        return adminColor;
     }
     if (pSenderType === 'bot') {
-      // console.log(`-> Resolved as BOT color for ${pUserId}`);
-      return botColor;
+        // console.log(`-> Resolved as BOT color for ${pUserId}`);
+        return botColor;
     }
-    // Check if it's the currently logged-in user's own message (not in admin view impersonating admin)
-    if (!isAdminView && pUserId === userId) {
-      // console.log(`-> Resolved as OWN USER color for ${pUserId}`);
-      return ownColor;
+    if (pUserId === userId && !isAdminView) { // Current user's own message (not admin in admin view)
+        // console.log(`-> Resolved as OWN USER color for ${pUserId}`);
+        return ownColor;
     }
 
-    // Fallback for all other users (not own, not admin, not bot)
     // console.log(`-> Resolved as OTHER USER (Emerald) for ${pUserId}`);
-    return emeraldColor;
+    return otherUserColor; // All other users get Emerald
+  }, [userId, isAdminView, initialUserIdProp]);
 
-  }, [userId, isAdminView, initialUserIdProp]); // Added initialUserIdProp as it's used for admin check
 
-
-  const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
+  const getScenarioTitle = useCallback(() => currentScenario?.title || "Szenario wird geladen...", [currentScenario]);
 
   const handleImageFileSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUploadProgress(null);
+      setImageUploadProgress(null); 
     }
   }, [toast]);
 
@@ -423,7 +435,7 @@ export function ChatPageContent({
       setImagePreviewUrl(null);
     }
     if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      fileInputRef.current.value = ""; 
     }
     setImageUploadProgress(null);
   }, [imagePreviewUrl]);
@@ -471,9 +483,9 @@ export function ChatPageContent({
         const file = selectedImageFile;
         const safeFileNamePart = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const imageFileNameForPath = `${safeFileNamePart}_${Date.now()}`;
-        const imagePath = `chat_images/${directSessionId}/${imageFileNameForPath}`;
+        const imagePath = `chat_images/${sessionId}/${imageFileNameForPath}`;
         const sRef = storageRef(storage, imagePath);
-
+        
         // console.log(`Attempting to upload ${file.name} to ${imagePath}`);
         // console.log("Storage reference:", sRef);
 
@@ -485,8 +497,8 @@ export function ChatPageContent({
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
               // console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
               setImageUploadProgress(progress);
-              //  if (snapshot.state === 'paused') console.log('Upload is paused');
-              //  else if (snapshot.state === 'running') console.log('Upload is running');
+              // if (snapshot.state === 'paused') console.log('Upload is paused');
+              // else if (snapshot.state === 'running') console.log('Upload is running');
             },
             (error) => {
                let errorMessage = `Fehler: ${error.code || 'Unbekannt'}`;
@@ -524,9 +536,8 @@ export function ChatPageContent({
         throw new Error("Ungültige Datei ausgewählt");
       }
 
-      const messagesColRef = collection(db, "sessions", directSessionId, "messages");
-      const messageData: MessageType = {
-        // id: '', // Firestore will generate this
+      const messagesColRef = collection(db, "sessions", sessionId, "messages");
+      const messageData: Omit<MessageType, 'id'> = { // Omit id as Firestore generates it
         senderUserId: userId!,
         senderName: userName!,
         senderType: isAdminView ? 'admin' : 'user',
@@ -552,10 +563,10 @@ export function ChatPageContent({
       setNewMessage("");
       setReplyingTo(null);
       setQuotingMessage(null);
-      handleRemoveSelectedImage();
+      handleRemoveSelectedImage(); // Clears file input and preview
       if (!isAdminView) setLastMessageSentAt(Date.now());
 
-      setTimeout(() => { // Timeout to allow DOM update before scrolling
+      setTimeout(() => { 
         scrollToBottom(true, 'smooth');
       }, 100);
 
@@ -570,30 +581,31 @@ export function ChatPageContent({
       setIsSendingMessage(false);
       setImageUploadProgress(null);
     }
-  }, [newMessage, selectedImageFile, userName, userId, userAvatarFallback, sessionData, isAdminView, isMuted, lastMessageSentAt, directSessionId, toast, replyingTo, handleRemoveSelectedImage, scrollToBottom]);
+  }, [newMessage, selectedImageFile, userName, userId, userAvatarFallback, sessionData, isAdminView, isMuted, lastMessageSentAt, sessionId, toast, replyingTo, handleRemoveSelectedImage, scrollToBottom]);
 
   const handleSetReply = useCallback((message: DisplayMessage) => {
-    setQuotingMessage(null);
+    setQuotingMessage(null); // Cancel quoting if replying
     setReplyingTo(message);
     inputRef.current?.focus();
-  }, []);
+  }, [inputRef]);
 
   const handleCancelReply = useCallback(() => {
     setReplyingTo(null);
   }, []);
 
   const handleSetQuote = useCallback((message: DisplayMessage) => {
-    setReplyingTo(null);
+    setReplyingTo(null); // Cancel replying if quoting
     const quotedText = `> ${message.senderName} schrieb:\n> "${message.content.replace(/\n/g, '\n> ')}"\n\n`;
     setNewMessage(prev => quotedText + prev);
-    setQuotingMessage(message);
+    setQuotingMessage(message); // Set quoting message to show indicator
     inputRef.current?.focus();
-  }, []);
+  }, [inputRef]);
 
   const handleCancelQuote = useCallback(() => {
     if (quotingMessage) {
+      // Attempt to remove the specific quote from the newMessage
       const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"(\\n){1,2}`;
-      const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), '');
+      const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), ''); // make spaces flexible
       setNewMessage(prev => prev.replace(regex, "").trimStart());
     }
     setQuotingMessage(null);
@@ -603,17 +615,17 @@ export function ChatPageContent({
   const handleMentionUser = useCallback((name: string) => {
     setNewMessage(prev => `${prev}@${name} `);
     inputRef.current?.focus();
-  }, []);
+  }, [inputRef]);
 
   const handleReaction = useCallback(async (messageId: string, emoji: string) => {
-    if (!userId || !directSessionId) {
+    if (!userId || !sessionId) {
         console.error("User ID or Session ID is missing for reaction.");
         toast({variant: "destructive", title: "Fehler", description: "Reaktion konnte nicht gesendet werden (Benutzer- oder Sitzungsdaten fehlen)."});
         return;
     }
 
     // console.log(`Attempting to react with ${emoji} on message ${messageId} by user ${userId}`);
-    const messageRef = doc(db, "sessions", directSessionId, "messages", messageId);
+    const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -623,28 +635,31 @@ export function ChatPageContent({
         }
 
         const currentData = messageDoc.data() as MessageType;
+        // Ensure reactions is an object, even if it's undefined in Firestore
         let currentReactions = currentData.reactions || {};
 
+        // Ensure the specific emoji array exists
         const usersWhoReactedWithEmoji: string[] = Array.isArray(currentReactions[emoji]) ? currentReactions[emoji] : [];
 
-        let newReactions = { ...currentReactions };
+        let newReactions = { ...currentReactions }; // Create a new object for the update
 
         if (usersWhoReactedWithEmoji.includes(userId)) {
+          // User has already reacted with this emoji, remove reaction
           const updatedUserList = usersWhoReactedWithEmoji.filter(uid => uid !== userId);
           if (updatedUserList.length === 0) {
-            delete newReactions[emoji];
+            delete newReactions[emoji]; // Remove emoji if no users left
           } else {
             newReactions[emoji] = updatedUserList;
           }
           // console.log(`User ${userId} removed reaction ${emoji} from message ${messageId}`);
         } else {
+          // User has not reacted with this emoji, add reaction
           newReactions[emoji] = [...usersWhoReactedWithEmoji, userId];
           // console.log(`User ${userId} added reaction ${emoji} to message ${messageId}`);
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
       // console.log(`Reaction ${emoji} on message ${messageId} processed successfully.`);
-      // No toast on success to avoid spamming
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -653,16 +668,25 @@ export function ChatPageContent({
         description: "Ihre Reaktion konnte nicht gespeichert werden.",
       });
     }
-  }, [userId, directSessionId, toast]);
+  }, [userId, sessionId, toast]);
 
 
   const handleEmojiSelectForInput = useCallback((emoji: string) => {
     setNewMessage(prev => prev + emoji);
-    setShowEmojiPicker(false);
+    setShowEmojiPicker(false); // Close picker after selection
+  }, [setNewMessage, setShowEmojiPicker]);
+
+  const handleOpenImageModal = useCallback((imageUrl: string, imageFileName?: string) => {
+    setSelectedImageForModal(imageUrl);
+    setSelectedImageFilenameForModal(imageFileName || "Bild");
+  }, []);
+
+  const handleCloseImageModal = useCallback(() => {
+    setSelectedImageForModal(null);
+    setSelectedImageFilenameForModal(null);
   }, []);
 
 
-  // CONDITIONAL RENDERING CHECKS (must be after all hooks)
   if (isLoadingUserDetails && !isAdminView) {
     return <LoadingScreen />;
   }
@@ -675,7 +699,7 @@ export function ChatPageContent({
   return (
       <div className={cn(
         "flex flex-col bg-muted/40 dark:bg-background/50",
-        isAdminView ? "h-full overflow-hidden" : "min-h-screen h-screen overflow-hidden" // Ensure full height for non-admin view
+        isAdminView ? "h-full overflow-hidden" : "min-h-screen h-screen overflow-hidden" 
       )}>
         {!isAdminView && (
           <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
@@ -706,7 +730,7 @@ export function ChatPageContent({
         )}
 
         <div className={cn(
-            "flex flex-1 overflow-hidden", // overflow-hidden on the main flex container
+            "flex flex-1 overflow-hidden", 
             isAdminView ? "" : "relative"
         )}>
           {!isAdminView && (
@@ -725,7 +749,7 @@ export function ChatPageContent({
             </aside>
           )}
 
-          <main className="flex flex-1 flex-col min-w-0"> {/* min-w-0 is important for flex children */}
+          <main className="flex flex-1 flex-col min-w-0"> 
             <ScrollArea
               className={cn("flex-1", isAdminView ? "bg-background" : "")}
               viewportRef={viewportRef}
@@ -738,7 +762,6 @@ export function ChatPageContent({
                   onMentionUser={handleMentionUser}
                   onSetReply={handleSetReply}
                   onSetQuote={handleSetQuote}
-                  // onScrollToMessage={handleScrollToMessage} // Removed
                   onReaction={handleReaction}
                   reactingToMessageId={reactingToMessageId}
                   setReactingToMessageId={setReactingToMessageId}
@@ -746,10 +769,11 @@ export function ChatPageContent({
                   messagesEndRef={messagesEndRef}
                   isChatDataLoading={isChatDataLoading}
                   isAdminView={isAdminView}
+                  onOpenImageModal={handleOpenImageModal}
                 />
                </div>
             </ScrollArea>
-            {showScrollToBottomButton && ( // Removed !isAdminView condition temporarily for testing
+            {showScrollToBottomButton && (
               <Button
                 variant="outline"
                 size="icon"
@@ -790,6 +814,30 @@ export function ChatPageContent({
             />
           </main>
         </div>
+        
+        {/* Image Modal */}
+        {selectedImageForModal && (
+          <Dialog open={!!selectedImageForModal} onOpenChange={(open) => { if (!open) handleCloseImageModal(); }}>
+            <DialogContent className="max-w-[90vw] w-auto h-auto md:max-w-[80vw] lg:max-w-[70vw] max-h-[85vh] p-0 flex flex-col overflow-hidden">
+              <DialogHeader className="p-3 border-b flex-shrink-0">
+                <DialogTitle className="truncate text-sm">{selectedImageFilenameForModal || "Bild"}</DialogTitle>
+                <Button variant="ghost" size="icon" onClick={handleCloseImageModal} className="absolute top-2 right-2 h-7 w-7 p-1">
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Schließen</span>
+                </Button>
+              </DialogHeader>
+              <div className="flex-1 relative p-1 flex items-center justify-center overflow-hidden"> {/* Added p-1 for slight padding around image */}
+                <NextImage
+                  src={selectedImageForModal}
+                  alt={selectedImageFilenameForModal || "Angezeigtes Bild"}
+                  layout="fill"
+                  objectFit="contain"
+                  className="max-w-full max-h-full" // Ensure image respects container bounds
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
   );
 }
@@ -798,7 +846,8 @@ export default function ChatPage({ params }: ChatPageProps) {
   const sessionId = params.sessionId;
 
   if (!sessionId) {
-    return <div>Error: Session ID is missing.</div>;
+    // This should ideally be caught by routing or a higher-level error boundary
+    return <div className="flex h-screen w-full items-center justify-center"><Card><CardContent>Error: Session ID is missing.</CardContent></Card></div>;
   }
 
   return (
@@ -814,3 +863,4 @@ export default function ChatPage({ params }: ChatPageProps) {
     </Suspense>
   );
 }
+
