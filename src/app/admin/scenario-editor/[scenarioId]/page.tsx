@@ -15,16 +15,11 @@ import React, { useEffect, useState, type FormEvent, type KeyboardEvent } from '
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { tagTaxonomy } from '@/lib/tag-taxonomy';
+import { tagTaxonomy, type TagCategory, type Tag as TaxonomyTag } from '@/lib/tag-taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { db } from '@/lib/firebase';
 import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp, Timestamp, onSnapshot, query, orderBy, updateDoc } from 'firebase/firestore';
-// Szenarien werden nicht mehr aus der statischen Datei geladen
-// import { scenarios as staticScenarios } from '@/lib/scenarios'; 
-import { botTemplates as staticBotTemplates } from '@/lib/bot-templates';
-import { humanRoleTemplates as staticRoleTemplates } from '@/lib/role-templates';
-
 
 const availableIcons = [
     { value: 'ShieldAlert', label: '🛡️ ShieldAlert' },
@@ -83,7 +78,7 @@ export default function EditScenarioPage() {
   const [title, setTitle] = useState('');
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
-  const [lernzieleInput, setLernzieleInput] = useState(''); // Separate state for Lernziele as newline-separated string
+  const [lernzieleInput, setLernzieleInput] = useState('');
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length - 1].value);
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
@@ -142,8 +137,7 @@ export default function EditScenarioPage() {
       toast({ variant: "destructive", title: "Fehler", description: "Rollen-Vorlagen konnten nicht geladen werden."});
     });
 
-    // Simulate loading time if Firestore is very fast, to avoid UI flicker
-    const timer = setTimeout(() => setIsLoadingTemplates(false), 1000);
+    const timer = setTimeout(() => setIsLoadingTemplates(false), 500); 
 
     return () => {
       unsubscribeBots();
@@ -167,7 +161,7 @@ export default function EditScenarioPage() {
         setEditableBotsConfig(JSON.parse(JSON.stringify(newScenarioData.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(newScenarioData.humanRolesConfig || [])));
         setEditableInitialPost(JSON.parse(JSON.stringify(newScenarioData.initialPost || createDefaultScenario().initialPost)));
-        setOriginalScenarioData(null); // No original data for new scenario
+        setOriginalScenarioData(null);
         setBotSaveAsTemplateFlags({});
         setRoleSaveAsTemplateFlags({});
         setIsLoading(false);
@@ -182,7 +176,7 @@ export default function EditScenarioPage() {
 
         if (scenarioSnap.exists()) {
           const foundScenario = { id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario;
-          setOriginalScenarioData(JSON.parse(JSON.stringify(foundScenario))); // Keep a copy of original
+          setOriginalScenarioData(JSON.parse(JSON.stringify(foundScenario)));
           setTitle(foundScenario.title || '');
           setKurzbeschreibung(foundScenario.kurzbeschreibung || '');
           setLangbeschreibung(foundScenario.langbeschreibung || '');
@@ -193,9 +187,15 @@ export default function EditScenarioPage() {
           setSelectedTags(foundScenario.tags || []);
           setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
           setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
-          setEditableInitialPost(JSON.parse(JSON.stringify(foundScenario.initialPost || createDefaultScenario().initialPost)));
+          
+          // Ensure initialPost is always a valid object
+          const defaultInitialPost = createDefaultScenario().initialPost;
+          setEditableInitialPost(JSON.parse(JSON.stringify({
+            ...defaultInitialPost, // Start with defaults
+            ...(foundScenario.initialPost || {}), // Override with found data if it exists
+          })));
 
-          // Initialize saveAsTemplate flags based on loaded scenario (all false by default)
+
           const initialBotFlags: Record<string, boolean> = {};
           (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false);
           setBotSaveAsTemplateFlags(initialBotFlags);
@@ -229,6 +229,12 @@ export default function EditScenarioPage() {
     const updatedBots = [...editableBotsConfig];
     if (updatedBots[index]) {
       (updatedBots[index] as any)[field] = value;
+      if (field === 'isActive' || field === 'autoTimerEnabled') {
+        (updatedBots[index] as any)[field] = Boolean(value);
+      }
+      if (field === 'currentEscalation') {
+        (updatedBots[index] as any)[field] = Number(value);
+      }
       setEditableBotsConfig(updatedBots);
     }
   };
@@ -236,7 +242,7 @@ export default function EditScenarioPage() {
   const handleAddBot = () => {
     const newBotId = `bot-inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setEditableBotsConfig([...editableBotsConfig, {
-        id: newBotId, // Crucial: new unique ID for this instance
+        id: newBotId,
         name: "Neuer Bot",
         personality: "standard",
         avatarFallback: "NB",
@@ -253,16 +259,15 @@ export default function EditScenarioPage() {
     if (template) {
       const newBotId = `bot-inst-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const newBotFromTemplate: BotConfig = {
-        id: newBotId, // Crucial: new unique ID for this instance
+        id: newBotId,
         name: template.name || "Bot aus Vorlage",
         personality: template.personality,
         avatarFallback: template.avatarFallback || (template.name || "BT").substring(0,2).toUpperCase(),
         initialMission: template.initialMission || "",
-        // Default runtime properties for a new bot instance
         isActive: true,
         autoTimerEnabled: false,
         currentEscalation: 0,
-        templateOriginId: template.templateId, // Store the ID of the template it came from
+        templateOriginId: template.templateId,
       };
       setEditableBotsConfig([...editableBotsConfig, newBotFromTemplate]);
       setBotSaveAsTemplateFlags(prev => ({ ...prev, [newBotId]: false }));
@@ -298,7 +303,7 @@ export default function EditScenarioPage() {
   const handleAddHumanRole = () => {
     const newRoleId = `role-inst-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setEditableHumanRoles([...editableHumanRoles, {
-        id: newRoleId, // Crucial: new unique ID
+        id: newRoleId,
         name: "Neue Rolle",
         description: "Beschreibung der neuen Rolle..."
     }]);
@@ -310,10 +315,10 @@ export default function EditScenarioPage() {
     if (template) {
       const newRoleId = `role-inst-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const newRoleFromTemplate: HumanRoleConfig = {
-        id: newRoleId, // Crucial: new unique ID
+        id: newRoleId,
         name: template.name || "Rolle aus Vorlage",
         description: template.description || "",
-        templateOriginId: template.templateId, // Store the ID of the template
+        templateOriginId: template.templateId,
       };
       setEditableHumanRoles([...editableHumanRoles, newRoleFromTemplate]);
       setRoleSaveAsTemplateFlags(prev => ({ ...prev, [newRoleId]: false }));
@@ -338,7 +343,10 @@ export default function EditScenarioPage() {
   };
 
   const handleInitialPostChange = (field: keyof InitialPostConfig, value: string | undefined) => {
-    setEditableInitialPost(prev => ({ ...prev, [field]: value || '' }));
+    setEditableInitialPost(prev => ({ 
+        ...prev, 
+        [field]: value === undefined ? '' : value 
+    }));
   };
 
   const handleTagToggle = (tagName: string) => {
@@ -346,7 +354,7 @@ export default function EditScenarioPage() {
     setSelectedTags(prevTags =>
       prevTags.map(t=>t.toLowerCase()).includes(lowerTagName)
         ? prevTags.filter(t => t.toLowerCase() !== lowerTagName)
-        : [...prevTags, tagName] // Store with original casing, compare lowercase
+        : [...prevTags, tagName] 
     );
   };
 
@@ -358,7 +366,7 @@ export default function EditScenarioPage() {
       .filter(tag => tag !== '' && !selectedTags.some(st => st.toLowerCase() === tag.toLowerCase()));
 
     if (newTags.length > 0) {
-      setSelectedTags(prevTags => [...prevTags, ...newTags.map(tag => tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase())]); // Capitalize first letter
+      setSelectedTags(prevTags => [...prevTags, ...newTags.map(tag => tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase())]);
     }
     setManualTagInput('');
   };
@@ -383,60 +391,66 @@ export default function EditScenarioPage() {
     setIsSaving(true);
     setError(null);
 
-    const scenarioDataToSave = {
-      title: title || 'Unbenanntes Szenario',
-      kurzbeschreibung: kurzbeschreibung || '',
-      langbeschreibung: langbeschreibung || '',
-      lernziele: lernzieleInput.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel) || [],
-      previewImageUrl: previewImageUrlInput || '',
-      iconName: iconNameInput || availableIcons[availableIcons.length - 1].value,
-      status: status || 'draft',
-      tags: selectedTags.map(t => t.toLowerCase()) || [],
-      defaultBotsConfig: editableBotsConfig.map(b => ({
-        id: b.id, // Ensure this ID is unique for the scenario instance
+    // Sanitize data before saving to prevent 'undefined' values in Firestore
+    const sanitizedInitialPost: InitialPostConfig = {
+        authorName: editableInitialPost.authorName || 'System',
+        authorAvatarFallback: editableInitialPost.authorAvatarFallback || (editableInitialPost.authorName || 'SYS').substring(0,2).toUpperCase() || 'SY',
+        content: editableInitialPost.content || '',
+        imageUrl: editableInitialPost.imageUrl || '',
+        platform: editableInitialPost.platform || 'Generic',
+    };
+
+    const sanitizedBotsConfig = editableBotsConfig.map(b => ({
+        id: b.id || `bot-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
         name: b.name || 'Bot',
-        personality: b.personality,
-        avatarFallback: b.avatarFallback || (b.name || 'BT').substring(0,2).toUpperCase(),
+        personality: b.personality || 'standard',
+        avatarFallback: b.avatarFallback || (b.name || 'B').substring(0,2).toUpperCase() || 'BT',
         initialMission: b.initialMission || '',
         isActive: b.isActive ?? true,
         autoTimerEnabled: b.autoTimerEnabled ?? false,
         currentEscalation: b.currentEscalation ?? 0,
-        templateOriginId: b.templateOriginId, // Persist if it came from a template
-      })) || [],
-      humanRolesConfig: editableHumanRoles.map(r => ({
-        id: r.id, // Ensure this ID is unique for the scenario instance
+        templateOriginId: b.templateOriginId || '',
+    }));
+
+    const sanitizedHumanRolesConfig = editableHumanRoles.map(r => ({
+        id: r.id || `role-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
         name: r.name || 'Rolle',
         description: r.description || '',
-        templateOriginId: r.templateOriginId, // Persist if it came from a template
-      })) || [],
-      initialPost: {
-        authorName: editableInitialPost.authorName || 'System',
-        authorAvatarFallback: editableInitialPost.authorAvatarFallback || (editableInitialPost.authorName || 'SYS').substring(0,2).toUpperCase(),
-        content: editableInitialPost.content || '',
-        imageUrl: editableInitialPost.imageUrl || '',
-        platform: editableInitialPost.platform || 'Generic',
-      },
+        templateOriginId: r.templateOriginId || '',
+    }));
+
+    const scenarioDataToSave: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> & { updatedAt: Timestamp; createdAt?: Timestamp } = {
+      title: title || 'Unbenanntes Szenario',
+      kurzbeschreibung: kurzbeschreibung || '',
+      langbeschreibung: langbeschreibung || '',
+      lernziele: lernzieleInput ? lernzieleInput.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel) : [],
+      previewImageUrl: previewImageUrlInput || '',
+      iconName: iconNameInput || availableIcons[availableIcons.length - 1].value,
+      status: status || 'draft',
+      tags: selectedTags.map(t => t.toLowerCase()) || [],
+      defaultBotsConfig: sanitizedBotsConfig,
+      humanRolesConfig: sanitizedHumanRolesConfig,
+      initialPost: sanitizedInitialPost,
       updatedAt: Timestamp.now(),
     };
+    
 
     try {
-      // Save marked bots as new templates
-      for (const bot of editableBotsConfig) {
+      for (const bot of editableBotsConfig) { // Use original editableBotsConfig for flags
         if (botSaveAsTemplateFlags[bot.id]) {
           const newBotTemplateData: Omit<BotTemplate, 'templateId' | 'createdAt'> = {
             name: bot.name || 'Unbenannter Bot',
             personality: bot.personality,
-            avatarFallback: bot.avatarFallback || (bot.name || 'BT').substring(0,2).toUpperCase(),
+            avatarFallback: bot.avatarFallback || (bot.name || 'BT').substring(0,2).toUpperCase() || 'BT',
             initialMission: bot.initialMission || '',
           };
           const docRef = await addDoc(collection(db, "botTemplates"), {...newBotTemplateData, createdAt: serverTimestamp()});
           toast({ title: "Bot-Vorlage gespeichert", description: `Bot "${newBotTemplateData.name}" wurde als neue Vorlage (ID: ${docRef.id}) gesichert.` });
-          setBotSaveAsTemplateFlags(prev => ({ ...prev, [bot.id]: false })); // Reset flag
+          setBotSaveAsTemplateFlags(prev => ({ ...prev, [bot.id]: false })); 
         }
       }
 
-      // Save marked roles as new templates
-      for (const role of editableHumanRoles) {
+      for (const role of editableHumanRoles) { // Use original editableHumanRoles for flags
         if (roleSaveAsTemplateFlags[role.id]) {
           const newRoleTemplateData: Omit<RoleTemplate, 'templateId' | 'createdAt'> = {
             name: role.name || 'Unbenannte Rolle',
@@ -444,11 +458,10 @@ export default function EditScenarioPage() {
           };
           const docRef = await addDoc(collection(db, "roleTemplates"), {...newRoleTemplateData, createdAt: serverTimestamp()});
           toast({ title: "Rollen-Vorlage gespeichert", description: `Rolle "${newRoleTemplateData.name}" wurde als neue Vorlage (ID: ${docRef.id}) gesichert.` });
-          setRoleSaveAsTemplateFlags(prev => ({ ...prev, [role.id]: false })); // Reset flag
+          setRoleSaveAsTemplateFlags(prev => ({ ...prev, [role.id]: false })); 
         }
       }
 
-      // Save scenario
       if (isNewScenario) {
         const dataWithCreationTimestamp = { ...scenarioDataToSave, createdAt: Timestamp.now() };
         const docRef = await addDoc(collection(db, "scenarios"), dataWithCreationTimestamp);
@@ -456,7 +469,7 @@ export default function EditScenarioPage() {
           title: "Szenario erstellt",
           description: `Das Szenario "${dataWithCreationTimestamp.title}" wurde erfolgreich gespeichert.`,
         });
-        router.push(`/admin/scenario-editor/${docRef.id}`); // Navigate to the new scenario's edit page
+        router.push(`/admin/scenario-editor/${docRef.id}`); 
       } else if (currentScenarioId) {
         const scenarioDocRef = doc(db, "scenarios", currentScenarioId);
         await setDoc(scenarioDocRef, scenarioDataToSave, { merge: true }); 
@@ -468,8 +481,8 @@ export default function EditScenarioPage() {
         throw new Error("Keine Szenario-ID zum Speichern vorhanden.");
       }
     } catch (err: any) {
-      console.error("Error saving scenario/templates to Firestore: ", err);
-      setError("Fehler beim Speichern des Szenarios oder der Vorlagen in der Datenbank.");
+      console.error("Error saving scenario/templates to Firestore: ", err, "Data sent:", scenarioDataToSave);
+      setError(`Speicherfehler: ${err.message}. Überprüfen Sie die Konsole für Details und die gesendeten Daten.`);
       toast({ variant: "destructive", title: "Speicherfehler", description: err.message || "Szenario/Vorlagen konnten nicht gespeichert werden."});
     } finally {
       setIsSaving(false);
@@ -488,7 +501,7 @@ export default function EditScenarioPage() {
     );
   }
 
-  if (error && !isNewScenario) { // Only show this specific error screen if it's an existing scenario load error
+  if (error && !isNewScenario) { 
      return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6">
         <Card className="w-full max-w-md">
@@ -513,7 +526,6 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      {/* Sticky Header */}
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
@@ -548,10 +560,9 @@ export default function EditScenarioPage() {
         </div>
       </div>
 
-      {/* Sticky Shortcut Navigation Bar */}
        <div className="sticky top-[var(--header-height,65px)] z-10 bg-background/90 backdrop-blur-sm border-b mb-1">
         <ScrollArea orientation="horizontal" className="max-w-full">
-            <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2"> {/* Removed overflow-x-auto here */}
+            <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2">
             {editorSections.map(section => (
                 <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
                 <a href={`#${section.id}`}>
@@ -574,15 +585,14 @@ export default function EditScenarioPage() {
 
       <style jsx global>{`
         :root {
-          --header-height: 65px; /* Adjust if your header height is different */
+          --header-height: 65px;
         }
       `}</style>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8 pt-3">
-        <div className="max-w-[1000px] mx-auto"> {/* Max width and centering for accordion container */}
+        <div className="max-w-[1000px] mx-auto"> 
             <Accordion type="multiple" defaultValue={defaultAccordionValues} className="w-full space-y-4">
 
-                {/* Basisinformationen */}
                 <AccordionItem value="basisinfo" id="basisinfo" className="border-none">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline text-left border-b">
@@ -617,7 +627,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Ausgangsposting */}
                 <AccordionItem value="initialpost" id="initialpost" className="border-none">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -674,7 +683,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Bot-Konfiguration */}
                 <AccordionItem value="botconfig" id="botconfig" className="border-none">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -767,7 +775,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Menschliche Rollen */}
                 <AccordionItem value="humanroles" id="humanroles" className="border-none">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -830,7 +837,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Metadaten */}
                 <AccordionItem value="metadaten" id="metadaten" className="border-none">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -870,7 +876,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Themen-Tags */}
                 <AccordionItem value="tags" id="tags" className="border-none">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -917,8 +922,8 @@ export default function EditScenarioPage() {
                             </div>
                             <Separator className="my-4" />
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
-                            <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md"> {/* Scrollable area for tags */}
-                                <Accordion type="multiple" className="w-full px-2" defaultValue={[]}> {/* Changed default to empty array */}
+                             <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
+                                <Accordion type="multiple" className="w-full px-2" defaultValue={[]}>
                                     {tagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName} className="border-b-0">
                                             <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline text-left">
@@ -964,7 +969,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-            {/* Originaldaten (nur für existierende Szenarien) */}
             {(!isNewScenario && currentScenarioId && originalScenarioData) && (
                 <AccordionItem value="originaldaten" id="originaldaten" className="border-none">
                 <Card className="shadow-md w-full">
@@ -992,5 +996,3 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-
-    
