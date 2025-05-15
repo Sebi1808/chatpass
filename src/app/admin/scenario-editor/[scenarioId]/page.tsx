@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area'; // Added import
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 import { scenarios } from '@/lib/scenarios'; // Assuming scenarios are statically defined for now
@@ -29,8 +29,7 @@ export default function EditScenarioPage() {
   const [langbeschreibung, setLangbeschreibung] = useState('');
   const [lernziele, setLernziele] = useState('');
   const [tagsInput, setTagsInput] = useState('');
-  const [rollenInput, setRollenInput] = useState('');
-
+  const [rollenInput, setRollenInput] = useState(''); // For human roles
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -61,8 +60,8 @@ export default function EditScenarioPage() {
     setIsSaving(true);
 
     // TODO: Implement actual saving logic to a database
-    console.log("Saving scenario (ID: ", currentScenario.id, "):");
-    console.log({
+    // For now, we just log the data to the console.
+    const updatedScenarioData = {
       id: currentScenario.id,
       title,
       kurzbeschreibung,
@@ -76,12 +75,15 @@ export default function EditScenarioPage() {
       defaultBotsConfig: currentScenario.defaultBotsConfig,
       // RollenInput would be processed here in a real app
       rawRollenInput: rollenInput,
-    });
+    };
+
+    console.log("Saving scenario (ID: ", currentScenario.id, "):");
+    console.log(updatedScenarioData);
 
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
-        description: `Änderungen für "${title}" wurden in der Konsole geloggt.`,
+        description: `Änderungen für "${title}" wurden in der Konsole geloggt. In einer echten Anwendung würden sie in einer Datenbank gespeichert.`,
       });
       setIsSaving(false);
     }, 1000);
@@ -117,6 +119,7 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
+      {/* Sticky Top Action Bar */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg">
@@ -138,10 +141,11 @@ export default function EditScenarioPage() {
         </div>
       </div>
       
+      {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
           
-          {/* Left Column */}
+          {/* Left Column: Main Scenario Details & Configurations */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
@@ -254,7 +258,7 @@ export default function EditScenarioPage() {
             </Card>
           </div>
 
-          {/* Right Column */}
+          {/* Right Column: Metadata & Original Data */}
           <div className="space-y-6 lg:space-y-8">
               <Card>
                   <CardHeader>
@@ -311,6 +315,5 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-
 
     
