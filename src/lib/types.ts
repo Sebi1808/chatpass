@@ -2,6 +2,13 @@
 import type { LucideIcon } from 'lucide-react';
 import type { Timestamp } from 'firebase/firestore';
 
+export interface InitialPostConfig {
+  authorName: string;
+  authorAvatarFallback: string;
+  content: string;
+  imageUrl?: string;
+}
+
 export interface HumanRoleConfig {
   id: string; // Unique ID for the role instance within the scenario
   name: string;
@@ -18,8 +25,9 @@ export interface Scenario {
   iconName: string;
   tags: string[];
   previewImageUrl?: string;
-  defaultBotsConfig?: BotConfig[]; 
-  humanRolesConfig?: HumanRoleConfig[]; 
+  defaultBotsConfig?: BotConfig[];
+  humanRolesConfig?: HumanRoleConfig[];
+  initialPost?: InitialPostConfig; // Added for the initial post
   status?: 'draft' | 'published';
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
@@ -27,13 +35,13 @@ export interface Scenario {
 
 export interface BotConfig {
   id: string; // Unique ID for the bot instance within the scenario
-  name: string; 
+  name: string;
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   avatarFallback?: string;
-  currentEscalation?: number; 
-  isActive?: boolean;         
-  autoTimerEnabled?: boolean; 
-  initialMission?: string;    
+  currentEscalation?: number;
+  isActive?: boolean;
+  autoTimerEnabled?: boolean;
+  initialMission?: string;
   templateOriginId?: string; // Optional: ID of the template this bot instance was created from
 }
 
@@ -44,7 +52,7 @@ export interface BotTemplate {
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   avatarFallback?: string;
   initialMission?: string;
-  createdAt?: Timestamp; 
+  createdAt?: Timestamp;
 }
 
 // Firestore document structure for Role Templates
@@ -66,33 +74,35 @@ export interface SessionData {
 }
 
 export interface Participant {
-  id: string; 
-  userId: string; 
+  id: string;
+  userId: string;
   name: string;
-  role: string; 
+  role: string;
   avatarFallback: string;
   isBot: boolean;
   joinedAt?: Timestamp | Date | any;
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
   isMuted?: boolean;
-  botConfig?: { 
+  botConfig?: {
+    id: string; // The original ID from the scenario's defaultBotsConfig
     personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
     currentEscalation: number;
-    isActive: boolean; 
-    autoTimerEnabled: boolean; 
-    initialMission?: string; 
-    currentMission?: string; 
+    isActive: boolean;
+    autoTimerEnabled: boolean;
+    initialMission?: string;
+    currentMission?: string; // Mission for the next post, can be set by admin
+    templateOriginId?: string;
   };
-  botScenarioId?: string; 
+  botScenarioId?: string; // ID linking back to the BotConfig in the Scenario document
 }
 
 export interface DisplayParticipant extends Participant {}
 
 export interface Message {
-  id: string; 
+  id: string;
   senderUserId: string;
   senderName: string;
-  senderType: 'admin' | 'user' | 'bot';
+  senderType: 'admin' | 'user' | 'bot' | 'system'; // Added 'system' for initial post
   avatarFallback: string;
   content: string;
   timestamp: Timestamp | Date | null | any;
@@ -109,5 +119,4 @@ export interface DisplayMessage extends Message {
   isOwn: boolean;
   timestampDisplay: string;
 }
-
     
