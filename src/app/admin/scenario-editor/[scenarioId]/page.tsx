@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft, MessageSquareText, Image as ImageIconLucide, Users, BotMessageSquare, Film, ShoppingBag, Lock, ListChecks, MessageCircle, MessageSquareIcon } from 'lucide-react';
-import type { Scenario, BotConfig, HumanRoleConfig, InitialPostConfig } from '@/lib/types';
+import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft, MessageSquareText, Image as ImageIconLucide, Users, BotMessageSquare, Film, ShoppingBag, Lock, ListChecks, MessageCircle, MessageSquareIcon, ShieldAlert, Code2, Zap } from 'lucide-react';
+import type { Scenario, BotConfig, HumanRoleConfig, InitialPostConfig, BotTemplate, RoleTemplate } from '@/lib/types';
 import React, { useEffect, useState, type FormEvent, type KeyboardEvent, type ChangeEvent, type ReactNode } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
@@ -157,7 +157,9 @@ export default function EditScenarioPage() {
       toast({ variant: "destructive", title: "Fehler", description: "Rollen-Vorlagen konnten nicht geladen werden."});
     });
 
-    const timer = setTimeout(() => setIsLoadingTemplates(false), 1000); 
+    // Ensure isLoadingTemplates is set to false after a timeout or when both listeners have responded
+    // This is a simplified way; a more robust solution might use Promise.all or check counts
+    const timer = setTimeout(() => setIsLoadingTemplates(false), 1500); // Increased timeout for safety
 
     return () => {
       unsubscribeBots();
@@ -241,10 +243,12 @@ export default function EditScenarioPage() {
         setIsLoading(false);
       }
     };
+    
     // Only load scenario if templates are also ready (or their loading attempt is finished)
-    // Removed isLoadingTemplates from dependency array as scenario loading should be independent
-    loadScenario();
-  }, [currentScenarioId, isNewScenario, toast, router]);
+    if (!isLoadingTemplates) {
+        loadScenario();
+    }
+  }, [currentScenarioId, isNewScenario, toast, router, isLoadingTemplates]); // Added isLoadingTemplates
 
 
   const handlePreviewImageFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -261,7 +265,7 @@ export default function EditScenarioPage() {
       const reader = new FileReader();
       reader.onloadend = () => {
         setLocalPreviewUrl(reader.result as string);
-        // Do NOT setPreviewImageUrlInput here to data URI, only for display. Input remains for URL.
+        setPreviewImageUrlInput(''); // Clear URL input if a file is selected for upload
       };
       reader.readAsDataURL(file);
     } else {
@@ -271,11 +275,20 @@ export default function EditScenarioPage() {
   };
 
   const handlePreviewImageUrlInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setPreviewImageUrlInput(e.target.value);
-    setLocalPreviewUrl(e.target.value); 
-    if (previewImageFile) { 
-      setPreviewImageFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = ""; 
+    const url = e.target.value;
+    setPreviewImageUrlInput(url);
+    if (url) { // If URL is typed, it takes precedence
+        setLocalPreviewUrl(url); 
+        if (previewImageFile) { 
+            setPreviewImageFile(null);
+            if (fileInputRef.current) fileInputRef.current.value = ""; 
+        }
+    } else { // If URL is cleared, and a file was previously selected, show file preview again
+        if (previewImageFile) {
+            setLocalPreviewUrl(URL.createObjectURL(previewImageFile));
+        } else {
+            setLocalPreviewUrl(originalScenarioData?.previewImageUrl || null); // Or original URL if no file
+        }
     }
   };
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -286,11 +299,12 @@ export default function EditScenarioPage() {
     if (updatedBots[index]) {
       const botToUpdate = { ...updatedBots[index] };
       (botToUpdate as any)[field] = value;
+      // Ensure boolean fields from Switch are actually booleans
       if (field === 'isActive' || field === 'autoTimerEnabled') {
         (botToUpdate as any)[field] = Boolean(value);
       }
       if (field === 'currentEscalation') {
-        (botToUpdate as any)[field] = Number(value);
+         (botToUpdate as any)[field] = Number(value);
       }
       updatedBots[index] = botToUpdate;
       setEditableBotsConfig(updatedBots);
@@ -428,6 +442,7 @@ export default function EditScenarioPage() {
       .filter(tag => tag !== '' && !currentSelectedLower.includes(tag.toLowerCase()));
 
     if (newTags.length > 0) {
+      // Capitalize first letter of each new tag, rest lowercase
       setSelectedTags(prevTags => [...(prevTags || []), ...newTags.map(tag => tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase())]);
     }
     setManualTagInput(''); 
@@ -511,6 +526,23 @@ export default function EditScenarioPage() {
       updatedAt: Timestamp.now(),
     };    
 
+    // Ensure all properties are defined before saving
+    Object.keys(scenarioDataToSave).forEach(key => {
+        const k = key as keyof typeof scenarioDataToSave;
+        if (scenarioDataToSave[k] === undefined) {
+            if (Array.isArray(scenarioDataToSave[k])) {
+                (scenarioDataToSave as any)[k] = [];
+            } else if (typeof scenarioDataToSave[k] === 'object' && scenarioDataToSave[k] !== null) {
+                if(k === 'initialPost') scenarioDataToSave[k] = createDefaultScenario().initialPost;
+                // For other objects, you might need more specific defaults or allow null
+            } else {
+                 (scenarioDataToSave as any)[k] = ''; // Default for strings, adjust if other types are undefined
+            }
+        }
+    });
+    if (scenarioDataToSave.initialPost && scenarioDataToSave.initialPost.imageUrl === undefined) scenarioDataToSave.initialPost.imageUrl = '';
+
+
     try {
       for (const bot of editableBotsConfig) { 
         if (botSaveAsTemplateFlags[bot.id]) {
@@ -522,8 +554,18 @@ export default function EditScenarioPage() {
           };
           const docRef = await addDoc(collection(db, "botTemplates"), {...newBotTemplateData, createdAt: serverTimestamp()});
           toast({ title: "Bot-Vorlage gespeichert", description: `Bot "${newBotTemplateData.name}" wurde als neue Vorlage (ID: ${docRef.id}) gesichert.` });
+          
+          // Update the bot in editableBotsConfig to link to the new template
           const botIndex = editableBotsConfig.findIndex(b => b.id === bot.id);
-          if(botIndex !== -1) handleBotConfigChange(botIndex, 'templateOriginId', docRef.id);
+          if(botIndex !== -1) {
+            const updatedBots = [...editableBotsConfig];
+            updatedBots[botIndex] = {...updatedBots[botIndex], templateOriginId: docRef.id};
+            setEditableBotsConfig(updatedBots);
+            // Also update scenarioDataToSave if it's not already reflecting this change (it should via state)
+            if(scenarioDataToSave.defaultBotsConfig && scenarioDataToSave.defaultBotsConfig[botIndex]) {
+                 scenarioDataToSave.defaultBotsConfig[botIndex].templateOriginId = docRef.id;
+            }
+          }
           setBotSaveAsTemplateFlags(prev => ({ ...prev, [bot.id]: false })); 
         }
       }
@@ -536,8 +578,16 @@ export default function EditScenarioPage() {
           };
           const docRef = await addDoc(collection(db, "roleTemplates"), {...newRoleTemplateData, createdAt: serverTimestamp()});
           toast({ title: "Rollen-Vorlage gespeichert", description: `Rolle "${newRoleTemplateData.name}" wurde als neue Vorlage (ID: ${docRef.id}) gesichert.` });
+          
           const roleIndex = editableHumanRoles.findIndex(r => r.id === role.id);
-          if(roleIndex !== -1) handleHumanRoleChange(roleIndex, 'templateOriginId', docRef.id);
+           if(roleIndex !== -1) {
+            const updatedRoles = [...editableHumanRoles];
+            updatedRoles[roleIndex] = {...updatedRoles[roleIndex], templateOriginId: docRef.id};
+            setEditableHumanRoles(updatedRoles);
+            if(scenarioDataToSave.humanRolesConfig && scenarioDataToSave.humanRolesConfig[roleIndex]) {
+                 scenarioDataToSave.humanRolesConfig[roleIndex].templateOriginId = docRef.id;
+            }
+          }
           setRoleSaveAsTemplateFlags(prev => ({ ...prev, [role.id]: false })); 
         }
       }
@@ -557,10 +607,13 @@ export default function EditScenarioPage() {
           title: "Szenario gespeichert",
           description: `Änderungen für "${scenarioDataToSave.title}" wurden erfolgreich gespeichert.`,
         });
+        // After saving, refresh originalScenarioData to reflect the saved state
         const updatedSnap = await getDoc(scenarioDocRef);
          if (updatedSnap.exists()) {
             const updatedScenario = { id: updatedSnap.id, ...updatedSnap.data() } as Scenario;
             setOriginalScenarioData(JSON.parse(JSON.stringify(updatedScenario)));
+            // Reset image file selection and local preview if it was a file upload
+            // This ensures the displayed preview URL is the one from Firestore
             setPreviewImageUrlInput(updatedScenario.previewImageUrl || ''); 
             setLocalPreviewUrl(updatedScenario.previewImageUrl || null);
             setPreviewImageFile(null); 
@@ -579,7 +632,7 @@ export default function EditScenarioPage() {
   };
 
 
-  if (isLoading && !isNewScenario) { 
+  if (isLoading && !isNewScenario) { // Only show full page loader if not a new scenario and actually loading
     return (
       <div className="flex items-center justify-center min-h-screen p-6">
         <Card className="w-full max-w-md">
@@ -590,7 +643,7 @@ export default function EditScenarioPage() {
     );
   }
 
-  if (error && !isNewScenario) { 
+  if (error && !isNewScenario) { // Only show full page error if not a new scenario and error occurred
      return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6">
         <Card className="w-full max-w-md">
@@ -615,20 +668,21 @@ export default function EditScenarioPage() {
 
   const renderIcon = (iconName: string | undefined): ReactNode => {
     if (!iconName) return <ImageIconLucide className="mr-2 h-4 w-4" />; 
-    const IconComponent = lucideIconMap[iconName] || ImageIconLucide; 
+    const IconComponent = lucideIconMap[iconName] || ImageIconLucide; // Fallback to ImageIconLucide
     return <IconComponent className="mr-2 h-4 w-4" />;
   };
 
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2"> 
+      {/* Sticky Header */}
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2"> {/* Increased z-index */}
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
             {renderIcon(iconNameInput)}
             Editor: <span className="text-foreground ml-2">{displayedTitle}</span>
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5 ml-9"> 
+          <p className="text-xs text-muted-foreground mt-0.5 ml-9"> {/* Assuming icon takes up some space */}
             ID: {currentIdForDisplay}
           </p>
         </div>
@@ -656,9 +710,10 @@ export default function EditScenarioPage() {
         </div>
       </div>
 
-      <div className="sticky top-[var(--header-height,73px)] z-10 bg-background/90 backdrop-blur-sm border-b mb-1"> 
-        <ScrollArea orientation="horizontal" className="max-w-full">
-            <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2"> 
+      {/* Sticky Shortcut Navigation Bar */}
+      <div className="sticky top-[var(--header-height,73px)] z-10 bg-background/90 backdrop-blur-sm border-b mb-1"> {/* Increased z-index */}
+        <ScrollArea orientation="horizontal" className="max-w-full"> {/* Ensures the ScrollArea itself doesn't overflow its parent */}
+            <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2"> {/* Added whitespace-nowrap here */}
             {editorSections.map(section => (
                 <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
                 <a href={`#${section.id}`}>
@@ -679,19 +734,22 @@ export default function EditScenarioPage() {
          </ScrollArea>
       </div>
 
+      {/* CSS to set the header height variable */}
       <style jsx global>{`
         :root {
-          --header-height: 73px; 
+          --header-height: 73px; /* Adjust if your header height changes */
         }
         html {
-          scroll-behavior: smooth; 
+          scroll-behavior: smooth; /* For smooth scrolling on anchor clicks */
         }
       `}</style>
 
+      {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8 pt-3">
-        <div className="max-w-[1000px] mx-auto"> 
+        <div className="max-w-[1000px] mx-auto"> {/* Constrains the width of the accordion section */}
             <Accordion type="multiple" defaultValue={defaultAccordionValues} className="w-full space-y-4">
 
+                {/* Basisinformationen */}
                 <AccordionItem value="basisinfo" id="basisinfo" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline text-left border-b">
@@ -727,6 +785,7 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
+                {/* Ausgangsposting */}
                 <AccordionItem value="initialpost" id="initialpost" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -784,6 +843,7 @@ export default function EditScenarioPage() {
                 </AccordionItem>
 
 
+                {/* Bot-Konfiguration */}
                 <AccordionItem value="botconfig" id="botconfig" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -876,6 +936,7 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
+                {/* Menschliche Teilnehmerrollen */}
                 <AccordionItem value="humanroles" id="humanroles" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -938,6 +999,7 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
+                {/* Szenario-Metadaten */}
                 <AccordionItem value="metadaten" id="metadaten" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -1007,7 +1069,8 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                <AccordionItem value="tags" id="tags" className="border-none scroll-mt-20">
+                {/* Themen-Tags */}
+                <AccordionItem value="tags" id="tags" className="border-none scroll-mt-20 w-full"> {/* Added w-full */}
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                         <CardTitle className="text-lg flex items-center"><TagsIcon className="mr-2 h-5 w-5 text-primary"/>Themen-Tags</CardTitle>
@@ -1053,8 +1116,8 @@ export default function EditScenarioPage() {
                             </div>
                             <Separator className="my-4" />
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen/Entfernen):</Label>
-                             <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md"> 
-                                <Accordion type="multiple" className="w-full px-2" defaultValue={[]}> 
+                             <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md"> {/* ScrollArea for tags taxonomy */}
+                                <Accordion type="multiple" className="w-full px-2" defaultValue={[]}> {/* Removed defaultValues to keep all closed by default */}
                                     {tagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName} className="border-b-0">
                                             <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline text-left">
@@ -1068,7 +1131,7 @@ export default function EditScenarioPage() {
                                                     {category.tags.map(tag => (
                                                         <React.Fragment key={tag.name}>
                                                             <Badge
-                                                                variant={selectedTags.map(st=>st.toLowerCase()).includes(tag.name.toLowerCase()) ? "default" : "outline"}
+                                                                variant={(selectedTags || []).map(st => st.toLowerCase()).includes(tag.name.toLowerCase()) ? "default" : "outline"}
                                                                 className="cursor-pointer hover:bg-primary/80 text-xs"
                                                                 onClick={() => handleTagToggle(tag.name)}
                                                             >
@@ -1078,7 +1141,7 @@ export default function EditScenarioPage() {
                                                             {tag.subTags && tag.subTags.map(subTag => (
                                                                 <Badge
                                                                     key={subTag.name}
-                                                                    variant={selectedTags.map(st=>st.toLowerCase()).includes(subTag.name.toLowerCase()) ? "default" : "outline"}
+                                                                    variant={(selectedTags || []).map(st=>st.toLowerCase()).includes(subTag.name.toLowerCase()) ? "default" : "outline"}
                                                                     className="cursor-pointer hover:bg-primary/80 ml-1 text-xs bg-muted/50"
                                                                     onClick={() => handleTagToggle(subTag.name)}
                                                                 >
@@ -1100,13 +1163,14 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
+            {/* Originaldaten (Debug) */}
             {(!isNewScenario && currentScenarioId && originalScenarioData) && (
                 <AccordionItem value="originaldaten" id="originaldaten" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                     <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus Datenbank)</CardTitle>
                 </AccordionTrigger>
-                <AccordionContent className="pt-0 pb-2"> 
+                <AccordionContent className="pt-0 pb-2"> {/* Changed pt-4 to pt-0 */}
                     <CardHeader className="p-4 pb-2">
                     <CardDescription>Nur zur Referenz: So ist das Szenario aktuell in der Datenbank gespeichert.</CardDescription>
                     </CardHeader>
@@ -1127,3 +1191,6 @@ export default function EditScenarioPage() {
     </form>
   );
 }
+
+
+    
