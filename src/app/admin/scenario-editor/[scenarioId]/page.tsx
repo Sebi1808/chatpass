@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { tagTaxonomy } from '@/lib/tag-taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import Image from 'next/image';
+// import Image from 'next/image'; // Image component from next/image if needed for preview
 
 const availableIcons = [
     { value: 'ShieldAlert', label: '🛡️ ShieldAlert' },
@@ -59,6 +59,7 @@ export default function EditScenarioPage() {
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagsInput, setTagsInput] = useState(''); // For comma-separated tag input
 
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
@@ -79,14 +80,20 @@ export default function EditScenarioPage() {
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
         setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
         setSelectedTags(foundScenario.tags || []);
+        setTagsInput(foundScenario.tags?.join(', ') || '');
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
       } else {
         setCurrentScenario(null);
+         toast({
+          variant: "destructive",
+          title: "Fehler: Szenario nicht gefunden",
+          description: `Das Szenario mit der ID "${scenarioId}" konnte nicht geladen werden.`,
+        });
       }
     }
     setIsLoading(false);
-  }, [scenarioId]);
+  }, [scenarioId, toast]);
 
   const handleBotConfigChange = (index: number, field: keyof BotConfig, value: any) => {
     const updatedBots = [...editableBotsConfig];
@@ -114,7 +121,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableBotsConfig([...editableBotsConfig, {
         ...template,
-        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for the instance
       }]);
     }
   };
@@ -145,7 +152,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableHumanRoles([...editableHumanRoles, {
         ...template,
-        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for the instance
       }]);
     }
   };
@@ -179,13 +186,16 @@ export default function EditScenarioPage() {
       tags: selectedTags,
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
-      defaultBots: editableBotsConfig.length,
-      standardRollen: editableBotsConfig.length + editableHumanRoles.length,
+      defaultBots: editableBotsConfig.length, // Dynamically calculate based on current config
+      standardRollen: editableBotsConfig.length + editableHumanRoles.length, // Dynamically calculate
     };
 
+    // Simulate saving
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
+    // In a real app, you would save this to a database.
+    // For now, just show a toast.
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -225,6 +235,7 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
+      {/* Sticky Top Action Bar */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
@@ -248,8 +259,8 @@ export default function EditScenarioPage() {
       </div>
 
       {/* Sticky Shortcut Navigation Bar */}
-      <div className="sticky top-[calc(theme(spacing.16)_-_45px)] md:top-[calc(theme(spacing.16)_-_49px)] lg:top-[calc(theme(spacing.16)_-_49px)] z-10 bg-background/90 backdrop-blur-sm border-b px-2 sm:px-4 py-2 mb-6 overflow-x-auto whitespace-nowrap">
-        <div className="flex items-center space-x-1 max-w-full">
+      <div className="sticky top-[calc(theme(spacing.16)_-_45px)] md:top-[calc(theme(spacing.16)_-_49px)] lg:top-[calc(theme(spacing.16)_-_49px)] z-10 bg-background/90 backdrop-blur-sm border-b px-2 sm:px-4 py-2 mb-6">
+        <div className="flex items-center space-x-1 max-w-full overflow-x-auto whitespace-nowrap">
           {editorSections.map(section => (
             <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
               <a href={`#${section.id}`}>
@@ -262,9 +273,10 @@ export default function EditScenarioPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
-        <div className="space-y-6">
+        <div className="space-y-6"> {/* Main container for accordion items */}
           <Accordion type="multiple" defaultValue={["basisinfo", "botconfig", "humanroles", "metadaten", "tags", "originaldaten"]} className="w-full">
 
+            {/* Basisinformationen */}
             <AccordionItem value="basisinfo" id="basisinfo">
               <AccordionTrigger className="px-0 hover:no-underline">
                 <CardTitle className="text-lg flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Basisinformationen</CardTitle>
@@ -299,6 +311,7 @@ export default function EditScenarioPage() {
               </AccordionContent>
             </AccordionItem>
 
+            {/* Bot-Konfiguration */}
             <AccordionItem value="botconfig" id="botconfig">
               <AccordionTrigger className="px-0 hover:no-underline">
                 <CardTitle className="text-lg flex items-center"><BotIconLucide className="mr-2 h-5 w-5 text-primary"/>Bot-Konfiguration</CardTitle>
@@ -385,6 +398,7 @@ export default function EditScenarioPage() {
               </AccordionContent>
             </AccordionItem>
 
+            {/* Menschliche Teilnehmerrollen */}
             <AccordionItem value="humanroles" id="humanroles">
               <AccordionTrigger className="px-0 hover:no-underline">
                  <CardTitle className="text-lg flex items-center"><UsersIconLucide className="mr-2 h-5 w-5 text-primary"/>Rollen für menschliche Teilnehmer</CardTitle>
@@ -441,6 +455,7 @@ export default function EditScenarioPage() {
               </AccordionContent>
             </AccordionItem>
 
+            {/* Szenario-Metadaten */}
             <AccordionItem value="metadaten" id="metadaten">
                 <AccordionTrigger className="px-0 hover:no-underline">
                     <CardTitle className="text-lg flex items-center"><SettingsIcon className="mr-2 h-5 w-5 text-primary"/>Szenario-Metadaten</CardTitle>
@@ -479,7 +494,8 @@ export default function EditScenarioPage() {
                     </Card>
                 </AccordionContent>
             </AccordionItem>
-
+            
+            {/* Themen-Tags */}
             <AccordionItem value="tags" id="tags" className="w-full">
                 <AccordionTrigger className="px-0 hover:no-underline">
                     <CardTitle className="text-lg flex items-center"><TagsIcon className="mr-2 h-5 w-5 text-primary"/>Themen-Tags</CardTitle>
@@ -529,7 +545,8 @@ export default function EditScenarioPage() {
                                             <AccordionContent className="pt-1 pb-2 pl-2">
                                                 <div className="flex flex-wrap gap-2">
                                                     {category.tags.map(tag => (
-                                                        <>
+                                                        // Use React.Fragment or <> for multiple root elements in map
+                                                        <> 
                                                             <Badge
                                                                 key={tag.name}
                                                                 variant={selectedTags.includes(tag.name) ? "default" : "outline"}
@@ -564,6 +581,7 @@ export default function EditScenarioPage() {
                 </AccordionContent>
             </AccordionItem>
 
+            {/* Originaldaten */}
             <AccordionItem value="originaldaten" id="originaldaten">
                 <AccordionTrigger className="px-0 hover:no-underline">
                     <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus `scenarios.ts`)</CardTitle>
@@ -591,4 +609,3 @@ export default function EditScenarioPage() {
   );
 }
 
-    
