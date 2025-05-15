@@ -531,9 +531,9 @@ export default function EditScenarioPage() {
                                             <AccordionContent className="pt-1 pb-2 pl-2">
                                                 <div className="flex flex-wrap gap-2">
                                                     {category.tags.map(tag => (
-                                                        <> 
+                                                        <React.Fragment key={tag.name}> 
                                                             <Badge
-                                                                key={tag.name}
+                                                                
                                                                 variant={selectedTags.includes(tag.name) ? "default" : "outline"}
                                                                 className="cursor-pointer hover:bg-primary/80 text-xs"
                                                                 onClick={() => handleTagToggle(tag.name)}
@@ -552,7 +552,7 @@ export default function EditScenarioPage() {
                                                                     {subTag.name}
                                                                 </Badge>
                                                             ))}
-                                                        </>
+                                                        </React.Fragment>
                                                     ))}
                                                 </div>
                                             </AccordionContent>
@@ -567,26 +567,29 @@ export default function EditScenarioPage() {
             </AccordionItem>
 
             <AccordionItem value="originaldaten" id="originaldaten">
-                <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
-                    <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus `scenarios.ts`)</CardTitle>
-                </AccordionTrigger>
-                <AccordionContent className="pt-4 pb-2">
-                    <Card className="border-none shadow-none">
-                        <CardHeader className="p-0 pb-4">
-                            <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                           <ScrollArea className="max-h-[300px] md:max-h-[400px]" orientation="both">
-                                <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs">
-                                    {JSON.stringify(currentScenario, null, 2)}
-                                </pre>
-                            </ScrollArea>
-                        </CardContent>
-                    </Card>
-                </AccordionContent>
+              <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
+                <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus `scenarios.ts`)</CardTitle>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4 pb-2">
+                <Card className="border-none shadow-none">
+                  <CardHeader className="p-0 pb-4">
+                    <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <ScrollArea className="w-[200px] h-[200px]" orientation="both">
+                      <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs">
+                        {JSON.stringify(currentScenario, null, 2)}
+                      </pre>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </AccordionContent>
             </AccordionItem>
         </Accordion>
       </div>
     </form>
   );
 }
+
+
+    
