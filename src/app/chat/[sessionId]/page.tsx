@@ -18,6 +18,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"; // Import Dialog components
+
 
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
@@ -37,12 +39,17 @@ interface ChatPageUrlParams {
   sessionId: string;
 }
 
+// interface ChatPageProps {
+//   params: ChatPageUrlParams; // This was causing Next.js warnings
+// }
+
 interface ChatPageProps {
-  params: ChatPageUrlParams;
+  sessionId: string; // Pass sessionId directly
 }
 
+
 interface ChatPageContentProps {
-  sessionId: string; // Renamed from sessionId to avoid conflict with destructured params
+  sessionId: string; 
   initialUserName?: string;
   initialUserRole?: string;
   initialUserId?: string;
@@ -67,7 +74,7 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: sessionIdProp, // Use prop name, not from params
+  sessionId: sessionIdProp, 
   initialUserName,
   initialUserRole,
   initialUserId,
@@ -99,9 +106,6 @@ export function ChatPageContent({
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
 
-  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
-  const [showEmojiPickerForInput, setShowEmojiPickerForInput] = useState(false);
-
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
@@ -116,13 +120,13 @@ export function ChatPageContent({
   const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
 
   const handleOpenImageModal = (imageUrl: string, imageFileName?: string) => {
-    console.log("handleOpenImageModal called with:", imageUrl, imageFileName);
+    // console.log("Opening image modal for:", imageUrl);
     setSelectedImageForModal(imageUrl);
     setSelectedImageFilenameForModal(imageFileName || "Bild");
   };
 
   const handleCloseImageModal = () => {
-    console.log("handleCloseImageModal called");
+    // console.log("Closing image modal");
     setSelectedImageForModal(null);
     setSelectedImageFilenameForModal(null);
   };
@@ -247,7 +251,7 @@ export function ChatPageContent({
   }, [sessionId, toast]);
 
   useEffect(() => {
-    if (!sessionId || !userId) return; // userId is crucial here
+    if (!sessionId || !userId) return; 
     setIsChatDataLoading(true);
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
@@ -260,7 +264,7 @@ export function ChatPageContent({
         fetchedMessages.push({
           ...data,
           id: docSn.id,
-          isOwn: data.senderUserId === userId, // This now depends on userId state
+          isOwn: data.senderUserId === userId,
           timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
         });
       });
@@ -273,7 +277,7 @@ export function ChatPageContent({
     });
 
     return () => unsubscribe();
-  }, [sessionId, toast, userId]); // Added userId to dependency array
+  }, [sessionId, toast, userId]); 
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -320,13 +324,12 @@ export function ChatPageContent({
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
-    console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
-
-    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-red-600 dark:bg-red-700", text: "text-white", nameText: "text-red-100 dark:text-red-200", ring: "ring-red-500" };
-    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600 dark:bg-purple-700", text: "text-white", nameText: "text-purple-100 dark:text-purple-200", ring: "ring-purple-500" };
+    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-red-600/90 dark:bg-red-700/90", text: "text-red-50", nameText: "text-red-100 dark:text-red-200", ring: "ring-red-500" };
+    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80 dark:bg-purple-700/80", text: "text-purple-50", nameText: "text-purple-100 dark:text-purple-200", ring: "ring-purple-500" };
     const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" };
-    const fallbackColor: ParticipantColor = { name: 'default', bg: "bg-gray-500 dark:bg-gray-600", text: "text-white", nameText: "text-gray-100 dark:text-gray-200", ring: "ring-gray-400" };
+    const fallbackColor: ParticipantColor = participantColors[0] || { name: 'default', bg: "bg-gray-500 dark:bg-gray-600", text: "text-white", nameText: "text-gray-100 dark:text-gray-200", ring: "ring-gray-400" };
 
+    console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
 
     if (pSenderType === 'admin' || (isAdminView && pUserId === initialUserId)) {
         console.log(`-> Resolved as ADMIN color for ${pUserId}`);
@@ -336,12 +339,11 @@ export function ChatPageContent({
         console.log(`-> Resolved as BOT color for ${pUserId}`);
         return botColor;
     }
-    if (pUserId === userId && !isAdminView) { // Current user's own messages (not in admin view)
+    if (pUserId === userId && !isAdminView) { 
         console.log(`-> Resolved as OWN USER color for ${pUserId}`);
         return ownColor;
     }
 
-    // For other users
     if (pUserId && participantColors.length > 0) {
         const hash = simpleHash(pUserId);
         const colorIndex = Math.abs(hash) % participantColors.length;
@@ -352,19 +354,19 @@ export function ChatPageContent({
 
     console.log(`-> Fallback to default color for userId=${pUserId}`);
     return fallbackColor;
-  }, [userId, isAdminView, initialUserId]); // participantColors is stable from config
+  }, [userId, isAdminView, initialUserId]);
 
 
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) { 
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
-      setImageUploadProgress(null); // Reset progress for new file
+      setImageUploadProgress(null); 
     }
   };
 
@@ -375,17 +377,15 @@ export function ChatPageContent({
       setImagePreviewUrl(null);
     }
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Reset file input
+      fileInputRef.current.value = ""; 
     }
     setImageUploadProgress(null);
   };
 
  const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    console.log("handleSendMessage called. New message:", newMessage, "Selected image:", selectedImageFile);
     if ((!newMessage.trim() && !selectedImageFile) || !userName || !userId || !userAvatarFallback) {
       toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Nachricht oder Bild fehlt oder Benutzerdaten fehlen." });
-      console.warn("Send failed: Missing message/image or user data.", {userName, userId, userAvatarFallback});
       return;
     }
     if (sessionData?.status === "ended") {
@@ -415,9 +415,7 @@ export function ChatPageContent({
     }
 
     setIsSendingMessage(true);
-    if (selectedImageFile) {
-      setImageUploadProgress(0); // Initial progress for UI
-    }
+    if (selectedImageFile) setImageUploadProgress(0);
 
     let uploadedImageUrl: string | undefined = undefined;
     let uploadedImageFileName: string | undefined = undefined;
@@ -425,12 +423,11 @@ export function ChatPageContent({
     try {
       if (selectedImageFile && selectedImageFile instanceof File) {
         const file = selectedImageFile;
-        // Sanitize filename slightly for storage path, though Firebase handles most of this
         const safeFileNamePart = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         const imageFileName = `${safeFileNamePart}_${Date.now()}`;
         const imagePath = `chat_images/${sessionId}/${imageFileName}`;
         const sRef = storageRef(storage, imagePath);
-
+        
         console.log(`Attempting to upload ${file.name} to ${imagePath}`);
         console.log("Storage reference:", sRef);
 
@@ -451,41 +448,33 @@ export function ChatPageContent({
               console.error("Firebase Storage upload error: ", error);
               let errorMessage = `Fehler: ${error.code || 'Unbekannt'}`;
                switch (error.code) {
-                case 'storage/unauthorized': errorMessage = "Fehler: Keine Berechtigung zum Hochladen. Storage-Regeln oder CORS prüfen."; break;
+                case 'storage/unauthorized': errorMessage = "Fehler: Keine Berechtigung zum Hochladen."; break;
                 case 'storage/canceled': errorMessage = "Upload abgebrochen."; break;
-                case 'storage/object-not-found': errorMessage = "Fehler: Objekt nicht gefunden. Pfad oder Bucket überprüfen."; break; // Should not happen on upload
-                case 'storage/bucket-not-found': errorMessage = "Fehler: Storage Bucket nicht gefunden."; break;
-                case 'storage/project-not-found': errorMessage = "Fehler: Firebase Projekt nicht gefunden."; break;
-                case 'storage/quota-exceeded': errorMessage = "Fehler: Speicher-Quota überschritten."; break;
-                case 'storage/unauthenticated': errorMessage = "Fehler: Nicht authentifiziert. Anmeldung erforderlich oder Regeln prüfen."; break;
-                case 'storage/retry-limit-exceeded': errorMessage = "Fehler: Zeitlimit für Upload überschritten. Netzwerk prüfen."; break;
-                case 'storage/invalid-checksum': errorMessage = "Fehler: Prüfsumme der Datei stimmt nicht überein. Datei erneut versuchen."; break;
-                case 'storage/unknown': errorMessage = "Unbekannter Fehler beim Upload. Server-Antwort prüfen."; break;
+                case 'storage/unknown': errorMessage = "Unbekannter Fehler beim Upload."; break;
                 default: errorMessage = `Storage Fehler: ${error.code} - ${error.message}`; break;
               }
               toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: errorMessage });
-              reject(new Error(errorMessage)); // Reject the promise on error
+              reject(new Error(errorMessage)); 
             },
-            async () => { // Complete observer
+            async () => { 
               console.log('Upload successful, getting download URL...');
               try {
                 const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
                 console.log('Download URL:', downloadURL);
                 uploadedImageUrl = downloadURL;
-                uploadedImageFileName = file.name; // Store original file name for display
-                resolve(); // Resolve the promise on success
+                uploadedImageFileName = file.name; 
+                resolve(); 
               } catch (getUrlError) {
                 const getUrlErrorTyped = getUrlError as Error & { code?: string };
                 console.error("Error getting download URL: ", getUrlErrorTyped);
                 toast({ variant: "destructive", title: "Bild-URL Abruf fehlgeschlagen", description: `URL konnte nicht abgerufen werden: ${getUrlErrorTyped.message}` });
-                reject(getUrlErrorTyped); // Reject promise if getDownloadURL fails
+                reject(getUrlErrorTyped); 
               }
             }
           );
         });
         console.log("Image upload process finished. URL:", uploadedImageUrl);
       } else if (selectedImageFile) {
-        // This case should ideally not be reached if selectedImageFile is always a File object
         console.error("selectedImageFile is not a File object:", selectedImageFile);
         toast({ variant: "destructive", title: "Ungültige Datei", description: "Das ausgewählte Element ist keine gültige Bilddatei."});
         setIsSendingMessage(false);
@@ -493,17 +482,16 @@ export function ChatPageContent({
         return;
       }
 
-
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: MessageType = {
-        id: '', // Firestore will generate ID
+        id: '', 
         senderUserId: userId!,
         senderName: userName!,
         senderType: isAdminView ? 'admin' : 'user',
         avatarFallback: userAvatarFallback!,
         content: newMessage.trim(),
         timestamp: serverTimestamp(),
-        reactions: {}, // Initialize reactions
+        reactions: {}, 
       };
 
       if (uploadedImageUrl) messageData.imageUrl = uploadedImageUrl;
@@ -521,26 +509,24 @@ export function ChatPageContent({
 
       setNewMessage("");
       setReplyingTo(null);
-      setQuotingMessage(null); // Ensure quoting state is also cleared
-      handleRemoveSelectedImage(); // Clear image preview and file input
+      setQuotingMessage(null); 
+      handleRemoveSelectedImage(); 
       if (!isAdminView) setLastMessageSentAt(Date.now());
-      setShowEmojiPickerForInput(false);
 
-    } catch (error) { // Catch errors from promise (upload) or addDoc
+    } catch (error) { 
       console.error("Error in handleSendMessage (either upload or Firestore add): ", error);
-      // Avoid double-toasting if already toasted by upload error handler by checking error message
       if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("Bild-URL Abruf fehlgeschlagen") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Ein unbekannter Fehler ist aufgetreten." });
       }
     } finally {
       console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
-      setImageUploadProgress(null); // Ensure progress is reset
+      setImageUploadProgress(null); 
     }
   };
 
   const handleSetReply = (message: DisplayMessage) => {
-    setQuotingMessage(null); // Cancel any active quote
+    setQuotingMessage(null); 
     setReplyingTo(message);
     inputRef.current?.focus();
   };
@@ -550,20 +536,17 @@ export function ChatPageContent({
   };
 
   const handleSetQuote = (message: DisplayMessage) => {
-    setReplyingTo(null); // Cancel any active reply
-    // Format quoted text
+    setReplyingTo(null); 
     const quotedText = `> ${message.senderName} schrieb:\n> "${message.content.replace(/\n/g, '\n> ')}"\n\n`;
     setNewMessage(prev => quotedText + prev);
-    setQuotingMessage(message); // Set message being quoted for UI feedback
+    setQuotingMessage(message); 
     inputRef.current?.focus();
   };
 
   const handleCancelQuote = () => {
-     // This logic attempts to remove the quoted text block if the user cancels.
-     // It's a bit naive and might not perfectly handle all edge cases of user edits.
      if (quotingMessage) {
         const quotedTextPattern = `> ${quotingMessage.senderName} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\n\\n`;
-        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g');
+        const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), 'g'); // Make spaces flexible
         setNewMessage(prev => prev.replace(regex, ""));
     }
     setQuotingMessage(null);
@@ -574,18 +557,8 @@ export function ChatPageContent({
     inputRef.current?.focus();
   };
 
-  const handleEmojiSelectForInput = (emoji: string) => {
-    setNewMessage(prev => prev + emoji);
-    setShowEmojiPickerForInput(false);
-  };
-
-  const handleOpenReactionPicker = (messageId: string) => {
-    setReactingToMessageId(messageId); // This will be used by MessageBubble's Popover
-  };
-
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) return;
-    setReactingToMessageId(null); // Close picker after selection
 
     const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
@@ -602,21 +575,20 @@ export function ChatPageContent({
 
         let newReactions = { ...currentReactions };
 
-        if (usersWhoReactedWithEmoji.includes(userId)) { // User has reacted with this emoji, remove reaction
+        if (usersWhoReactedWithEmoji.includes(userId)) { 
           const updatedUserList = usersWhoReactedWithEmoji.filter(uid => uid !== userId);
           if (updatedUserList.length === 0) {
-            delete newReactions[emoji]; // Remove emoji if no users left
+            delete newReactions[emoji]; 
           } else {
             newReactions[emoji] = updatedUserList;
           }
-        } else { // User has not reacted with this emoji, add reaction
+        } else { 
           newReactions[emoji] = [...usersWhoReactedWithEmoji, userId];
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-       // Optimistic UI update or feedback
        const localMessage = messages.find(m => m.id === messageId);
-       const hadReacted = localMessage?.reactions?.[emoji]?.includes(userId); // Check against local state before transaction
+       const hadReacted = localMessage?.reactions?.[emoji]?.includes(userId); 
 
        toast({ title: `Reaktion "${emoji}" ${hadReacted ? 'entfernt' : 'hinzugefügt'}.` });
     } catch (error) {
@@ -632,7 +604,7 @@ export function ChatPageContent({
   const isSessionActive = useMemo(() => sessionData?.status === "active", [sessionData]);
 
 
-  if (isLoading && !isAdminView) { // Full page loader for non-admin initial load
+  if (isLoading && !isAdminView) { 
     return (
       <div className="flex h-screen w-full items-center justify-center p-4">
         <Card className="max-w-md w-full">
@@ -643,16 +615,12 @@ export function ChatPageContent({
     );
   }
 
-  // For admin view, or after initial load for non-admin
   if (isAdminView && (!sessionData || !currentScenario)) {
-     // Simple inline loader for admin view if data isn't ready
      return <div className="p-4 text-center text-muted-foreground">Lade Chat-Daten für Admin-Vorschau...</div>;
   }
 
-
   return (
       <div className={cn("flex flex-col bg-muted/40", isAdminView ? "h-full" : "h-screen")}>
-        {/* Header for non-admin view */}
         {!isAdminView && (
           <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
             <h1 className="text-lg font-semibold text-primary truncate max-w-[calc(100%-200px)] sm:max-w-none">
@@ -681,7 +649,7 @@ export function ChatPageContent({
                     <Users className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4">
+                <SheetContent side="right" className="w-full max-w-xs sm:max-w-sm p-4 flex flex-col">
                    <ChatSidebar
                     participants={participants}
                     currentUserId={userId}
@@ -700,7 +668,6 @@ export function ChatPageContent({
         )}
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar for non-admin view (desktop) */}
           {!isAdminView && (
             <aside className="hidden md:flex md:w-72 lg:w-80 flex-col border-r bg-background p-4 space-y-4">
                <ChatSidebar
@@ -717,7 +684,6 @@ export function ChatPageContent({
             </aside>
           )}
 
-          {/* Main chat area */}
           <main className="flex flex-1 flex-col">
             <ScrollArea className={cn("flex-1 p-4 md:p-6", isAdminView ? "bg-background" : "")}>
               <MessageList
@@ -732,14 +698,11 @@ export function ChatPageContent({
                 messagesEndRef={messagesEndRef}
                 isChatDataLoading={isChatDataLoading}
                 isAdminView={isAdminView}
-                onOpenReactionPicker={handleOpenReactionPicker} // This is for the popover trigger in MessageBubble
-                onReaction={handleReaction} // This is the actual reaction handler
-                reactingToMessageId={reactingToMessageId} // Used by MessageBubble to know which message's picker to open
-                handleOpenImageModal={handleOpenImageModal}
+                onReaction={handleReaction} 
+                onOpenImageModal={handleOpenImageModal}
               />
             </ScrollArea>
 
-            {/* Input Bar Area */}
             <MessageInputBar
               newMessage={newMessage}
               setNewMessage={setNewMessage}
@@ -761,9 +724,6 @@ export function ChatPageContent({
               handleCancelReply={handleCancelReply}
               quotingMessage={quotingMessage}
               handleCancelQuote={handleCancelQuote}
-              showEmojiPicker={showEmojiPickerForInput}
-              setShowEmojiPicker={setShowEmojiPickerForInput}
-              handleEmojiSelect={handleEmojiSelectForInput} // For adding emoji to input
               emojiCategories={emojiCategories}
               messageCooldownSeconds={sessionData?.messageCooldownSeconds}
             />
@@ -772,42 +732,55 @@ export function ChatPageContent({
 
       {/* Simple Image Modal */}
       {selectedImageForModal && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm"
-          onClick={handleCloseImageModal} // Close on backdrop click
-        >
-          <div
-            className="bg-card rounded-lg shadow-2xl p-3 sm:p-4 relative flex flex-col max-w-[95vw] sm:max-w-[90vw] md:max-w-[80vw] lg:max-w-[70vw] xl:max-w-[60vw] max-h-[90vh] w-auto h-auto"
-            onClick={(e) => e.stopPropagation()} // Prevent modal close on content click
-          >
-            <div className="flex justify-between items-center mb-2 pb-2 border-b">
-                <h3 className="text-lg font-semibold text-card-foreground truncate pr-2">
-                {selectedImageFilenameForModal || "Bild"}
-                </h3>
-                <Button variant="ghost" size="icon" onClick={handleCloseImageModal} className="text-muted-foreground hover:text-foreground shrink-0">
-                    <X className="h-5 w-5" />
-                </Button>
-            </div>
-            {/* Image container that will grow */}
-            <div className="relative flex-1 w-full h-full overflow-hidden flex items-center justify-center">
-              <Image
-                src={selectedImageForModal}
-                alt={selectedImageFilenameForModal || "Großansicht Bild"}
-                width={1200} // Provide a large base width (aspect ratio source)
-                height={800} // Provide a large base height (aspect ratio source)
-                style={{ 
-                    maxWidth: '100%', // Use full width of its container
-                    maxHeight: '100%', // Use full height of its container
-                    width: 'auto', // Maintain aspect ratio
-                    height: 'auto', // Maintain aspect ratio
-                    objectFit: 'contain', 
-                    borderRadius: '0.25rem' // Optional: if you want rounded corners on the image itself
+         <Dialog open={!!selectedImageForModal} onOpenChange={(open) => !open && handleCloseImageModal()}>
+            <DialogContent 
+                className="p-2 sm:p-3 md:p-4 max-w-[95vw] w-auto h-auto md:max-w-[90vw] lg:max-w-[80vw] xl:max-w-[70vw] max-h-[90vh] flex flex-col bg-card/90 backdrop-blur-sm dark:bg-card/80"
+                onInteractOutside={(e) => {
+                    // Allow clicks on Radix close buttons within the modal
+                    if ((e.target as HTMLElement)?.closest('[data-radix-dialog-close]')) {
+                      return;
+                    }
+                    // Allow clicks that are part of a scrollbar interaction.
+                    // This is a heuristic and might need adjustment.
+                    const mainScrollArea = document.querySelector('[data-radix-scroll-area-viewport]');
+                    if (mainScrollArea && mainScrollArea.contains(e.target as Node)) {
+                        const scrollbarThumb = mainScrollArea.querySelector('[data-radix-scroll-area-thumb]');
+                        if (scrollbarThumb && scrollbarThumb.contains(e.target as Node)) {
+                           return;
+                        }
+                    }
+                    // Check if the click is on a popover trigger or content within the dialog
+                    if ((e.target as HTMLElement)?.closest('[data-radix-popover-trigger], [data-radix-popover-content]')) {
+                        return;
+                    }
+                    handleCloseImageModal(); 
                 }}
-                data-ai-hint="modal image"
-              />
-            </div>
-          </div>
-        </div>
+            >
+              <DialogHeader className="flex flex-row justify-between items-center pb-2 border-b mb-2">
+                <DialogTitle className="text-base sm:text-lg font-semibold text-card-foreground truncate">
+                  {selectedImageFilenameForModal || "Bild"}
+                </DialogTitle>
+                <DialogClose asChild>
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-7 w-7 sm:h-8 sm:w-8">
+                    <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+                </DialogClose>
+              </DialogHeader>
+              {/* Image container that will grow */}
+              <div className="flex-1 relative w-full h-full overflow-hidden flex items-center justify-center">
+                {selectedImageForModal && (
+                  <Image
+                    src={selectedImageForModal}
+                    alt={selectedImageFilenameForModal || "Großansicht Bild"}
+                    width={1920} // Large base width for quality
+                    height={1080} // Large base height for quality
+                    className="object-contain max-w-full max-h-full w-auto h-auto rounded-sm"
+                    data-ai-hint="modal image"
+                  />
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
       )}
       </div>
   );
@@ -818,8 +791,8 @@ interface ChatPageOuterProps {
   params: ChatPageUrlParams;
 }
 
-export default function ChatPage({ params: routeParams }: ChatPageOuterProps) { // Renamed params to avoid conflict
-  const sessionId = routeParams.sessionId; // Get sessionId from routeParams
+export default function ChatPage({ params: routeParams }: ChatPageOuterProps) { 
+  const sessionId = routeParams.sessionId; 
 
   return (
     <Suspense fallback={
@@ -835,3 +808,4 @@ export default function ChatPage({ params: routeParams }: ChatPageOuterProps) { 
   );
 }
 
+    
