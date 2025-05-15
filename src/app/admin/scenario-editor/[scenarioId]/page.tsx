@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot, Users as UsersIconLucide, Settings as SettingsIcon, Database } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
@@ -38,7 +38,7 @@ const availableIcons = [
 
 const editorSections = [
   { id: "basisinfo", label: "Basisinfos", icon: <FileText className="mr-2 h-4 w-4" /> },
-  { id: "botconfig", label: "Bot-Konfiguration", icon: <Bot className="mr-2 h-4 w-4" /> },
+  { id: "botconfig", label: "Bot-Konfiguration", icon: <BotIconLucide className="mr-2 h-4 w-4" /> },
   { id: "humanroles", label: "Menschliche Rollen", icon: <UsersIconLucide className="mr-2 h-4 w-4" /> },
   { id: "metadaten", label: "Metadaten", icon: <SettingsIcon className="mr-2 h-4 w-4" /> },
   { id: "tags", label: "Themen-Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
@@ -248,13 +248,13 @@ export default function EditScenarioPage() {
       </div>
 
       {/* Sticky Shortcut Navigation Bar */}
-      <div className="sticky top-[calc(theme(spacing.16)_+_1px)] md:top-[calc(theme(spacing.16)_-_1px)] z-10 bg-background/90 backdrop-blur-sm border-b px-4 py-2 mb-6 overflow-x-auto whitespace-nowrap">
-        <div className="flex items-center space-x-1">
+      <div className="sticky top-[calc(theme(spacing.16)_-_45px)] md:top-[calc(theme(spacing.16)_-_49px)] lg:top-[calc(theme(spacing.16)_-_49px)] z-10 bg-background/90 backdrop-blur-sm border-b px-2 sm:px-4 py-2 mb-6 overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center space-x-1 max-w-full">
           {editorSections.map(section => (
-            <Button key={section.id} asChild variant="ghost" size="sm" className="px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
+            <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
               <a href={`#${section.id}`}>
                 {section.icon}
-                {section.label}
+                <span className="hidden sm:inline ml-1">{section.label}</span>
               </a>
             </Button>
           ))}
@@ -301,7 +301,7 @@ export default function EditScenarioPage() {
 
             <AccordionItem value="botconfig" id="botconfig">
               <AccordionTrigger className="px-0 hover:no-underline">
-                <CardTitle className="text-lg flex items-center"><Bot className="mr-2 h-5 w-5 text-primary"/>Bot-Konfiguration</CardTitle>
+                <CardTitle className="text-lg flex items-center"><BotIconLucide className="mr-2 h-5 w-5 text-primary"/>Bot-Konfiguration</CardTitle>
               </AccordionTrigger>
               <AccordionContent>
                 <Card className="border-none shadow-none">
@@ -458,7 +458,7 @@ export default function EditScenarioPage() {
                             </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="previewImageUpload">Oder Bild hochladen (Zukunft)</Label>
-                                <Input id="previewImageUpload" type="file" disabled={isSaving} className="mt-1"/>
+                                <Input id="previewImageUpload" type="file" disabled={true} className="mt-1"/>
                                 <p className="text-xs text-muted-foreground mt-1">Funktion zum Hochladen von Vorschaubildern wird später implementiert.</p>
                             </div>
                             <div className="space-y-1.5">
@@ -490,6 +490,16 @@ export default function EditScenarioPage() {
                             <CardDescription>Weisen Sie dem Szenario passende Tags zu, um es besser kategorisieren zu können.</CardDescription>
                         </CardHeader>
                         <CardContent className="px-1">
+                            <div className="mb-4 flex items-center gap-2">
+                                <Input 
+                                    placeholder="Tag manuell hinzufügen oder suchen..." 
+                                    className="flex-grow text-sm"
+                                    disabled={true} // Vorerst deaktiviert
+                                />
+                                <Button type="button" size="sm" variant="outline" disabled={true}> {/* Vorerst deaktiviert */}
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Hinzufügen
+                                </Button>
+                            </div>
                             <div className="mb-4">
                                 <Label>Ausgewählte Tags:</Label>
                                 {selectedTags.length > 0 ? (
@@ -506,8 +516,8 @@ export default function EditScenarioPage() {
                             </div>
                             <Separator className="my-4" />
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
-                            <ScrollArea className="max-h-[400px] mt-2 pr-3">
-                                <Accordion type="multiple" className="w-full">
+                            <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
+                                <Accordion type="multiple" className="w-full px-2">
                                     {tagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName}>
                                             <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline">
