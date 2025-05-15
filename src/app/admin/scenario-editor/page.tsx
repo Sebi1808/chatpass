@@ -23,7 +23,7 @@ export default function ScenarioEditorLandingPage() {
           <CardTitle>Willkommen im Szenario Editor</CardTitle>
           <CardDescription>
             Diese Seite dient als Einstiegspunkt für den Szenario-Editor.
-            Die eigentliche Bearbeitung findet statt, nachdem ein spezifisches Szenario ausgewählt wurde.
+            Die eigentliche Bearbeitung findet statt, nachdem ein spezifisches Szenario ausgewählt wurde (Klick auf &quot;Bearbeiten&quot; bei einem Szenario).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -31,7 +31,7 @@ export default function ScenarioEditorLandingPage() {
             Um ein Szenario zu bearbeiten, gehen Sie bitte zur <Link href="/admin" className="text-primary hover:underline">Szenarienübersicht</Link> und klicken Sie bei einem Szenario auf &quot;Bearbeiten&quot;.
           </p>
           <p className="text-muted-foreground mt-4">
-            Die Funktion zum Erstellen neuer Szenarien wird hier in Zukunft verfügbar sein.
+            Die Funktion zum Erstellen neuer Szenarien und die Speicherung in einer Datenbank wird hier in Zukunft verfügbar sein. Aktuell werden Änderungen nur in der Konsole geloggt und nicht persistent gespeichert.
           </p>
         </CardContent>
       </Card>
