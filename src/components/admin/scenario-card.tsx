@@ -2,10 +2,10 @@
 import type { Scenario } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  Users, 
-  Bot, 
-  Info, 
+import {
+  Users,
+  Bot,
+  Info,
   PlayCircle,
   ShieldAlert,
   Code2,
@@ -66,9 +66,9 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
         </div>
         {scenario.tags && scenario.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
-            {scenario.tags.map(tag => (
-              <Badge key={tag} variant="secondary" className="text-xs">
-                {tag}
+            {scenario.tags.map((tag, index) => (
+              <Badge key={typeof tag === 'string' ? tag : (tag as any)?.id || `tag-${index}`} variant="secondary" className="text-xs">
+                {typeof tag === 'string' ? tag : ((tag as any)?.name || 'Invalid Tag')}
               </Badge>
             ))}
           </div>
@@ -79,7 +79,7 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
             <Info className="mr-2 h-4 w-4" />
             Mehr Infos
         </Button>
-        <Button size="sm" onClick={() => onStartSimulation(scenario.id)} className="sm:w-auto">
+        <Button size="sm" className="w-full sm:w-auto" onClick={() => onStartSimulation(scenario.id)} >
           <PlayCircle className="mr-2 h-4 w-4" />
           Simulation starten
         </Button>
