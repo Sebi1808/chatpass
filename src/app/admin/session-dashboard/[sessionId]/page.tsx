@@ -47,8 +47,7 @@ const DEFAULT_COOLDOWN = 0;
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
 
-export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
-  const sessionId = props.params.sessionId; 
+export default function AdminSessionDashboardPage({ params: { sessionId } }: AdminSessionDashboardPageProps) {
   const { toast } = useToast();
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
@@ -90,7 +89,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   
   const scenario = scenarios.find(s => s.id === sessionId); 
 
-  const initializeBotsForSession = async (currentScenarioToInit: Scenario, currentSessionId: string) => {
+  const initializeBotsForSession = useCallback(async (currentScenarioToInit: Scenario, currentSessionId: string) => {
     if (!currentScenarioToInit) {
       console.log("Szenario nicht gefunden, Bot-Initialisierung übersprungen.");
       return;
@@ -114,7 +113,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         if (docIdToDelete) {
           const botDocRef = doc(participantsColRef, docIdToDelete);
           batch.delete(botDocRef);
-          console.log(`Deleting bot with ScenarioID: ${dbBotScenarioId} as it's no longer in scenario config.`);
+          console.log(`Deleting bot with ScenarioID: ${dbBotScenarioId} (DocID: ${docIdToDelete}) as it's no longer in scenario config.`);
         }
       }
     });
@@ -124,11 +123,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         console.error("Ungültige Bot-Konfiguration gefunden:", botConfig);
         continue;
       }
-      // Ensure botConfig.id is a string; if it's a number, convert it.
-      const botScenarioId = String(botConfig.id); 
+      
+      const botScenarioId = botConfig.id; 
       if (!botScenarioId) {
         console.error("Bot config is missing a unique id:", botConfig);
-        continue;
+        continue; 
       }
   
       const botDisplayName = getBotDisplayName(botConfig, scenarioBotsConfig, index);
@@ -146,7 +145,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           autoTimerEnabled: botConfig.autoTimerEnabled ?? false,
           currentMission: botConfig.currentMission || "",
         },
-        botScenarioId: botScenarioId, // Store the original ID from scenarios.ts
+        botScenarioId: botScenarioId, 
       };
   
       const existingBotDocId = firestoreBotsMap.get(botScenarioId);
@@ -170,7 +169,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             "botConfig.currentEscalation": botConfig.currentEscalation ?? existingBotData.botConfig?.currentEscalation ?? 0,
             "botConfig.autoTimerEnabled": botConfig.autoTimerEnabled ?? existingBotData.botConfig?.autoTimerEnabled ?? false,
             "botConfig.currentMission": missionToSet,
-            // Do not update botScenarioId here, it's the key
           });
           console.log(`Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
         }
@@ -178,7 +176,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
     await batch.commit();
     console.log("Bot initialization/update complete.");
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getBotDisplayName]);
 
 
   useEffect(() => {
@@ -250,7 +249,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} nicht gefunden.`})
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, toast]); 
+  }, [sessionId, toast, initializeBotsForSession]); 
 
 
   useEffect(() => {
@@ -1160,5 +1159,3 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
-
-    
