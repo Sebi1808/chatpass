@@ -21,7 +21,7 @@ import { participantColors, emojiCategories, type ParticipantColor } from '@/lib
 import { MessageInputBar } from '@/components/chat/message-input-bar';
 import { MessageList } from '@/components/chat/message-list';
 import { ChatSidebar } from '@/components/chat/chat-sidebar';
-import { scenarios } from '@/lib/scenarios'; // Added import for scenarios
+import { scenarios } from '@/lib/scenarios';
 
 interface ChatPageUrlParams {
   sessionId: string;
@@ -44,6 +44,7 @@ interface ChatPageContentProps {
 const simpleHash = (str: string): number => {
   let hash = 0;
   if (!str || str.length === 0) {
+    // console.log("simpleHash: input is empty, returning 0");
     return 0;
   }
   for (let i = 0; i < str.length; i++) {
@@ -111,15 +112,15 @@ export function ChatPageContent({
   const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
   const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
 
-  const handleOpenImageModal = (imageUrl: string, imageFileName?: string) => {
+  const handleOpenImageModal = useCallback((imageUrl: string, imageFileName?: string) => {
     setSelectedImageForModal(imageUrl);
     setSelectedImageFilenameForModal(imageFileName || "Bild");
-  };
+  }, []);
 
-  const handleCloseImageModal = () => {
+  const handleCloseImageModal = useCallback(() => {
     setSelectedImageForModal(null);
     setSelectedImageFilenameForModal(null);
-  };
+  }, []);
 
 
   // useEffects
@@ -264,9 +265,12 @@ export function ChatPageContent({
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
 
     let firstTimeMessagesLoad = true;
+    let previousMessagesLength = messages.length;
+
 
     const unsubscribeMessages = onSnapshot(q_msg, (querySnapshot) => {
       const newMessages: DisplayMessage[] = [];
+      let hasNewActualMessages = false;
       querySnapshot.forEach((docSn) => {
         const data = docSn.data() as MessageType;
         const timestamp = data.timestamp as Timestamp | null;
@@ -277,26 +281,34 @@ export function ChatPageContent({
           timestampDisplay: timestamp ? new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
         });
       });
+      
+      if (newMessages.length > previousMessagesLength) {
+        // Check if the last message is truly new or just an update (e.g. reaction)
+        // This simple check assumes new messages are always appended.
+        // A more robust check would compare IDs or timestamps if updates can reorder.
+        const latestNewMsg = newMessages[newMessages.length - 1];
+        const latestOldMsg = messages[messages.length - 1];
+        if (!latestOldMsg || latestNewMsg.id !== latestOldMsg.id) {
+            hasNewActualMessages = true;
+        }
+      }
 
-      const oldMessagesLength = messages.length;
+
       setMessages(newMessages);
       setIsChatDataLoading(false);
+      previousMessagesLength = newMessages.length;
+
 
       if (firstTimeMessagesLoad) {
           scrollToBottom(true, 'auto');
           setShowScrollToBottomButton(false);
           firstTimeMessagesLoad = false;
-      } else if (newMessages.length > oldMessagesLength) { // Only check for auto-scroll if new messages were added
+      } else if (hasNewActualMessages) { 
           const scrollContainer = viewportRef.current;
           if (scrollContainer) {
               const isNearBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 250; 
               if (isNearBottom) { 
-                  // Do not auto-scroll if a reaction was just added, only for new messages
-                  const latestMessage = newMessages[newMessages.length - 1];
-                  const previousLastMessage = messages[messages.length -1];
-                  if (!previousLastMessage || latestMessage.id !== previousLastMessage.id) {
-                    scrollToBottom(false, 'smooth');
-                  }
+                  scrollToBottom(false, 'smooth');
                   setShowScrollToBottomButton(false);
               } else { 
                   setShowScrollToBottomButton(true);
@@ -340,33 +352,30 @@ export function ChatPageContent({
 
 
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
-    // console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
-  
-    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
-    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" };
+    console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
+    
+    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-red-600", text: "text-red-50", nameText: "text-red-100", ring: "ring-red-500" };
+    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-500" };
     const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" };
-    const emeraldColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600 dark:bg-emerald-700", text: "text-emerald-50", nameText: "text-emerald-100 dark:text-emerald-200", ring: "ring-emerald-600 dark:ring-emerald-700" }; // Fallback for other users
-
-    if (isAdminView && pUserId === initialUserId) { // Admin in Admin-View
-        // console.log(`-> Resolved as ADMIN (in admin view) color for ${pUserId}`);
-        return adminColor;
-    }
-    if (pSenderType === 'admin') { // Any message flagged as admin
-        // console.log(`-> Resolved as ADMIN (by senderType) color for ${pUserId}`);
+    
+    if ((isAdminView && pUserId === initialUserId) || pSenderType === 'admin') {
+        console.log(`-> Resolved as ADMIN color for ${pUserId}`);
         return adminColor;
     }
     if (pSenderType === 'bot' || (pUserId && (participants.find(p => p.userId === pUserId)?.isBot))) {
-      // console.log(`-> Resolved as BOT color for ${pUserId}`);
+      console.log(`-> Resolved as BOT color for ${pUserId}`);
       return botColor;
     }
-    if (pUserId === userId && !isAdminView) { // Current logged-in user, not in admin view
-      // console.log(`-> Resolved as OWN USER color for ${pUserId}`);
+    if (pUserId === userId && !isAdminView) {
+      console.log(`-> Resolved as OWN USER color for ${pUserId}`);
       return ownColor;
     }
     
-    // For other users, consistently use emerald
-    // console.log(`-> Resolved as OTHER USER (emerald) color for ${pUserId}`);
+    // Fallback for other users: Emerald color
+    const emeraldColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600", text: "text-emerald-50", nameText: "text-emerald-100", ring: "ring-emerald-500" };
+    console.log(`-> Resolved as OTHER USER (emerald) color for ${pUserId || 'unknown pUserId'}`);
     return emeraldColor;
+
   }, [userId, isAdminView, initialUserId, participants]);
 
 
@@ -559,7 +568,6 @@ export function ChatPageContent({
       setQuotingMessage(null);
       handleRemoveSelectedImage();
       if (!isAdminView) setLastMessageSentAt(Date.now());
-      // scrollToBottom(true, 'smooth'); // Removed to prevent scroll on reaction if this function is ever called for reactions
 
 
     } catch (error) {
@@ -609,7 +617,7 @@ export function ChatPageContent({
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) return;
-    setReactingToMessageId(null); // Close emoji picker after selection
+    setReactingToMessageId(null); 
 
     const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
@@ -638,7 +646,6 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-      // Do not scroll on reaction
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -735,12 +742,12 @@ export function ChatPageContent({
                 onSetQuote={handleSetQuote}
                 onScrollToMessage={scrollToMessage}
                 onReaction={handleReaction}
-                reactingToMessageId={reactingToMessageId}
                 setReactingToMessageId={setReactingToMessageId}
                 emojiCategories={emojiCategories}
                 messagesEndRef={messagesEndRef}
                 isChatDataLoading={isChatDataLoading}
                 isAdminView={isAdminView}
+                onOpenImageModal={handleOpenImageModal}
               />
             </ScrollArea>
             {showScrollToBottomButton && (
@@ -822,7 +829,7 @@ export function ChatPageContent({
 
 
 export default function ChatPage({ params: pageParams }: ChatPageProps) {
-  const sessionId = pageParams?.sessionId;
+  const { sessionId } = pageParams;
 
   return (
     <Suspense fallback={

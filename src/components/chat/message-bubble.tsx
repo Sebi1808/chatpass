@@ -23,6 +23,7 @@ interface MessageBubbleProps {
   onSetQuote: (message: DisplayMessage) => void;
   onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
+  setReactingToMessageId: (messageId: string | null) => void;
   emojiCategories: typeof EmojiCategoriesType;
   onOpenImageModal: (imageUrl: string, imageFileName?: string) => void; 
 }
@@ -36,6 +37,7 @@ export function MessageBubble({
   onSetQuote,
   onScrollToMessage,
   onReaction,
+  setReactingToMessageId,
   emojiCategories,
   onOpenImageModal,
 }: MessageBubbleProps) {
@@ -48,6 +50,7 @@ export function MessageBubble({
   const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
     setShowReactionPicker(false);
+    setReactingToMessageId(null); // Close picker after selection
   };
 
 
@@ -148,8 +151,8 @@ export function MessageBubble({
                     size="sm"
                     className={cn(
                       "h-auto px-1.5 py-0.5 rounded-full text-xs border",
-                      "bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20", // Default style
-                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/50 shadow-md', // Highlight if current user reacted
+                      "bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20",
+                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/50 shadow-md', 
                        bubbleColor.text 
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
@@ -162,7 +165,7 @@ export function MessageBubble({
             </div>
           )}
 
-          <div className="flex items-center gap-1 mt-1.5 -ml-1">
+          <div className="flex items-center gap-1 mt-1.5 -ml-1 opacity-100 group-hover/message:opacity-100 md:opacity-100 transition-opacity duration-150">
             {!isOwn && (
               <>
                 <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5", bubbleColor.text, "hover:bg-black/10 dark:hover:bg-white/10")} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
@@ -181,6 +184,7 @@ export function MessageBubble({
                   className={cn("h-auto px-1.5 py-0.5", bubbleColor.text, "hover:bg-black/10 dark:hover:bg-white/10")}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setReactingToMessageId(message.id); // Set which message we are reacting to
                     setShowReactionPicker(prev => !prev);
                   }}
                   aria-label="Reagieren"
@@ -233,3 +237,4 @@ export function MessageBubble({
     </div>
   );
 }
+
