@@ -10,29 +10,28 @@ import {
   ShieldAlert,
   Code2,
   MessageSquare,
-  Annoyed,
   Zap,
   Film,
   ShoppingBag,
   Lock,
   BotMessageSquare,
   type LucideIcon,
-  Image as ImageIcon
+  ImageIcon,
+  ShieldCheck,
+  FileEdit
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type React from 'react';
 import Link from 'next/link';
-import Image from 'next/image'; // Import next/image
+import Image from 'next/image';
 
 interface ScenarioCardProps {
   scenario: Scenario;
 }
 
-const iconMap: Record<string, LucideIcon> = {
+const iconMap: Record<string, LucideIcon | undefined> = {
   ShieldAlert,
   Code2,
   MessageSquare,
-  Annoyed,
   Zap,
   Users,
   Film,
@@ -40,26 +39,28 @@ const iconMap: Record<string, LucideIcon> = {
   Lock,
   BotMessageSquare,
   ImageIcon, // Default/fallback icon
+  NotebookPen,
+  FileEdit,
+  ShieldCheck,
 };
 
 const renderTagContent = (tag: string | { name?: any; [key: string]: any }): string => {
   if (typeof tag === 'string') {
     return tag;
   }
-  // Attempt to access tag.name if it's an object, otherwise return a fallback.
   if (tag && typeof tag.name === 'string') {
     return tag.name;
   }
-  // Fallback for unexpected tag structures
-  if (tag && typeof (tag as any).value === 'string') {
+  if (tag && typeof (tag as any).value === 'string') { // Fallback for some structures
     return (tag as any).value;
   }
+  console.warn("Invalid tag structure encountered in ScenarioCard:", tag);
   return 'Invalid Tag';
 };
 
 
 export function ScenarioCard({ scenario }: ScenarioCardProps) {
-  const IconComponent = scenario.iconName && iconMap[scenario.iconName] ? iconMap[scenario.iconName] : ImageIcon; // Fallback to ImageIcon
+  const IconComponent = scenario.iconName && iconMap[scenario.iconName] ? iconMap[scenario.iconName] : ImageIcon;
 
   return (
     <Card className="flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300">
@@ -68,9 +69,11 @@ export function ScenarioCard({ scenario }: ScenarioCardProps) {
           <Image
             src={scenario.previewImageUrl}
             alt={`Vorschau für ${scenario.title}`}
-            layout="fill"
-            objectFit="cover"
+            fill // Changed from layout="fill" objectFit="cover"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" // Example sizes, adjust as needed
+            style={{ objectFit: 'cover' }}
             className="rounded-t-lg"
+            priority={false} // set to true for above-the-fold images
             data-ai-hint="scenario preview"
           />
         </div>
@@ -81,6 +84,13 @@ export function ScenarioCard({ scenario }: ScenarioCardProps) {
             {IconComponent && <IconComponent className="h-6 w-6 mr-3 text-primary shrink-0" />}
             {typeof scenario.title === 'string' ? scenario.title : 'Invalid Title'}
           </CardTitle>
+           {scenario.status && (
+            <Badge variant={scenario.status === 'published' ? 'default' : 'secondary'}
+                   className={scenario.status === 'published' ? 'bg-green-500 hover:bg-green-600' : 'bg-amber-500 hover:bg-amber-600'}>
+              {scenario.status === 'published' ? <ShieldCheck className="mr-1.5 h-3.5 w-3.5"/> : <FileEdit className="mr-1.5 h-3.5 w-3.5"/>}
+              {scenario.status === 'published' ? 'Veröffentlicht' : 'Entwurf'}
+            </Badge>
+          )}
         </div>
         <CardDescription className="text-sm text-muted-foreground line-clamp-3 min-h-[3.75rem]">
           {typeof scenario.kurzbeschreibung === 'string' ? scenario.kurzbeschreibung : 'No description'}
@@ -97,16 +107,16 @@ export function ScenarioCard({ scenario }: ScenarioCardProps) {
         </div>
         {scenario.tags && scenario.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
-            {scenario.tags.slice(0, 5).map((tag, index) => ( // Show max 5 tags for brevity
+            {scenario.tags.slice(0, 3).map((tag, index) => (
               <Badge
-                key={typeof tag === 'string' ? tag : (tag as any)?.id || `tag-${index}`}
+                key={typeof tag === 'string' ? tag : `tag-${index}`}
                 variant="secondary"
                 className="text-xs"
               >
                 {renderTagContent(tag)}
               </Badge>
             ))}
-            {scenario.tags.length > 5 && <Badge variant="outline" className="text-xs">...</Badge>}
+            {scenario.tags.length > 3 && <Badge variant="outline" className="text-xs">...</Badge>}
           </div>
         )}
       </CardContent>
@@ -121,6 +131,8 @@ export function ScenarioCard({ scenario }: ScenarioCardProps) {
           <Button
               size="sm"
               className="w-full sm:w-auto"
+              disabled={scenario.status !== 'published'} // Disable if not published
+              title={scenario.status !== 'published' ? "Szenario muss veröffentlicht sein" : "Simulation starten"}
           >
             <PlayCircle className="mr-2 h-4 w-4" />
             Simulation starten
