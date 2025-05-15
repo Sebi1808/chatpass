@@ -1,47 +1,121 @@
 
-// This file is no longer used directly as the main editor page.
-// It's replaced by the dynamic route /admin/scenario-editor/[scenarioId]/page.tsx
-// However, the sidebar link might still point here, so we can keep a generic placeholder or redirect.
+"use client";
 
-import { Separator } from '@/components/ui/separator';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { scenarios } from '@/lib/scenarios'; // Import scenarios
+import type { Scenario } from '@/lib/types';
+import { FileEdit, PlusCircle, Search } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
-export default function ScenarioEditorLandingPage() {
+export default function ScenarioEditorHubPage() {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredScenarios = useMemo(() => {
+    if (!searchTerm.trim()) {
+      return scenarios;
+    }
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+    return scenarios.filter(
+      (scenario) =>
+        scenario.title.toLowerCase().includes(lowerCaseSearchTerm) ||
+        scenario.kurzbeschreibung.toLowerCase().includes(lowerCaseSearchTerm) ||
+        (scenario.tags && scenario.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(lowerCaseSearchTerm)))
+    );
+  }, [searchTerm]);
+
+  const handleCreateNewScenario = () => {
+    // Placeholder: Later, this would navigate to a new scenario form or trigger a creation process
+    alert("Funktion 'Neues Szenario erstellen' ist noch nicht implementiert.");
+    // Example: router.push('/admin/scenario-editor/new');
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-primary">Szenario Editor</h1>
-        <p className="text-muted-foreground mt-2">
-          Wählen Sie ein Szenario aus der Szenarienübersicht aus, um es zu bearbeiten, oder erstellen Sie ein neues Szenario.
-        </p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">Szenario Editor Hub</h1>
+          <p className="text-muted-foreground mt-2">
+            Übersicht vorhandener Szenarien. Bearbeiten Sie bestehende oder erstellen Sie neue Simulationen.
+          </p>
+        </div>
+        <Button onClick={handleCreateNewScenario} className="w-full sm:w-auto">
+          <PlusCircle className="mr-2 h-5 w-5" />
+          Neues Szenario erstellen
+        </Button>
       </div>
       <Separator />
+
       <Card>
-        <CardHeader>
-          <CardTitle>Willkommen im Szenario Editor</CardTitle>
+        <CardHeader className="pb-4">
+          <CardTitle>Vorhandene Szenarien</CardTitle>
           <CardDescription>
-            Diese Seite dient als Einstiegspunkt für den Szenario-Editor.
-            Die eigentliche Bearbeitung findet statt, nachdem ein spezifisches Szenario ausgewählt wurde (Klick auf &quot;Bearbeiten&quot; bei einem Szenario).
+            Durchsuchen und bearbeiten Sie die aktuell verfügbaren Szenarien.
           </CardDescription>
+          <div className="relative mt-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Szenarien durchsuchen (Titel, Beschreibung, Tags)..."
+              className="w-full pl-10 pr-4 py-2 text-base"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">
-            Um ein Szenario zu bearbeiten, gehen Sie bitte zur <Link href="/admin" className="text-primary hover:underline">Szenarienübersicht</Link> und klicken Sie bei einem Szenario auf &quot;Bearbeiten&quot;.
-          </p>
-          <p className="text-muted-foreground mt-4">
-            Die Funktion zum Erstellen neuer Szenarien und die Speicherung in einer Datenbank wird hier in Zukunft verfügbar sein. Aktuell werden Änderungen nur in der Konsole geloggt und nicht persistent gespeichert.
-          </p>
+          {filteredScenarios.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[250px]">Titel</TableHead>
+                    <TableHead>Kurzbeschreibung</TableHead>
+                    <TableHead className="w-[200px]">Tags</TableHead>
+                    <TableHead className="w-[120px] text-right">Aktionen</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredScenarios.map((scenario: Scenario) => (
+                    <TableRow key={scenario.id}>
+                      <TableCell className="font-medium">{scenario.title}</TableCell>
+                      <TableCell className="text-muted-foreground">{scenario.kurzbeschreibung}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {scenario.tags && scenario.tags.slice(0, 3).map((tag) => (
+                            <Badge key={tag} variant="secondary" className="text-xs">
+                              {typeof tag === 'string' ? tag : 'Invalid Tag'}
+                            </Badge>
+                          ))}
+                          {scenario.tags && scenario.tags.length > 3 && <Badge variant="outline" className="text-xs">...</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
+                          <Button variant="outline" size="sm">
+                            <FileEdit className="mr-2 h-4 w-4" />
+                            Bearbeiten
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground py-8">
+              Keine Szenarien gefunden, die Ihrer Suche entsprechen.
+              {searchTerm === '' && scenarios.length === 0 && " Es sind aktuell keine Szenarien vorhanden."}
+            </p>
+          )}
         </CardContent>
       </Card>
-       <div className="mt-8 flex justify-center">
-          <Link href="/admin" legacyBehavior passHref>
-            <Button variant="outline">
-              Zurück zur Szenarienübersicht
-            </Button>
-          </Link>
-        </div>
     </div>
   );
 }
