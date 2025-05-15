@@ -19,6 +19,7 @@ import {
   type LucideIcon
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import type React from 'react';
 
 interface ScenarioCardProps {
   scenario: Scenario;
@@ -38,8 +39,20 @@ const iconMap: Record<string, LucideIcon> = {
   BotMessageSquare,
 };
 
+const renderTagContent = (tag: string | { name?: any; [key: string]: any }): string => {
+  if (typeof tag === 'string') {
+    return tag;
+  }
+  // If tag is an object, try to use its 'name' property, but only if 'name' is a string.
+  if (tag && typeof tag.name === 'string') {
+    return tag.name;
+  }
+  // Fallback for other cases (e.g., tag is an object but name is not a string or undefined)
+  return 'Invalid Tag';
+};
+
 export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps) {
-  const IconComponent = iconMap[scenario.iconName];
+  const IconComponent = scenario.iconName ? iconMap[scenario.iconName] : null;
 
   return (
     <Card className="flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300">
@@ -47,12 +60,11 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-xl font-semibold leading-tight flex items-center">
             {IconComponent && <IconComponent className="h-6 w-6 mr-3 text-primary shrink-0" />}
-            {scenario.title}
+            {typeof scenario.title === 'string' ? scenario.title : 'Invalid Title'}
           </CardTitle>
-          {/* Potentially a small action button or badge here */}
         </div>
         <CardDescription className="text-sm text-muted-foreground line-clamp-3 min-h-[3.75rem]">
-          {scenario.kurzbeschreibung}
+          {typeof scenario.kurzbeschreibung === 'string' ? scenario.kurzbeschreibung : 'No description'}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow space-y-3 text-sm">
@@ -67,19 +79,27 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
         {scenario.tags && scenario.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
             {scenario.tags.map((tag, index) => (
-              <Badge key={typeof tag === 'string' ? tag : (tag as any)?.id || `tag-${index}`} variant="secondary" className="text-xs">
-                {typeof tag === 'string' ? tag : ((tag as any)?.name || 'Invalid Tag')}
+              <Badge 
+                key={typeof tag === 'string' ? tag : (tag as any)?.id || `tag-${index}`} 
+                variant="secondary" 
+                className="text-xs"
+              >
+                {renderTagContent(tag)}
               </Badge>
             ))}
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col items-center sm:flex-row sm:justify-between gap-2 pt-4">
+      <CardFooter className="flex flex-col items-stretch sm:flex-row sm:justify-between gap-2 pt-4">
         <Button variant="outline" size="sm" onClick={() => alert(`Details für: ${scenario.title}\n\n${scenario.langbeschreibung}`)}>
             <Info className="mr-2 h-4 w-4" />
             Mehr Infos
         </Button>
-        <Button size="sm" className="w-full sm:w-auto" onClick={() => onStartSimulation(scenario.id)} >
+        <Button 
+            size="sm" 
+            className="w-full sm:w-auto" 
+            onClick={() => onStartSimulation(scenario.id)} 
+        >
           <PlayCircle className="mr-2 h-4 w-4" />
           Simulation starten
         </Button>
