@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck } from 'lucide-react';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
 import { humanRoleTemplates } from '@/lib/role-templates';
@@ -40,9 +40,8 @@ const editorSections = [
   { id: "basisinfo", label: "Basisinfos", icon: <FileText className="mr-2 h-4 w-4" /> },
   { id: "botconfig", label: "Bot-Konfiguration", icon: <BotIconLucide className="mr-2 h-4 w-4" /> },
   { id: "humanroles", label: "Menschliche Rollen", icon: <UsersIconLucide className="mr-2 h-4 w-4" /> },
-  { id: "metadaten", label: "Metadaten", icon: <SettingsIcon className="mr-2 h-4 w-4" /> },
+  { id: "metadaten", label: "Metadaten & Status", icon: <SettingsIcon className="mr-2 h-4 w-4" /> },
   { id: "tags", label: "Themen-Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
-  // Originaldaten-Sektion wird entfernt, da Daten jetzt aus Firestore kommen
 ];
 
 const createDefaultScenario = (): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> => ({
@@ -53,8 +52,7 @@ const createDefaultScenario = (): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt
   iconName: availableIcons[availableIcons.length - 1].value,
   tags: [],
   previewImageUrl: '',
-  defaultBots: 0, 
-  standardRollen: 0, 
+  status: 'draft',
   defaultBotsConfig: [],
   humanRolesConfig: [],
 });
@@ -76,6 +74,7 @@ export default function EditScenarioPage() {
   const [lernziele, setLernziele] = useState('');
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value);
+  const [status, setStatus] = useState<'draft' | 'published'>('draft');
   
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [manualTagInput, setManualTagInput] = useState('');
@@ -85,9 +84,10 @@ export default function EditScenarioPage() {
   const [botSaveAsTemplateFlags, setBotSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
   const [roleSaveAsTemplateFlags, setRoleSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
 
-  const [isLoading, setIsLoading] = useState(!isNewScenario); // Nur laden, wenn es kein neues Szenario ist
+  const [isLoading, setIsLoading] = useState(!isNewScenario);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [originalScenarioData, setOriginalScenarioData] = useState<Scenario | null>(null);
 
   useEffect(() => {
     const loadScenario = async () => {
@@ -99,9 +99,11 @@ export default function EditScenarioPage() {
         setLernziele((newScenarioData.lernziele || []).join('\n'));
         setPreviewImageUrlInput(newScenarioData.previewImageUrl || '');
         setIconNameInput(newScenarioData.iconName || availableIcons[availableIcons.length - 1].value);
+        setStatus(newScenarioData.status || 'draft');
         setSelectedTags(newScenarioData.tags || []);
         setEditableBotsConfig(JSON.parse(JSON.stringify(newScenarioData.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(newScenarioData.humanRolesConfig || [])));
+        setOriginalScenarioData(null); // No original data for new scenario
         setIsLoading(false);
         return;
       }
@@ -114,12 +116,14 @@ export default function EditScenarioPage() {
 
         if (scenarioSnap.exists()) {
           const foundScenario = { id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario;
+          setOriginalScenarioData(foundScenario);
           setTitle(foundScenario.title);
           setKurzbeschreibung(foundScenario.kurzbeschreibung);
           setLangbeschreibung(foundScenario.langbeschreibung);
           setLernziele(foundScenario.lernziele?.join('\n') || '');
           setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
           setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
+          setStatus(foundScenario.status || 'draft');
           setSelectedTags(foundScenario.tags || []);
           
           const initialBotFlags: Record<string, boolean> = {};
@@ -279,8 +283,8 @@ export default function EditScenarioPage() {
   const handleManualTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value.endsWith(',')) {
-      setManualTagInput(''); // Clear input before processing to avoid double add
       processManualTagInput(); 
+      setManualTagInput(''); // Clear input after processing
     } else {
       setManualTagInput(value);
     }
@@ -310,6 +314,7 @@ export default function EditScenarioPage() {
       lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
       previewImageUrl: previewImageUrlInput,
       iconName: iconNameInput,
+      status: status,
       tags: selectedTags,
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
@@ -323,17 +328,15 @@ export default function EditScenarioPage() {
 
     try {
       if (isNewScenario) {
-        // Add createdAt only for new scenarios
         const dataWithCreationTimestamp = { ...scenarioDataToSave, createdAt: Timestamp.now() };
         const docRef = await addDoc(collection(db, "scenarios"), dataWithCreationTimestamp);
         toast({
           title: "Szenario erstellt",
           description: `Das Szenario "${title}" wurde erfolgreich in der Datenbank gespeichert.`,
         });
-        // Navigate to the editor page of the newly created scenario
         router.push(`/admin/scenario-editor/${docRef.id}`);
-        setIsNewScenario(false); // No longer a new scenario
-        setCurrentScenarioId(docRef.id); // Update current ID
+        setIsNewScenario(false); 
+        setCurrentScenarioId(docRef.id);
       } else if (currentScenarioId) {
         const scenarioDocRef = doc(db, "scenarios", currentScenarioId);
         await setDoc(scenarioDocRef, scenarioDataToSave, { merge: true });
@@ -397,9 +400,21 @@ export default function EditScenarioPage() {
             ID: {currentIdForDisplay}
           </p>
         </div>
-        <div className="flex gap-2 md:gap-3">
+        <div className="flex items-center gap-2 md:gap-3">
+           <div className="flex items-center space-x-2">
+            <Switch
+                id="publish-status"
+                checked={status === 'published'}
+                onCheckedChange={(checked) => setStatus(checked ? 'published' : 'draft')}
+                disabled={isSaving}
+            />
+            <Label htmlFor="publish-status" className="text-sm whitespace-nowrap">
+                {status === 'published' ? <span className="text-green-500 flex items-center"><ShieldCheck className="mr-1.5 h-4 w-4"/>Veröffentlicht</span> : <span className="text-amber-500">Entwurf</span>}
+            </Label>
+          </div>
+          <Separator orientation="vertical" className="h-8 mx-1"/>
           <Button variant="outline" type="button" onClick={() => router.push('/admin/scenario-editor')} disabled={isSaving}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <X className="mr-2 h-4 w-4" /> 
             Abbrechen
           </Button>
           <Button type="submit" disabled={isSaving} className="min-w-[150px]">
@@ -617,12 +632,12 @@ export default function EditScenarioPage() {
 
             <AccordionItem value="metadaten" id="metadaten">
                 <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
-                    <CardTitle className="text-lg flex items-center"><SettingsIcon className="mr-2 h-5 w-5 text-primary"/>Szenario-Metadaten</CardTitle>
+                    <CardTitle className="text-lg flex items-center"><SettingsIcon className="mr-2 h-5 w-5 text-primary"/>Szenario-Metadaten & Status</CardTitle>
                 </AccordionTrigger>
                 <AccordionContent className="pt-4 pb-2">
                     <Card className="border-none shadow-none">
                         <CardHeader className="p-0 pb-4">
-                            <CardDescription>Weitere Einstellungen wie Icon und Vorschaubild.</CardDescription>
+                            <CardDescription>Weitere Einstellungen wie Icon, Vorschaubild und Veröffentlichungsstatus.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6 p-0">
                             <div className="space-y-1.5">
@@ -648,6 +663,17 @@ export default function EditScenarioPage() {
                                 </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground mt-1">Wählen Sie ein passendes Icon für das Szenario.</p>
+                            </div>
+                             <div className="flex items-center space-x-3 pt-2">
+                                <Switch
+                                    id="publish-status-accordion"
+                                    checked={status === 'published'}
+                                    onCheckedChange={(checked) => setStatus(checked ? 'published' : 'draft')}
+                                    disabled={isSaving}
+                                />
+                                <Label htmlFor="publish-status-accordion" className="text-sm">
+                                    Veröffentlichungsstatus: {status === 'published' ? <span className="font-semibold text-green-600">Veröffentlicht</span> : <span className="font-semibold text-amber-600">Entwurf</span>}
+                                </Label>
                             </div>
                         </CardContent>
                     </Card>
@@ -746,7 +772,7 @@ export default function EditScenarioPage() {
                 </AccordionContent>
             </AccordionItem>
 
-           {(!isNewScenario && currentScenarioId) && ( // Show only if editing an existing scenario
+           {(!isNewScenario && currentScenarioId && originalScenarioData) && ( 
             <AccordionItem value="originaldaten" id="originaldaten">
               <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
                 <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus Datenbank)</CardTitle>
@@ -754,13 +780,12 @@ export default function EditScenarioPage() {
               <AccordionContent className="pt-4 pb-2">
                 <Card className="border-none shadow-none">
                   <CardHeader className="p-0 pb-4">
-                    <CardDescription>Nur zur Referenz während der Entwicklung: So ist das Szenario aktuell in Firestore gespeichert.</CardDescription>
+                    <CardDescription>Nur zur Referenz: So ist das Szenario aktuell in Firestore gespeichert.</CardDescription>
                   </CardHeader>
                   <CardContent className="p-0">
                     <ScrollArea className="w-full h-[200px] max-w-full" orientation="both">
                       <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs">
-                        {/* This will be populated by the loaded scenario data in useEffect */}
-                        {isLoading ? "Lade Originaldaten..." : JSON.stringify({ id: currentScenarioId, title, kurzbeschreibung, langbeschreibung, lernziele: lernziele.split('\n'), iconName: iconNameInput, tags: selectedTags, previewImageUrl: previewImageUrlInput, defaultBotsConfig: editableBotsConfig, humanRolesConfig: editableHumanRoles }, null, 2)}
+                        {isLoading ? "Lade Originaldaten..." : JSON.stringify(originalScenarioData, null, 2)}
                       </pre>
                     </ScrollArea>
                   </CardContent>
@@ -773,4 +798,3 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-

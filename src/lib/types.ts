@@ -15,13 +15,17 @@ export interface Scenario {
   kurzbeschreibung: string;
   langbeschreibung: string;
   lernziele?: string[];
-  defaultBots: number;
-  standardRollen: number;
   iconName: string;
   tags: string[];
-  previewImageUrl?: string; // Added for scenario preview image
+  previewImageUrl?: string;
   defaultBotsConfig?: BotConfig[];
   humanRolesConfig?: HumanRoleConfig[];
+  // defaultBots and standardRollen will be derived dynamically or set upon save
+  defaultBots?: number; 
+  standardRollen?: number;
+  status?: 'draft' | 'published'; // New status field
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface BotConfig {
