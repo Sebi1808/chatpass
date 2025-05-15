@@ -11,8 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario } from '@/lib/types';
 import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"; // Added TabsContent
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRouter } from 'next/navigation';
 
 export default function ScenarioEditorHubPage() {
@@ -30,12 +29,10 @@ export default function ScenarioEditorHubPage() {
         scenario.kurzbeschreibung.toLowerCase().includes(lowerCaseSearchTerm) ||
         (scenario.tags && scenario.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(lowerCaseSearchTerm)))
     );
-  }, [searchTerm]); // scenarios dependency was missing, added it.
+  }, [searchTerm, scenarios]);
 
   const handleCreateNewScenario = () => {
-    // Placeholder: Later, this would navigate to a new scenario form or trigger a creation process
     alert("Funktion 'Neues Szenario erstellen' ist noch nicht implementiert. Szenarien werden aktuell aus src/lib/scenarios.ts geladen.");
-    // Example: router.push('/admin/scenario-editor/new');
   };
 
   return (
@@ -133,8 +130,7 @@ export default function ScenarioEditorHubPage() {
             </CardContent>
           </Card>
         </TabsContent>
-        {/* Placeholder TabsContent für bot-templates und role-templates, 
-            da die eigentlichen Seiten unter eigenen Routen liegen */}
+        {/* Placeholder TabsContent, da die eigentlichen Seiten unter eigenen Routen liegen */}
         <TabsContent value="bot-templates" className="mt-4">
           <p className="text-muted-foreground p-4 text-center">
             Navigieren Sie zur <Link href="/admin/bot-template-editor" className="underline text-primary">Bot-Vorlagen Seite</Link>, um Bot-Vorlagen zu verwalten.

@@ -29,7 +29,7 @@ export default function RoleTemplateEditorPage() {
           <CardTitle>Funktionalität in Entwicklung</CardTitle>
           <CardDescription>
             Die Möglichkeit, Rollen-Vorlagen direkt hier zu erstellen und zu verwalten, wird in einer zukünftigen Version implementiert.
-            Aktuell werden Rollen-Vorlagen aus der Datei `src/lib/role-templates.ts` geladen.
+            Aktuell werden Rollen-Vorlagen aus der Datei `src/lib/role-templates.ts` geladen und können im Szenario-Detail-Editor ausgewählt werden.
           </CardDescription>
         </CardHeader>
         <CardContent>

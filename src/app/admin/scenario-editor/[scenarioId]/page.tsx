@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, CheckSquare, Square } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
@@ -85,11 +85,11 @@ export default function EditScenarioPage() {
         setSelectedTags(foundScenario.tags || []);
         
         const initialBotFlags: Record<string, boolean> = {};
-        (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false); // Default to false
+        (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false);
         setBotSaveAsTemplateFlags(initialBotFlags);
 
         const initialRoleFlags: Record<string, boolean> = {};
-        (foundScenario.humanRolesConfig || []).forEach(role => initialRoleFlags[role.id] = false); // Default to false
+        (foundScenario.humanRolesConfig || []).forEach(role => initialRoleFlags[role.id] = false);
         setRoleSaveAsTemplateFlags(initialRoleFlags);
 
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
@@ -248,16 +248,16 @@ export default function EditScenarioPage() {
       standardRollen: editableBotsConfig.length + editableHumanRoles.length, 
     };
 
-    console.log("Saving scenario (ID: ", currentScenario.id, "):");
+    console.log("Szenario Daten zum Speichern (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
     
     const botsToSaveAsTemplate = editableBotsConfig.filter(bot => botSaveAsTemplateFlags[bot.id]);
     if (botsToSaveAsTemplate.length > 0) {
-        console.log("Bots flagged to be saved as templates:", botsToSaveAsTemplate);
+        console.log("Bots, die als Vorlage gespeichert werden sollen:", botsToSaveAsTemplate);
     }
     const rolesToSaveAsTemplate = editableHumanRoles.filter(role => roleSaveAsTemplateFlags[role.id]);
     if (rolesToSaveAsTemplate.length > 0) {
-        console.log("Roles flagged to be saved as templates:", rolesToSaveAsTemplate);
+        console.log("Rollen, die als Vorlage gespeichert werden sollen:", rolesToSaveAsTemplate);
     }
 
 
@@ -336,7 +336,7 @@ export default function EditScenarioPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
-        <Accordion type="multiple" defaultValue={["basisinfo", "botconfig", "humanroles", "metadaten", "tags", "originaldaten"]} className="w-full">
+        <Accordion type="multiple" defaultValue={["basisinfo"]} className="w-full">
 
             <AccordionItem value="basisinfo" id="basisinfo">
               <AccordionTrigger className="py-3 px-0 hover:no-underline border-b">
@@ -620,7 +620,6 @@ export default function EditScenarioPage() {
                                                     {category.tags.map(tag => (
                                                         <React.Fragment key={tag.name}> 
                                                             <Badge
-                                                                
                                                                 variant={selectedTags.includes(tag.name) ? "default" : "outline"}
                                                                 className="cursor-pointer hover:bg-primary/80 text-xs"
                                                                 onClick={() => handleTagToggle(tag.name)}
@@ -677,4 +676,3 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-

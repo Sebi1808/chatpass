@@ -29,7 +29,7 @@ export default function BotTemplateEditorPage() {
           <CardTitle>Funktionalität in Entwicklung</CardTitle>
           <CardDescription>
             Die Möglichkeit, Bot-Vorlagen direkt hier zu erstellen und zu verwalten, wird in einer zukünftigen Version implementiert.
-            Aktuell werden Bot-Vorlagen aus der Datei `src/lib/bot-templates.ts` geladen.
+            Aktuell werden Bot-Vorlagen aus der Datei `src/lib/bot-templates.ts` geladen und können im Szenario-Detail-Editor ausgewählt werden.
           </CardDescription>
         </CardHeader>
         <CardContent>
