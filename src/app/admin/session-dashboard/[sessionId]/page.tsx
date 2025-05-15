@@ -76,7 +76,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     ? `${sessionData.invitationLink}?token=${sessionData.invitationToken}`
     : "Wird generiert...";
 
-  const getBotDisplayName = (botConfig: BotConfig, scenarioBotsConfig: BotConfig[] = [], index?: number): string => {
+  const getBotDisplayName = useCallback((botConfig: BotConfig, scenarioBotsConfig: BotConfig[] = [], index?: number): string => {
     if (botConfig.name) return botConfig.name;
     const nameSuffix = scenarioBotsConfig.length > 1 && index !== undefined ? ` ${index + 1}` : "";
     switch (botConfig.personality) {
@@ -85,13 +85,13 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       case 'informant': return `Bot Informant${nameSuffix}`;
       default: return `Bot Standard${nameSuffix}`;
     }
-  };
+  }, []);
   
   const scenario = scenarios.find(s => s.id === sessionId); 
 
   const initializeBotsForSession = useCallback(async (currentScenarioToInit: Scenario, currentSessionId: string) => {
-    if (!currentScenarioToInit) {
-      console.log("Szenario nicht gefunden, Bot-Initialisierung übersprungen.");
+    if (!currentScenarioToInit || !currentScenarioToInit.defaultBotsConfig) {
+      console.log("Szenario nicht gefunden oder keine Bot-Konfiguration vorhanden, Bot-Initialisierung übersprungen.");
       return;
     }
     const scenarioBotsConfig = currentScenarioToInit.defaultBotsConfig || [];
@@ -176,7 +176,6 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     }
     await batch.commit();
     console.log("Bot initialization/update complete.");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getBotDisplayName]);
 
 
@@ -206,7 +205,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
             };
             await setDoc(sessionDocRef, newSessionData);
             setSessionData(newSessionData);
-            setPaceValue(DEFAULT_COOLDOWN);
+            // setPaceValue(DEFAULT_COOLDOWN); // This will be set by the sessionData listener
             await initializeBotsForSession(scenario, sessionId);
           } else {
             const existingData = docSnap.data() as SessionData;
@@ -225,14 +224,18 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                 updates.scenarioId = sessionId;
                 needsDbUpdate = true;
             }
+            if(typeof existingData.messageCooldownSeconds === 'undefined'){
+                updates.messageCooldownSeconds = DEFAULT_COOLDOWN;
+                needsDbUpdate = true;
+            }
 
 
             if (needsDbUpdate) {
               await updateDoc(sessionDocRef, updates);
             }
             
-            setSessionData(prev => ({...prev, ...existingData, ...updates})); 
-            setPaceValue(existingData.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
+            // setSessionData(prev => ({...prev, ...existingData, ...updates})); // Let onSnapshot handle this
+            // setPaceValue(existingData.messageCooldownSeconds ?? DEFAULT_COOLDOWN); // Let onSnapshot handle this
             await initializeBotsForSession(scenario, sessionId); 
           }
         } catch (error) {
@@ -248,8 +251,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       setSessionData(null); 
       toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} nicht gefunden.`})
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, toast, initializeBotsForSession]); 
+  }, [sessionId, toast, initializeBotsForSession, scenario, getBotDisplayName]); 
 
 
   useEffect(() => {
@@ -259,7 +261,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       if (docSnap.exists()) {
         const data = docSnap.data() as SessionData;
         setSessionData(data);
-        setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
+        setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN); // Ensure paceValue is updated from Firestore
       } else {
         setSessionData(null);
       }
@@ -276,14 +278,12 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    // Remove Firestore based sorting to avoid index error, sort client-side instead
     const participantsQuery = query(participantsColRef); 
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
-      // Client-side sorting
       fetchedParticipants.sort((a, b) => {
         if (a.isBot && !b.isBot) return -1;
         if (!a.isBot && b.isBot) return 1;
@@ -329,11 +329,12 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     return () => unsubscribeMessages();
   }, [sessionId, showParticipantMirrorView]);
 
- useEffect(() => {
-    if (!showParticipantMirrorView && chatMessagesEndRef.current) {
-      chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [chatMessages, showParticipantMirrorView]);
+ // Removed the useEffect that auto-scrolled the admin chat preview
+ // useEffect(() => {
+ //   if (!showParticipantMirrorView && chatMessagesEndRef.current) {
+ //     chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+ //   }
+ // }, [chatMessages, showParticipantMirrorView]);
 
 
   const copyToClipboard = () => {
@@ -473,18 +474,20 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     }
   };
 
-  const handlePaceChange = async (newPace: number[]) => {
+  const handlePaceChange = async (newPaceValues: number[]) => {
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
-    const newCooldown = newPace[0];
-    setPaceValue(newCooldown); 
+    const newCooldown = newPaceValues[0];
+    // No need to call setPaceValue here as it's driven by sessionData effect
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { messageCooldownSeconds: newCooldown });
+      // Toast can be added here if desired, but the slider updating from Firestore is the main feedback
     } catch (error) {
       console.error("Error updating pace: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Pace konnte nicht angepasst werden." });
     }
   };
+  
 
   const handleMuteAllUsers = async () => {
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
@@ -957,8 +960,8 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                             value={[paceValue]}
                             max={30} step={1}
                             id="pace-slider"
-                            onValueChange={(value) => setPaceValue(value[0])}
-                            onValueCommit={handlePaceChange}
+                            onValueChange={(value) => setPaceValue(value[0])} // Optimistic UI update
+                            onValueCommit={handlePaceChange} // Update Firestore on commit
                             disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}
                         />
                     </div>
@@ -1159,3 +1162,6 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     </div>
   );
 }
+
+
+    
