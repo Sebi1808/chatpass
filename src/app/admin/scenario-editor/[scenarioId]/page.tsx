@@ -248,7 +248,7 @@ export default function EditScenarioPage() {
       </div>
 
       {/* Sticky Shortcut Navigation Bar */}
-      <div className="sticky top-20 z-10 bg-background/90 backdrop-blur-sm border-b px-4 py-2 mb-6 overflow-x-auto whitespace-nowrap">
+      <div className="sticky top-[calc(theme(spacing.16)_+_1px)] md:top-[calc(theme(spacing.16)_-_1px)] z-10 bg-background/90 backdrop-blur-sm border-b px-4 py-2 mb-6 overflow-x-auto whitespace-nowrap">
         <div className="flex items-center space-x-1">
           {editorSections.map(section => (
             <Button key={section.id} asChild variant="ghost" size="sm" className="px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
@@ -480,12 +480,12 @@ export default function EditScenarioPage() {
                 </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="tags" id="tags">
+            <AccordionItem value="tags" id="tags" className="w-full">
                 <AccordionTrigger className="px-0 hover:no-underline">
                     <CardTitle className="text-lg flex items-center"><TagsIcon className="mr-2 h-5 w-5 text-primary"/>Themen-Tags</CardTitle>
                 </AccordionTrigger>
                 <AccordionContent>
-                     <Card className="border-none shadow-none">
+                     <Card className="border-none shadow-none w-full">
                         <CardHeader className="pt-2 pb-4 px-1">
                             <CardDescription>Weisen Sie dem Szenario passende Tags zu, um es besser kategorisieren zu können.</CardDescription>
                         </CardHeader>
@@ -519,8 +519,9 @@ export default function EditScenarioPage() {
                                             <AccordionContent className="pt-1 pb-2 pl-2">
                                                 <div className="flex flex-wrap gap-2">
                                                     {category.tags.map(tag => (
-                                                        <React.Fragment key={tag.name}>
+                                                        <>
                                                             <Badge
+                                                                key={tag.name}
                                                                 variant={selectedTags.includes(tag.name) ? "default" : "outline"}
                                                                 className="cursor-pointer hover:bg-primary/80 text-xs"
                                                                 onClick={() => handleTagToggle(tag.name)}
@@ -539,7 +540,7 @@ export default function EditScenarioPage() {
                                                                     {subTag.name}
                                                                 </Badge>
                                                             ))}
-                                                        </React.Fragment>
+                                                        </>
                                                     ))}
                                                 </div>
                                             </AccordionContent>
