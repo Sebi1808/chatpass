@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot, Users as UsersIconLucide, Settings as SettingsIcon, Database } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
@@ -22,7 +22,6 @@ import { tagTaxonomy } from '@/lib/tag-taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import Image from 'next/image';
-
 
 const availableIcons = [
     { value: 'ShieldAlert', label: '🛡️ ShieldAlert' },
@@ -37,6 +36,15 @@ const availableIcons = [
     { value: 'ImageIcon', label: '🖼️ ImageIcon (Default)'}
 ];
 
+const editorSections = [
+  { id: "basisinfo", label: "Basisinfos", icon: <FileText className="mr-2 h-4 w-4" /> },
+  { id: "botconfig", label: "Bot-Konfiguration", icon: <Bot className="mr-2 h-4 w-4" /> },
+  { id: "humanroles", label: "Menschliche Rollen", icon: <UsersIconLucide className="mr-2 h-4 w-4" /> },
+  { id: "metadaten", label: "Metadaten", icon: <SettingsIcon className="mr-2 h-4 w-4" /> },
+  { id: "tags", label: "Themen-Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
+  { id: "originaldaten", label: "Originaldaten", icon: <Database className="mr-2 h-4 w-4" /> },
+];
+
 export default function EditScenarioPage() {
   const params = useParams();
   const router = useRouter();
@@ -49,9 +57,8 @@ export default function EditScenarioPage() {
   const [langbeschreibung, setLangbeschreibung] = useState('');
   const [lernziele, setLernziele] = useState('');
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
-  const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value); // Default to ImageIcon
+  const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length -1].value);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-
 
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
@@ -75,7 +82,7 @@ export default function EditScenarioPage() {
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
       } else {
-        setCurrentScenario(null); // Scenario not found
+        setCurrentScenario(null);
       }
     }
     setIsLoading(false);
@@ -107,7 +114,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableBotsConfig([...editableBotsConfig, {
         ...template,
-        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for scenario instance
+        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       }]);
     }
   };
@@ -138,7 +145,7 @@ export default function EditScenarioPage() {
     if (template) {
       setEditableHumanRoles([...editableHumanRoles, {
         ...template,
-        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for scenario instance
+        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       }]);
     }
   };
@@ -156,14 +163,13 @@ export default function EditScenarioPage() {
     );
   };
 
-
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentScenario) return;
     setIsSaving(true);
 
     const updatedScenarioData: Scenario = {
-      ...currentScenario, // Preserve other fields like id
+      ...currentScenario,
       title,
       kurzbeschreibung,
       langbeschreibung,
@@ -174,22 +180,18 @@ export default function EditScenarioPage() {
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
       defaultBots: editableBotsConfig.length,
-      standardRollen: editableBotsConfig.length + editableHumanRoles.length, // Ensure this is correctly calculated
+      standardRollen: editableBotsConfig.length + editableHumanRoles.length,
     };
 
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
-    // Simulate saving to a database or updating a global state
-    // For now, we just log to console and show a toast
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
         description: `Änderungen für "${title}" wurden in der Konsole geloggt. In einer echten Anwendung würden sie in einer Datenbank gespeichert.`,
       });
       setIsSaving(false);
-      // Optional: Update currentScenario state to reflect saved data if not redirecting
-      // setCurrentScenario(updatedScenarioData);
     }, 1000);
   };
 
@@ -223,7 +225,7 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-6">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
             <NotebookPen className="mr-3 h-6 w-6" />
@@ -245,287 +247,337 @@ export default function EditScenarioPage() {
         </div>
       </div>
 
+      {/* Sticky Shortcut Navigation Bar */}
+      <div className="sticky top-20 z-10 bg-background/90 backdrop-blur-sm border-b px-4 py-2 mb-6 overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center space-x-1">
+          {editorSections.map(section => (
+            <Button key={section.id} asChild variant="ghost" size="sm" className="px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
+              <a href={`#${section.id}`}>
+                {section.icon}
+                {section.label}
+              </a>
+            </Button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+        <div className="space-y-6">
+          <Accordion type="multiple" defaultValue={["basisinfo", "botconfig", "humanroles", "metadaten", "tags", "originaldaten"]} className="w-full">
 
-          {/* Linke Spalte: Basisinfos, Bots, Menschliche Rollen */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Basisinformationen</CardTitle>
-                <CardDescription>
-                  Grundlegende Details und Beschreibungen des Szenarios.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-1.5">
-                  <Label htmlFor="title">Titel des Szenarios</Label>
-                  <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ein prägnanter Titel" disabled={isSaving}/>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="kurzbeschreibung">Kurzbeschreibung (für Übersichtskarten)</Label>
-                  <Textarea id="kurzbeschreibung" value={kurzbeschreibung} onChange={(e) => setKurzbeschreibung(e.target.value)} placeholder="Eine kurze Zusammenfassung (ca. 1-2 Sätze)." rows={3} disabled={isSaving}/>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="langbeschreibung">Langbeschreibung / Szenariokontext (für Simulation)</Label>
-                  <Textarea id="langbeschreibung" value={langbeschreibung} onChange={(e) => setLangbeschreibung(e.target.value)} placeholder="Ausführliche Beschreibung der Ausgangslage, Thema, beteiligte Akteure etc. Dies ist der Hauptkontext für die Simulation und die Bots." rows={10} className="min-h-[200px] md:min-h-[250px]" disabled={isSaving}/>
-                  <p className="text-xs text-muted-foreground">Markdown-Formatierung wird später unterstützt.</p>
-                </div>
-                 <div className="space-y-1.5">
-                  <Label htmlFor="lernziele">Lernziele (ein Ziel pro Zeile)</Label>
-                  <Textarea id="lernziele" value={lernziele} onChange={(e) => setLernziele(e.target.value)} placeholder="Was sollen die Teilnehmenden lernen?&#10;- Ziel 1&#10;- Ziel 2" rows={5} className="min-h-[100px]" disabled={isSaving}/>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                    <CardTitle>Bot-Konfiguration</CardTitle>
-                    <CardDescription>Standard-Bots für dieses Szenario. (ID: {currentScenario.id})</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                    <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving}>
-                        <SelectTrigger className="w-[230px] text-sm h-9">
-                            <SelectValue placeholder="Bot aus Vorlage wählen..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {botTemplates.map(template => (
-                                <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Button type="button" size="sm" variant="outline" onClick={handleAddBot} disabled={isSaving}>
-                        <PlusCircle className="mr-2 h-4 w-4" /> Bot manuell
-                    </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {editableBotsConfig.length > 0 ? (
-                  editableBotsConfig.map((bot, index) => (
-                    <Card key={bot.id || `bot-${index}`} className="p-4 bg-muted/20">
-                      <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
-                        <CardTitle className="text-md">Bot {index + 1} (ID: <span className="font-mono text-xs">{bot.id}</span>)</CardTitle>
-                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveBot(index)} disabled={isSaving}>
-                            <Trash2 className="h-4 w-4"/>
-                        </Button>
-                      </CardHeader>
-                      <CardContent className="p-0 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label htmlFor={`bot-name-${index}`}>Anzeigename</Label>
-                          <Input id={`bot-name-${index}`} value={bot.name || ''} onChange={(e) => handleBotConfigChange(index, 'name', e.target.value)} placeholder="z.B. Bot Kevin" disabled={isSaving}/>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor={`bot-personality-${index}`}>Persönlichkeit</Label>
-                          <Select value={bot.personality} onValueChange={(value) => handleBotConfigChange(index, 'personality', value)} disabled={isSaving}>
-                            <SelectTrigger id={`bot-personality-${index}`}>
-                              <SelectValue placeholder="Persönlichkeit wählen" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="standard">Standard</SelectItem>
-                              <SelectItem value="provokateur">Provokateur</SelectItem>
-                              <SelectItem value="verteidiger">Verteidiger</SelectItem>
-                              <SelectItem value="informant">Informant</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor={`bot-avatar-${index}`}>Avatar Kürzel (max. 2 Zeichen)</Label>
-                          <Input id={`bot-avatar-${index}`} value={bot.avatarFallback || ''} onChange={(e) => handleBotConfigChange(index, 'avatarFallback', e.target.value.substring(0,2))} placeholder="BK" maxLength={2} disabled={isSaving}/>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label htmlFor={`bot-escalation-${index}`}>Initiale Eskalation (0-3)</Label>
-                          <Input id={`bot-escalation-${index}`} type="number" min="0" max="3" value={bot.currentEscalation ?? 0} onChange={(e) => handleBotConfigChange(index, 'currentEscalation', parseInt(e.target.value, 10))} disabled={isSaving}/>
-                        </div>
-                        <div className="space-y-1.5 md:col-span-2">
-                           <Label htmlFor={`bot-initialMission-${index}`}>Initiale Mission/Anweisung</Label>
-                           <Textarea id={`bot-initialMission-${index}`} value={bot.initialMission || ''} onChange={(e) => handleBotConfigChange(index, 'initialMission', e.target.value)} placeholder="Was soll der Bot zu Beginn tun oder sagen?" rows={3} disabled={isSaving}/>
-                        </div>
-                        <div className="flex items-center space-x-2 pt-2">
-                          <Switch id={`bot-isActive-${index}`} checked={bot.isActive ?? true} onCheckedChange={(checked) => handleBotConfigChange(index, 'isActive', checked)} disabled={isSaving}/>
-                          <Label htmlFor={`bot-isActive-${index}`}>Standardmäßig aktiv</Label>
-                        </div>
-                        <div className="flex items-center space-x-2 pt-2">
-                          <Switch id={`bot-autoTimer-${index}`} checked={bot.autoTimerEnabled ?? false} onCheckedChange={(checked) => handleBotConfigChange(index, 'autoTimerEnabled', checked)} disabled={isSaving}/>
-                          <Label htmlFor={`bot-autoTimer-${index}`}>Auto-Timer aktiviert (Zukunft)</Label>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                ) : (
-                  <p className="text-muted-foreground">Keine Bots für dieses Szenario konfiguriert. Fügen Sie einen Bot manuell oder aus einer Vorlage hinzu.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                    <CardTitle>Rollen für menschliche Teilnehmer</CardTitle>
-                    <CardDescription>Definition der Rollen, ihrer Ziele und Informationen.</CardDescription>
-                </div>
-                 <div className="flex gap-2">
-                    <Select onValueChange={handleAddHumanRoleFromTemplate} disabled={isSaving}>
-                        <SelectTrigger className="w-[230px] text-sm h-9">
-                            <SelectValue placeholder="Rolle aus Vorlage wählen..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {humanRoleTemplates.map(template => (
-                                <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Button type="button" size="sm" variant="outline" onClick={handleAddHumanRole} disabled={isSaving}>
-                        <PlusCircle className="mr-2 h-4 w-4" /> Rolle manuell
-                    </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {editableHumanRoles.length > 0 ? (
-                  editableHumanRoles.map((role, index) => (
-                    <Card key={role.id || `role-${index}`} className="p-4 bg-muted/20">
-                       <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
-                        <CardTitle className="text-md">Rolle {index + 1} (ID: <span className="font-mono text-xs">{role.id}</span>)</CardTitle>
-                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveHumanRole(index)} disabled={isSaving}>
-                            <Trash2 className="h-4 w-4"/>
-                        </Button>
-                      </CardHeader>
-                      <CardContent className="p-0 space-y-4">
-                        <div className="space-y-1.5">
-                            <Label htmlFor={`role-name-${index}`}>Rollenname</Label>
-                            <Input id={`role-name-${index}`} value={role.name} onChange={(e) => handleHumanRoleChange(index, 'name', e.target.value)} placeholder="z.B. Angegriffene Person" disabled={isSaving}/>
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label htmlFor={`role-description-${index}`}>Rollenbeschreibung (Ziele, Infos etc.)</Label>
-                            <Textarea id={`role-description-${index}`} value={role.description} onChange={(e) => handleHumanRoleChange(index, 'description', e.target.value)} placeholder="Detailbeschreibung der Rolle, ihrer Ziele, Startinformationen, geheime Infos etc. Dies wird dem Teilnehmer angezeigt." rows={8} className="min-h-[150px]" disabled={isSaving}/>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
-                ) : (
-                     <p className="text-muted-foreground">Keine menschlichen Rollen für dieses Szenario konfiguriert. Fügen Sie eine Rolle manuell oder aus einer Vorlage hinzu.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Rechte Spalte: Metadaten, Tags, Originaldaten */}
-          <div className="space-y-6 lg:space-y-8">
-              <Card>
-                  <CardHeader>
-                  <CardTitle>Szenario-Metadaten</CardTitle>
-                  <CardDescription>Weitere Einstellungen wie Icon und Vorschaubild.</CardDescription>
+            <AccordionItem value="basisinfo" id="basisinfo">
+              <AccordionTrigger className="px-0 hover:no-underline">
+                <CardTitle className="text-lg flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Basisinformationen</CardTitle>
+              </AccordionTrigger>
+              <AccordionContent>
+                <Card className="border-none shadow-none">
+                  <CardHeader className="pt-2 pb-4 px-1">
+                    <CardDescription>
+                      Grundlegende Details und Beschreibungen des Szenarios.
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                      <div className="space-y-1.5">
-                          <Label htmlFor="previewImageUrlInput">Vorschaubild URL</Label>
-                          <Input id="previewImageUrlInput" value={previewImageUrlInput} onChange={(e) => setPreviewImageUrlInput(e.target.value)} placeholder="https://beispiel.com/bild.png" disabled={isSaving} className="mt-1"/>
-                          <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild, das in der Szenario-Übersicht angezeigt wird.</p>
-                      </div>
-                      <div className="space-y-1.5">
-                          <Label htmlFor="iconNameInput">Icon Name (aus Lucide-React)</Label>
-                          <Select value={iconNameInput} onValueChange={setIconNameInput} disabled={isSaving}>
-                            <SelectTrigger id="iconNameInput" className="mt-1">
-                                <SelectValue placeholder="Icon wählen..." />
+                  <CardContent className="space-y-6 px-1">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="title">Titel des Szenarios</Label>
+                      <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ein prägnanter Titel" disabled={isSaving}/>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="kurzbeschreibung">Kurzbeschreibung (für Übersichtskarten)</Label>
+                      <Textarea id="kurzbeschreibung" value={kurzbeschreibung} onChange={(e) => setKurzbeschreibung(e.target.value)} placeholder="Eine kurze Zusammenfassung (ca. 1-2 Sätze)." rows={3} disabled={isSaving}/>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="langbeschreibung">Langbeschreibung / Szenariokontext (für Simulation)</Label>
+                      <Textarea id="langbeschreibung" value={langbeschreibung} onChange={(e) => setLangbeschreibung(e.target.value)} placeholder="Ausführliche Beschreibung der Ausgangslage, Thema, beteiligte Akteure etc. Dies ist der Hauptkontext für die Simulation und die Bots." rows={10} className="min-h-[200px] md:min-h-[250px]" disabled={isSaving}/>
+                      <p className="text-xs text-muted-foreground">Markdown-Formatierung wird später unterstützt.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="lernziele">Lernziele (ein Ziel pro Zeile)</Label>
+                      <Textarea id="lernziele" value={lernziele} onChange={(e) => setLernziele(e.target.value)} placeholder="Was sollen die Teilnehmenden lernen?&#10;- Ziel 1&#10;- Ziel 2" rows={5} className="min-h-[100px]" disabled={isSaving}/>
+                    </div>
+                  </CardContent>
+                </Card>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="botconfig" id="botconfig">
+              <AccordionTrigger className="px-0 hover:no-underline">
+                <CardTitle className="text-lg flex items-center"><Bot className="mr-2 h-5 w-5 text-primary"/>Bot-Konfiguration</CardTitle>
+              </AccordionTrigger>
+              <AccordionContent>
+                <Card className="border-none shadow-none">
+                  <CardHeader className="pt-2 pb-4 px-1 flex flex-row items-center justify-between">
+                    <div>
+                        <CardDescription>Standard-Bots für dieses Szenario. (ID: {currentScenario.id})</CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                        <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving}>
+                            <SelectTrigger className="w-[230px] text-sm h-9">
+                                <SelectValue placeholder="Bot aus Vorlage wählen..." />
                             </SelectTrigger>
                             <SelectContent>
-                                {availableIcons.map(icon => (
-                                    <SelectItem key={icon.value} value={icon.value}>{icon.label}</SelectItem>
+                                {botTemplates.map(template => (
+                                    <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
                                 ))}
                             </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground mt-1">Wählen Sie ein passendes Icon für das Szenario.</p>
-                      </div>
-                       <div className="space-y-1.5">
-                          <Label htmlFor="standardRollenGesamt">Standard-Rollenzahl (gesamt)</Label>
-                          <Input id="standardRollenGesamt" type="number" value={editableBotsConfig.length + editableHumanRoles.length} disabled className="mt-1 bg-muted/80"/>
-                          <p className="text-xs text-muted-foreground mt-1">Wird automatisch aus Bot-Anzahl und menschlichen Rollen berechnet.</p>
-                      </div>
-                  </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center"><TagsIcon className="mr-2 h-5 w-5" />Themen-Tags</CardTitle>
-                    <CardDescription>Weisen Sie dem Szenario passende Tags zu.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="mb-4">
-                        <Label>Ausgewählte Tags:</Label>
-                        {selectedTags.length > 0 ? (
-                            <div className="flex flex-wrap gap-2 mt-2">
-                                {selectedTags.map(tag => (
-                                    <Badge key={tag} variant="secondary" className="cursor-pointer hover:bg-destructive/80 hover:text-destructive-foreground" onClick={() => handleTagToggle(tag)}>
-                                        {tag} <Trash2 className="ml-1.5 h-3 w-3" />
-                                    </Badge>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-xs text-muted-foreground mt-1">Keine Tags ausgewählt.</p>
-                        )}
+                        </Select>
+                        <Button type="button" size="sm" variant="outline" onClick={handleAddBot} disabled={isSaving}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Bot manuell
+                        </Button>
                     </div>
-                    <Separator className="my-4" />
-                    <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
-                    <Accordion type="multiple" className="w-full mt-2">
-                        {tagTaxonomy.map((category, catIndex) => (
-                            <AccordionItem value={`category-${catIndex}`} key={category.categoryName}>
-                                <AccordionTrigger className="text-sm font-medium py-2">
-                                    {category.emoji && <span className="mr-2">{category.emoji}</span>}
-                                    {category.categoryName}
-                                </AccordionTrigger>
-                                <AccordionContent className="pt-1 pb-2 pl-2">
-                                    <div className="flex flex-wrap gap-2">
-                                        {category.tags.map(tag => (
-                                            <>
-                                                <Badge
-                                                    key={tag.name}
-                                                    variant={selectedTags.includes(tag.name) ? "default" : "outline"}
-                                                    className="cursor-pointer hover:bg-primary/80"
-                                                    onClick={() => handleTagToggle(tag.name)}
-                                                >
-                                                    {tag.emoji && <span className="mr-1.5">{tag.emoji}</span>}
-                                                    {tag.name}
-                                                </Badge>
-                                                {/* For now, only display first-level subTags. Deeper nesting UI later. */}
-                                                {tag.subTags && tag.subTags.slice(0,5).map(subTag => (
-                                                     <Badge
-                                                        key={subTag.name}
-                                                        variant={selectedTags.includes(subTag.name) ? "default" : "outline"}
-                                                        className="cursor-pointer hover:bg-primary/80 ml-2 text-xs"
-                                                        onClick={() => handleTagToggle(subTag.name)}
-                                                    >
-                                                        {subTag.emoji && <span className="mr-1">{subTag.emoji}</span>}
-                                                        {subTag.name}
-                                                    </Badge>
-                                                ))}
-                                                {tag.subTags && tag.subTags.length > 5 && <span className="text-xs text-muted-foreground ml-2">...</span>}
-                                            </>
+                  </CardHeader>
+                  <CardContent className="space-y-6 px-1">
+                    {editableBotsConfig.length > 0 ? (
+                      editableBotsConfig.map((bot, index) => (
+                        <Card key={bot.id || `bot-${index}`} className="p-4 bg-muted/20">
+                          <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
+                            <CardTitle className="text-md">Bot {index + 1} (ID: <span className="font-mono text-xs">{bot.id}</span>)</CardTitle>
+                            <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveBot(index)} disabled={isSaving}>
+                                <Trash2 className="h-4 w-4"/>
+                            </Button>
+                          </CardHeader>
+                          <CardContent className="p-0 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`bot-name-${index}`}>Anzeigename</Label>
+                              <Input id={`bot-name-${index}`} value={bot.name || ''} onChange={(e) => handleBotConfigChange(index, 'name', e.target.value)} placeholder="z.B. Bot Kevin" disabled={isSaving}/>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`bot-personality-${index}`}>Persönlichkeit</Label>
+                              <Select value={bot.personality} onValueChange={(value) => handleBotConfigChange(index, 'personality', value)} disabled={isSaving}>
+                                <SelectTrigger id={`bot-personality-${index}`}>
+                                  <SelectValue placeholder="Persönlichkeit wählen" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="standard">Standard</SelectItem>
+                                  <SelectItem value="provokateur">Provokateur</SelectItem>
+                                  <SelectItem value="verteidiger">Verteidiger</SelectItem>
+                                  <SelectItem value="informant">Informant</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`bot-avatar-${index}`}>Avatar Kürzel (max. 2 Zeichen)</Label>
+                              <Input id={`bot-avatar-${index}`} value={bot.avatarFallback || ''} onChange={(e) => handleBotConfigChange(index, 'avatarFallback', e.target.value.substring(0,2))} placeholder="BK" maxLength={2} disabled={isSaving}/>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label htmlFor={`bot-escalation-${index}`}>Initiale Eskalation (0-3)</Label>
+                              <Input id={`bot-escalation-${index}`} type="number" min="0" max="3" value={bot.currentEscalation ?? 0} onChange={(e) => handleBotConfigChange(index, 'currentEscalation', parseInt(e.target.value, 10))} disabled={isSaving}/>
+                            </div>
+                            <div className="space-y-1.5 md:col-span-2">
+                               <Label htmlFor={`bot-initialMission-${index}`}>Initiale Mission/Anweisung</Label>
+                               <Textarea id={`bot-initialMission-${index}`} value={bot.initialMission || ''} onChange={(e) => handleBotConfigChange(index, 'initialMission', e.target.value)} placeholder="Was soll der Bot zu Beginn tun oder sagen?" rows={3} disabled={isSaving}/>
+                            </div>
+                            <div className="flex items-center space-x-2 pt-2">
+                              <Switch id={`bot-isActive-${index}`} checked={bot.isActive ?? true} onCheckedChange={(checked) => handleBotConfigChange(index, 'isActive', checked)} disabled={isSaving}/>
+                              <Label htmlFor={`bot-isActive-${index}`}>Standardmäßig aktiv</Label>
+                            </div>
+                            <div className="flex items-center space-x-2 pt-2">
+                              <Switch id={`bot-autoTimer-${index}`} checked={bot.autoTimerEnabled ?? false} onCheckedChange={(checked) => handleBotConfigChange(index, 'autoTimerEnabled', checked)} disabled={isSaving}/>
+                              <Label htmlFor={`bot-autoTimer-${index}`}>Auto-Timer aktiviert (Zukunft)</Label>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground">Keine Bots für dieses Szenario konfiguriert. Fügen Sie einen Bot manuell oder aus einer Vorlage hinzu.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="humanroles" id="humanroles">
+              <AccordionTrigger className="px-0 hover:no-underline">
+                 <CardTitle className="text-lg flex items-center"><UsersIconLucide className="mr-2 h-5 w-5 text-primary"/>Rollen für menschliche Teilnehmer</CardTitle>
+              </AccordionTrigger>
+              <AccordionContent>
+                <Card className="border-none shadow-none">
+                    <CardHeader className="pt-2 pb-4 px-1 flex flex-row items-center justify-between">
+                        <div>
+                            <CardDescription>Definition der Rollen, ihrer Ziele und Informationen.</CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                            <Select onValueChange={handleAddHumanRoleFromTemplate} disabled={isSaving}>
+                                <SelectTrigger className="w-[230px] text-sm h-9">
+                                    <SelectValue placeholder="Rolle aus Vorlage wählen..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {humanRoleTemplates.map(template => (
+                                        <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Button type="button" size="sm" variant="outline" onClick={handleAddHumanRole} disabled={isSaving}>
+                                <PlusCircle className="mr-2 h-4 w-4" /> Rolle manuell
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6 px-1">
+                        {editableHumanRoles.length > 0 ? (
+                        editableHumanRoles.map((role, index) => (
+                            <Card key={role.id || `role-${index}`} className="p-4 bg-muted/20">
+                            <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
+                                <CardTitle className="text-md">Rolle {index + 1} (ID: <span className="font-mono text-xs">{role.id}</span>)</CardTitle>
+                                <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveHumanRole(index)} disabled={isSaving}>
+                                    <Trash2 className="h-4 w-4"/>
+                                </Button>
+                            </CardHeader>
+                            <CardContent className="p-0 space-y-4">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor={`role-name-${index}`}>Rollenname</Label>
+                                    <Input id={`role-name-${index}`} value={role.name} onChange={(e) => handleHumanRoleChange(index, 'name', e.target.value)} placeholder="z.B. Angegriffene Person" disabled={isSaving}/>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor={`role-description-${index}`}>Rollenbeschreibung (Ziele, Infos etc.)</Label>
+                                    <Textarea id={`role-description-${index}`} value={role.description} onChange={(e) => handleHumanRoleChange(index, 'description', e.target.value)} placeholder="Detailbeschreibung der Rolle, ihrer Ziele, Startinformationen, geheime Infos etc. Dies wird dem Teilnehmer angezeigt." rows={8} className="min-h-[150px]" disabled={isSaving}/>
+                                </div>
+                            </CardContent>
+                            </Card>
+                        ))
+                        ) : (
+                            <p className="text-muted-foreground">Keine menschlichen Rollen für dieses Szenario konfiguriert. Fügen Sie eine Rolle manuell oder aus einer Vorlage hinzu.</p>
+                        )}
+                    </CardContent>
+                </Card>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="metadaten" id="metadaten">
+                <AccordionTrigger className="px-0 hover:no-underline">
+                    <CardTitle className="text-lg flex items-center"><SettingsIcon className="mr-2 h-5 w-5 text-primary"/>Szenario-Metadaten</CardTitle>
+                </AccordionTrigger>
+                <AccordionContent>
+                    <Card className="border-none shadow-none">
+                        <CardHeader className="pt-2 pb-4 px-1">
+                            <CardDescription>Weitere Einstellungen wie Icon und Vorschaubild.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6 px-1">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="previewImageUrlInput">Vorschaubild URL</Label>
+                                <Input id="previewImageUrlInput" value={previewImageUrlInput} onChange={(e) => setPreviewImageUrlInput(e.target.value)} placeholder="https://beispiel.com/bild.png" disabled={isSaving} className="mt-1"/>
+                                <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild, das in der Szenario-Übersicht angezeigt wird.</p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="previewImageUpload">Oder Bild hochladen (Zukunft)</Label>
+                                <Input id="previewImageUpload" type="file" disabled={isSaving} className="mt-1"/>
+                                <p className="text-xs text-muted-foreground mt-1">Funktion zum Hochladen von Vorschaubildern wird später implementiert.</p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="iconNameInput">Icon Name (aus Lucide-React)</Label>
+                                <Select value={iconNameInput} onValueChange={setIconNameInput} disabled={isSaving}>
+                                <SelectTrigger id="iconNameInput" className="mt-1">
+                                    <SelectValue placeholder="Icon wählen..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableIcons.map(icon => (
+                                        <SelectItem key={icon.value} value={icon.value}>{icon.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground mt-1">Wählen Sie ein passendes Icon für das Szenario.</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="tags" id="tags">
+                <AccordionTrigger className="px-0 hover:no-underline">
+                    <CardTitle className="text-lg flex items-center"><TagsIcon className="mr-2 h-5 w-5 text-primary"/>Themen-Tags</CardTitle>
+                </AccordionTrigger>
+                <AccordionContent>
+                     <Card className="border-none shadow-none">
+                        <CardHeader className="pt-2 pb-4 px-1">
+                            <CardDescription>Weisen Sie dem Szenario passende Tags zu, um es besser kategorisieren zu können.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="px-1">
+                            <div className="mb-4">
+                                <Label>Ausgewählte Tags:</Label>
+                                {selectedTags.length > 0 ? (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {selectedTags.map(tag => (
+                                            <Badge key={tag} variant="secondary" className="cursor-pointer hover:bg-destructive/80 hover:text-destructive-foreground text-xs" onClick={() => handleTagToggle(tag)}>
+                                                {tag} <Trash2 className="ml-1.5 h-3 w-3" />
+                                            </Badge>
                                         ))}
                                     </div>
-                                </AccordionContent>
-                            </AccordionItem>
-                        ))}
-                    </Accordion>
-                    <p className="text-xs text-muted-foreground mt-3">Das Tag-System wird weiter ausgebaut (tiefere Verschachtelung, Suche etc.).</p>
-                </CardContent>
-              </Card>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground mt-1">Keine Tags ausgewählt.</p>
+                                )}
+                            </div>
+                            <Separator className="my-4" />
+                            <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
+                            <ScrollArea className="max-h-[400px] mt-2 pr-3">
+                                <Accordion type="multiple" className="w-full">
+                                    {tagTaxonomy.map((category, catIndex) => (
+                                        <AccordionItem value={`category-${catIndex}`} key={category.categoryName}>
+                                            <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline">
+                                                <span className="flex items-center">
+                                                    {category.emoji && <span className="mr-2 text-base">{category.emoji}</span>}
+                                                    {category.categoryName}
+                                                </span>
+                                            </AccordionTrigger>
+                                            <AccordionContent className="pt-1 pb-2 pl-2">
+                                                <div className="flex flex-wrap gap-2">
+                                                    {category.tags.map(tag => (
+                                                        <React.Fragment key={tag.name}>
+                                                            <Badge
+                                                                variant={selectedTags.includes(tag.name) ? "default" : "outline"}
+                                                                className="cursor-pointer hover:bg-primary/80 text-xs"
+                                                                onClick={() => handleTagToggle(tag.name)}
+                                                            >
+                                                                {tag.emoji && <span className="mr-1.5">{tag.emoji}</span>}
+                                                                {tag.name}
+                                                            </Badge>
+                                                            {tag.subTags && tag.subTags.map(subTag => (
+                                                                <Badge
+                                                                    key={subTag.name}
+                                                                    variant={selectedTags.includes(subTag.name) ? "default" : "outline"}
+                                                                    className="cursor-pointer hover:bg-primary/80 ml-1 text-xs bg-muted/50"
+                                                                    onClick={() => handleTagToggle(subTag.name)}
+                                                                >
+                                                                    {subTag.emoji && <span className="mr-1">{subTag.emoji}</span>}
+                                                                    {subTag.name}
+                                                                </Badge>
+                                                            ))}
+                                                        </React.Fragment>
+                                                    ))}
+                                                </div>
+                                            </AccordionContent>
+                                        </AccordionItem>
+                                    ))}
+                                </Accordion>
+                            </ScrollArea>
+                            <p className="text-xs text-muted-foreground mt-3">Das Tag-System wird weiter ausgebaut (tiefere Verschachtelung, Suche etc.).</p>
+                        </CardContent>
+                    </Card>
+                </AccordionContent>
+            </AccordionItem>
 
-              <Card>
-                  <CardHeader>
-                      <CardTitle>Originaldaten (aus `scenarios.ts`)</CardTitle>
-                      <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                      <ScrollArea className="max-h-[300px] md:max-h-[400px]">
-                          <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs overflow-x-auto">
-                              {JSON.stringify(currentScenario, null, 2)}
-                          </pre>
-                      </ScrollArea>
-                  </CardContent>
-              </Card>
-          </div>
+            <AccordionItem value="originaldaten" id="originaldaten">
+                <AccordionTrigger className="px-0 hover:no-underline">
+                    <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus `scenarios.ts`)</CardTitle>
+                </AccordionTrigger>
+                <AccordionContent>
+                    <Card className="border-none shadow-none">
+                        <CardHeader className="pt-2 pb-4 px-1">
+                            <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="px-1">
+                            <ScrollArea className="max-h-[300px] md:max-h-[400px]">
+                                <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs overflow-x-auto">
+                                    {JSON.stringify(currentScenario, null, 2)}
+                                </pre>
+                            </ScrollArea>
+                        </CardContent>
+                    </Card>
+                </AccordionContent>
+            </AccordionItem>
+
+          </Accordion>
         </div>
       </div>
     </form>
   );
 }
+
+    
