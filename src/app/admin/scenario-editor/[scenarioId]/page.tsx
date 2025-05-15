@@ -26,6 +26,10 @@ export default function EditScenarioPage() {
   const [title, setTitle] = useState('');
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
+  const [rollenInput, setRollenInput] = useState('');
+
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -33,11 +37,16 @@ export default function EditScenarioPage() {
     setIsLoading(true);
     if (scenarioId) {
       const foundScenario = scenarios.find(s => s.id === scenarioId);
-      setCurrentScenario(foundScenario);
       if (foundScenario) {
+        setCurrentScenario(foundScenario);
         setTitle(foundScenario.title);
         setKurzbeschreibung(foundScenario.kurzbeschreibung);
         setLangbeschreibung(foundScenario.langbeschreibung);
+        setTagsInput(foundScenario.tags.join(', '));
+        // Placeholder for more complex role data structure in the future
+        setRollenInput(`Rollen für "${foundScenario.title}" hier definieren... (aktuell nur Textarea)`);
+      } else {
+        setCurrentScenario(undefined); // Scenario not found
       }
     }
     setIsLoading(false);
@@ -55,12 +64,13 @@ export default function EditScenarioPage() {
       title,
       kurzbeschreibung,
       langbeschreibung,
+      tags: tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag),
       // Keep other properties from original scenario for now
       defaultBots: currentScenario.defaultBots,
-      standardRollen: currentScenario.standardRollen,
+      standardRollen: currentScenario.standardRollen, // This is total roles, not human roles
       iconName: currentScenario.iconName,
-      tags: currentScenario.tags,
       defaultBotsConfig: currentScenario.defaultBotsConfig,
+      // RollenInput would be processed here in a real app
     });
 
     // Simulate saving
@@ -89,12 +99,12 @@ export default function EditScenarioPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-destructive">Szenario nicht gefunden</h1>
             <p className="text-muted-foreground mt-2">
-              Das Szenario mit der ID &quot;{scenarioId}&quot; konnte nicht gefunden werden.
+              Das Szenario mit der ID &quot;{scenarioId}&quot; konnte nicht gefunden werden oder existiert nicht in `scenarios.ts`.
             </p>
           </div>
           <Button variant="outline" onClick={() => router.push('/admin')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Zurück zu den Szenarien
+            Zurück zur Szenarienübersicht
           </Button>
         </div>
         <Separator />
@@ -103,20 +113,20 @@ export default function EditScenarioPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="flex items-center justify-between">
+    <form onSubmit={handleSubmit} className="space-y-8">
+      <div className="flex items-center justify-between sticky top-0 z-10 bg-background/80 py-4 backdrop-blur-md -mx-4 sm:-mx-6 px-4 sm:px-6 border-b mb-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">
+          <h1 className="text-2xl font-bold tracking-tight text-primary">
             Szenario bearbeiten: <span className="text-foreground">{currentScenario.title}</span>
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-sm text-muted-foreground mt-1">
             ID: {currentScenario.id}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <Button variant="outline" type="button" onClick={() => router.push('/admin')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Zurück zu den Szenarien
+            Abbrechen
           </Button>
           <Button type="submit" disabled={isSaving}>
             <Save className="mr-2 h-4 w-4" />
@@ -124,34 +134,33 @@ export default function EditScenarioPage() {
           </Button>
         </div>
       </div>
-      <Separator />
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 px-1">
+        <div className="lg:col-span-2 space-y-8">
           <Card>
             <CardHeader>
               <CardTitle>Basisinformationen</CardTitle>
               <CardDescription>
-                Grundlegende Details des Szenarios.
+                Grundlegende Details und Beschreibungen des Szenarios.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               <div className="space-y-1.5">
-                <Label htmlFor="title">Titel</Label>
+                <Label htmlFor="title">Titel des Szenarios</Label>
                 <Input 
                   id="title" 
                   value={title} 
                   onChange={(e) => setTitle(e.target.value)} 
-                  placeholder="Titel des Szenarios"
+                  placeholder="Ein prägnanter Titel"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="kurzbeschreibung">Kurzbeschreibung</Label>
+                <Label htmlFor="kurzbeschreibung">Kurzbeschreibung (für Übersichtskarten)</Label>
                 <Textarea 
                   id="kurzbeschreibung" 
                   value={kurzbeschreibung} 
                   onChange={(e) => setKurzbeschreibung(e.target.value)} 
-                  placeholder="Eine kurze Zusammenfassung für die Übersichtskarten."
+                  placeholder="Eine kurze Zusammenfassung (ca. 1-2 Sätze)."
                   rows={3}
                 />
               </div>
@@ -161,9 +170,9 @@ export default function EditScenarioPage() {
                   id="langbeschreibung" 
                   value={langbeschreibung} 
                   onChange={(e) => setLangbeschreibung(e.target.value)} 
-                  placeholder="Ausführliche Beschreibung der Ausgangslage, Thema, Lernziele etc."
-                  rows={8}
-                  className="min-h-[200px]"
+                  placeholder="Ausführliche Beschreibung der Ausgangslage, Thema, Lernziele, beteiligte Akteure etc. Dies ist der Hauptkontext für die Simulation."
+                  rows={10}
+                  className="min-h-[250px]"
                 />
               </div>
             </CardContent>
@@ -173,65 +182,97 @@ export default function EditScenarioPage() {
             <CardHeader>
               <CardTitle>Bot-Konfiguration</CardTitle>
               <CardDescription>
-                Standard-Bots für dieses Szenario. (Aktuell nur Anzeige)
+                Standard-Bots für dieses Szenario. (Aktuell nur Anzeige - Bearbeitung folgt)
               </CardDescription>
             </CardHeader>
             <CardContent>
               {currentScenario.defaultBotsConfig && currentScenario.defaultBotsConfig.length > 0 ? (
-                <ul className="space-y-3">
+                <div className="space-y-4">
                   {currentScenario.defaultBotsConfig.map((bot, index) => (
-                    <li key={bot.id || `bot-${index}`} className="p-3 border rounded-md bg-muted/50">
-                      <p className="font-semibold">Bot {index + 1}: ID <span className="font-mono text-xs bg-background p-0.5 rounded">{bot.id}</span></p>
+                    <div key={bot.id || `bot-${index}`} className="p-4 border rounded-md bg-muted/50">
+                      <p className="font-semibold text-sm">Bot {index + 1}: ID <span className="font-mono text-xs bg-background p-0.5 rounded">{bot.id}</span></p>
                       <p className="text-sm">Persönlichkeit: <span className="font-medium">{bot.personality}</span></p>
-                      {bot.name && <p className="text-sm">Name: <span className="font-medium">{bot.name}</span></p>}
-                    </li>
+                      {bot.name && <p className="text-sm">Angezeigter Name: <span className="font-medium">{bot.name}</span></p>}
+                       {bot.avatarFallback && <p className="text-sm">Avatar Kürzel: <span className="font-medium">{bot.avatarFallback}</span></p>}
+                       {typeof bot.currentEscalation === 'number' && <p className="text-sm">Initiale Eskalation: <span className="font-medium">{bot.currentEscalation}</span></p>}
+                       {typeof bot.isActive === 'boolean' && <p className="text-sm">Standardmäßig aktiv: <span className="font-medium">{bot.isActive ? 'Ja' : 'Nein'}</span></p>}
+                    </div>
                   ))}
-                </ul>
+                </div>
               ) : (
                 <p className="text-muted-foreground">Keine Standard-Bots für dieses Szenario konfiguriert.</p>
               )}
-              <p className="mt-4 text-sm text-orange-500">Die Bearbeitung von Bot-Konfigurationen ist hier noch nicht implementiert.</p>
+              <p className="mt-4 text-xs text-orange-500">Die detaillierte Bearbeitung von Bots (Hinzufügen, Ändern, Löschen) wird in einem zukünftigen Schritt implementiert.</p>
             </CardContent>
           </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle>Rollen für menschliche Teilnehmer</CardTitle>
+              <CardDescription>
+                Definition der Rollen, ihrer Ziele und Informationen. (Aktuell Platzhalter)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-1.5">
+                    <Label htmlFor="rollenInput">Rollenbeschreibungen und -konfiguration</Label>
+                    <Textarea 
+                    id="rollenInput" 
+                    value={rollenInput} 
+                    onChange={(e) => setRollenInput(e.target.value)} 
+                    placeholder="Definieren Sie hier die Rollen, z.B.:&#10;Rolle: Angegriffene Person&#10;Beschreibung: Du postest folgendes Bild...&#10;---&#10;Rolle: Hater*in&#10;Beschreibung: Deine Aufgabe ist es..."
+                    rows={12}
+                    className="min-h-[200px]"
+                    />
+                </div>
+                 <p className="mt-4 text-xs text-orange-500">Eine strukturierte Eingabe und Verwaltung von multiplen Rollen mit spezifischen Feldern (Name, Ziele, geheime Infos etc.) wird in einem zukünftigen Schritt implementiert.</p>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
             <Card>
                 <CardHeader>
-                <CardTitle>Weitere Einstellungen</CardTitle>
+                <CardTitle>Szenario-Metadaten</CardTitle>
                 <CardDescription>
-                    Parameter wie Rollen, Tags etc. (Aktuell nur Anzeige)
+                    Weitere Einstellungen wie Icon, Tags und Standard-Rollenzahlen.
                 </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-4">
                     <div>
-                        <Label>Icon Name</Label>
-                        <Input value={currentScenario.iconName} disabled className="mt-1 bg-muted"/>
+                        <Label htmlFor="iconName">Icon Name (aus Lucide-React)</Label>
+                        <Input id="iconName" value={currentScenario.iconName} disabled className="mt-1 bg-muted/80"/>
+                         <p className="text-xs text-muted-foreground mt-1">Bearbeitung des Icons folgt später.</p>
                     </div>
                     <div>
-                        <Label>Standard Rollen (gesamt)</Label>
-                        <Input type="number" value={currentScenario.standardRollen} disabled className="mt-1 bg-muted"/>
+                        <Label htmlFor="standardRollenGesamt">Standard-Rollenzahl (gesamt inkl. Bots)</Label>
+                        <Input id="standardRollenGesamt" type="number" value={currentScenario.standardRollen} disabled className="mt-1 bg-muted/80"/>
+                         <p className="text-xs text-muted-foreground mt-1">Wird später basierend auf Bot-Anzahl und menschlichen Rollen berechnet.</p>
                     </div>
-                    <div>
-                        <Label>Anzahl Default Bots</Label>
-                        <Input type="number" value={currentScenario.defaultBots} disabled className="mt-1 bg-muted"/>
+                     <div>
+                        <Label htmlFor="defaultBotsAnzahl">Anzahl Default Bots</Label>
+                        <Input id="defaultBotsAnzahl" type="number" value={currentScenario.defaultBots} disabled className="mt-1 bg-muted/80"/>
+                         <p className="text-xs text-muted-foreground mt-1">Wird aus der Bot-Konfiguration abgeleitet.</p>
                     </div>
-                    <div>
-                        <Label>Tags</Label>
-                        <div className="mt-1 p-2 border rounded-md bg-muted min-h-[40px]">
-                        {currentScenario.tags.join(', ')}
-                        </div>
+                    <div className="space-y-1.5">
+                        <Label htmlFor="tagsInput">Tags (kommagetrennt)</Label>
+                        <Input 
+                            id="tagsInput" 
+                            value={tagsInput} 
+                            onChange={(e) => setTagsInput(e.target.value)} 
+                            placeholder="Konflikt, Social Media, Fake News"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Ein Klick-basiertes Tag-System aus der Taxonomie folgt.</p>
                     </div>
-                    <p className="mt-4 text-sm text-orange-500">Die Bearbeitung dieser Einstellungen ist hier noch nicht implementiert.</p>
                 </CardContent>
             </Card>
              <Card>
                 <CardHeader>
                     <CardTitle>Originaldaten (aus `scenarios.ts`)</CardTitle>
+                     <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <pre className="mt-2 p-3 bg-muted rounded-md text-sm overflow-x-auto max-h-96">
+                    <pre className="mt-2 p-3 bg-muted rounded-md text-xs overflow-x-auto max-h-[400px]">
                         {JSON.stringify(currentScenario, null, 2)}
                     </pre>
                 </CardContent>
