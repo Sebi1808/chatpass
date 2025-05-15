@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ChatPageContent } from "@/app/chat/[sessionId]/page";
 import { generateBotMessage } from "@/ai/flows/bot-message-generator";
-import NextImage from 'next/image'; // Corrected import name
+import Image from 'next/image'; 
 import { useRouter } from 'next/navigation';
 
 
@@ -42,7 +42,7 @@ interface AdminDashboardMessage extends MessageType {
   timestampDisplay: string;
 }
 
-const DEFAULT_COOLDOWN = 0;
+const DEFAULT_COOLDOWN = 0; 
 
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
@@ -80,7 +80,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     ? `${sessionData.invitationLink}?token=${sessionData.invitationToken}`
     : "Wird generiert...";
 
-  // Effect to fetch current scenario from Firestore
   useEffect(() => {
     if (!sessionId) {
       setCurrentScenario(undefined);
@@ -106,7 +105,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     return () => unsubscribeScenario();
   }, [sessionId, toast]);
 
-  // Effect to setup/ensure the session document
   useEffect(() => {
     if (!sessionId) return;
     const sessionDocRef = doc(db, "sessions", sessionId);
@@ -147,7 +145,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     ensureSessionDocument();
   }, [sessionId, toast]);
 
-  // Effect to listen for real-time sessionData changes
   useEffect(() => {
     if (!sessionId) {
       setSessionData(null);
@@ -200,7 +197,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     const firestoreBotsMap = new Map(existingBotsSnap.docs.map(d => [d.data().botScenarioId, d.id]));
     const configBotScenarioIds = new Set(scenarioBotsConfig.map(bc => bc.id));
 
-    // Delete bots from Firestore that are no longer in scenario config
     existingBotsSnap.docs.forEach(docSnap => {
       const botData = docSnap.data();
       if (botData.botScenarioId && !configBotScenarioIds.has(botData.botScenarioId)) {
@@ -210,11 +206,11 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     });
 
     for (const [index, botConfig] of scenarioBotsConfig.entries()) {
-      if (!botConfig || typeof botConfig !== 'object' || !botConfig.id) {
-        console.error("Invalid bot configuration or missing ID:", botConfig);
-        continue;
-      }
       const botScenarioId = botConfig.id;
+      if (!botScenarioId) {
+        console.error("Bot config is missing a unique id:", botConfig);
+        continue; 
+      }
       const botDisplayName = getBotDisplayName(botConfig, scenarioBotsConfig.length, index);
       const botParticipantData: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any } = {
         userId: `bot-${botScenarioId}`,
@@ -222,7 +218,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         role: `Bot (${botConfig.personality || 'standard'})`,
         avatarFallback: botConfig.avatarFallback || (botConfig.personality || 'standard').substring(0, 2).toUpperCase(),
         isBot: true,
-        status: "Aktiv", // Bots are always "Aktiv" by default
+        status: "Aktiv", 
         botConfig: {
           ...botConfig,
           isActive: botConfig.isActive ?? true,
@@ -265,24 +261,32 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     }
   }, [getBotDisplayName, toast]);
 
-  // Effect to initialize bots when currentScenario is loaded
   useEffect(() => {
     if (currentScenario && sessionId && !isLoadingScenario && sessionData && sessionData.status !== 'ended') {
       initializeBotsForSession(currentScenario, sessionId);
     }
   }, [currentScenario, sessionId, isLoadingScenario, sessionData, initializeBotsForSession]);
 
-  // Effect to listen for real-time participant changes
   useEffect(() => {
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    const participantsQuery = query(participantsColRef, orderBy("isBot", "desc"), orderBy("joinedAt", "asc"));
+    // Query without composite index for now, sort client-side
+    const participantsQuery = query(participantsColRef, orderBy("joinedAt", "asc"));
+    
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
+      
+      // Client-side sorting: bots first, then by joinedAt (which is already Firestore-sorted)
+      fetchedParticipants.sort((a, b) => {
+        if (a.isBot && !b.isBot) return -1;
+        if (!a.isBot && b.isBot) return 1;
+        return 0; // Keep original joinedAt order for same types
+      });
+
       setSessionParticipants(fetchedParticipants);
       setIsLoadingParticipants(false);
     }, (error) => {
@@ -293,7 +297,6 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     return () => unsubscribeParticipants();
   }, [sessionId, toast]);
 
-  // Effect to listen for real-time message changes
   useEffect(() => {
     if (!sessionId || showParticipantMirrorView) {
       setIsLoadingMessages(false);
@@ -323,11 +326,9 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     return () => unsubscribeMessages();
   }, [sessionId, showParticipantMirrorView, toast]);
 
-  // Auto-scroll for admin chat preview
   useEffect(() => {
     if (!showParticipantMirrorView && adminChatPreviewEndRef.current) {
-      // Removed auto-scroll for admin preview as per user request
-      // adminChatPreviewEndRef.current.scrollIntoView({ behavior: "smooth" });
+      // Admin preview does not auto-scroll unless explicitly requested
     }
   }, [chatMessages, showParticipantMirrorView]);
 
@@ -384,7 +385,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
 
     try {
         await setDoc(sessionDocRef, sessionUpdateData, { merge: true });
-        await initializeBotsForSession(currentScenario, sessionId); // Initialize bots
+        await initializeBotsForSession(currentScenario, sessionId); 
         toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv mit neuem Link-Token." });
     } catch (error) {
         console.error("Error starting/restarting session: ", error);
@@ -427,7 +428,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
         messageCooldownSeconds: DEFAULT_COOLDOWN,
       };
       await setDoc(sessionDocRef, newSessionData);
-      await initializeBotsForSession(currentScenario, sessionId); // Re-initialize bots
+      await initializeBotsForSession(currentScenario, sessionId); 
 
       toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Neuer Link-Token generiert." });
     } catch (error) {
@@ -473,7 +474,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { messageCooldownSeconds: newCooldown });
-      // No immediate toast, paceValue state will update from onSnapshot listener
+      // Pace value state will update from onSnapshot listener
     } catch (error) {
       console.error("Error updating pace: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Pace konnte nicht angepasst werden." });
@@ -603,7 +604,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const newMessageData: MessageType = {
-        id: '',
+        id: '', // Firestore will generate this
         senderUserId: botParticipant.userId,
         senderName: botParticipant.name,
         senderType: 'bot',
@@ -760,7 +761,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                 isBot: false,
                 status: "Nicht beigetreten",
                 avatarFallback: roleConfig.name.substring(0,2).toUpperCase(),
-                joinedAt: new Timestamp(0,0),
+                joinedAt: new Timestamp(0,0), // Placeholder timestamp
             });
             placeholderIndex++;
         }
@@ -940,7 +941,7 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
                       <span className="ml-1">{msg.content}</span>
                       {msg.imageUrl &&
                         <div className="mt-1">
-                            <NextImage src={msg.imageUrl} alt="Bild im Chat" width={200} height={150} className="rounded max-w-xs max-h-32 object-contain" data-ai-hint="chat image"/>
+                            <Image src={msg.imageUrl} alt="Bild im Chat" width={200} height={150} className="rounded max-w-xs max-h-32 object-contain" data-ai-hint="chat image"/>
                         </div>
                       }
                       <span className="text-xs text-muted-foreground/70 float-right pt-1">{msg.timestampDisplay}</span>
@@ -1206,3 +1207,4 @@ export default function AdminSessionDashboardPage({ params }: AdminSessionDashbo
     </div>
   );
 }
+

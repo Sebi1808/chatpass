@@ -103,7 +103,7 @@ export default function EditScenarioPage() {
         setSelectedTags(newScenarioData.tags || []);
         setEditableBotsConfig(JSON.parse(JSON.stringify(newScenarioData.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(newScenarioData.humanRolesConfig || [])));
-        setOriginalScenarioData(null); // No original data for new scenario
+        setOriginalScenarioData(null); 
         setIsLoading(false);
         return;
       }
@@ -117,9 +117,9 @@ export default function EditScenarioPage() {
         if (scenarioSnap.exists()) {
           const foundScenario = { id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario;
           setOriginalScenarioData(foundScenario);
-          setTitle(foundScenario.title);
-          setKurzbeschreibung(foundScenario.kurzbeschreibung);
-          setLangbeschreibung(foundScenario.langbeschreibung);
+          setTitle(foundScenario.title || '');
+          setKurzbeschreibung(foundScenario.kurzbeschreibung || '');
+          setLangbeschreibung(foundScenario.langbeschreibung || '');
           setLernziele(foundScenario.lernziele?.join('\n') || '');
           setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
           setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
@@ -281,18 +281,12 @@ export default function EditScenarioPage() {
   };
 
   const handleManualTagInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (value.endsWith(',')) {
-      processManualTagInput(); 
-      setManualTagInput(''); // Clear input after processing
-    } else {
-      setManualTagInput(value);
-    }
+    setManualTagInput(e.target.value);
   };
-
+  
   const handleManualTagInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
+    if (e.key === ',' || e.key === 'Enter') {
+      e.preventDefault(); 
       processManualTagInput();
     }
   };
@@ -308,24 +302,21 @@ export default function EditScenarioPage() {
     setError(null);
 
     const scenarioDataToSave: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> & { updatedAt: Timestamp, createdAt?: Timestamp } = {
-      title,
-      kurzbeschreibung,
-      langbeschreibung,
-      lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
-      previewImageUrl: previewImageUrlInput,
-      iconName: iconNameInput,
-      status: status,
-      tags: selectedTags,
-      defaultBotsConfig: editableBotsConfig,
-      humanRolesConfig: editableHumanRoles,
+      title: title || '',
+      kurzbeschreibung: kurzbeschreibung || '',
+      langbeschreibung: langbeschreibung || '',
+      lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel) || [],
+      previewImageUrl: previewImageUrlInput || '',
+      iconName: iconNameInput || availableIcons[availableIcons.length - 1].value,
+      status: status || 'draft',
+      tags: selectedTags || [],
+      defaultBotsConfig: editableBotsConfig || [],
+      humanRolesConfig: editableHumanRoles || [],
       defaultBots: editableBotsConfig.length, 
       standardRollen: editableBotsConfig.length + editableHumanRoles.length, 
       updatedAt: Timestamp.now(),
     };
     
-    // console.log("Bots to save as template:", editableBotsConfig.filter(bot => botSaveAsTemplateFlags[bot.id]));
-    // console.log("Roles to save as template:", editableHumanRoles.filter(role => roleSaveAsTemplateFlags[role.id]));
-
     try {
       if (isNewScenario) {
         const dataWithCreationTimestamp = { ...scenarioDataToSave, createdAt: Timestamp.now() };
@@ -350,7 +341,7 @@ export default function EditScenarioPage() {
     } catch (err) {
       console.error("Error saving scenario to Firestore: ", err);
       setError("Fehler beim Speichern des Szenarios in der Datenbank.");
-      toast({ variant: "destructive", title: "Speicherfehler", description: "Szenario konnte nicht gespeichert werden."});
+      toast({ variant: "destructive", title: "Speicherfehler", description: (err as Error).message || "Szenario konnte nicht gespeichert werden."});
     } finally {
       setIsSaving(false);
     }
@@ -425,16 +416,18 @@ export default function EditScenarioPage() {
       </div>
 
       <div className="sticky top-[calc(theme(spacing.16)_-_45px)] md:top-[calc(theme(spacing.16)_-_49px)] lg:top-[calc(theme(spacing.16)_-_49px)] z-10 bg-background/90 backdrop-blur-sm border-b px-2 sm:px-4 py-2 mb-6">
-         <div className="flex items-center space-x-1 max-w-full overflow-x-auto whitespace-nowrap">
-          {editorSections.map(section => (
-            <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
-              <a href={`#${section.id}`}>
-                {section.icon}
-                <span className="hidden sm:inline ml-1">{section.label}</span>
-              </a>
-            </Button>
-          ))}
-        </div>
+         <ScrollArea orientation="horizontal" className="max-w-full">
+            <div className="flex items-center space-x-1 whitespace-nowrap">
+            {editorSections.map(section => (
+                <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
+                <a href={`#${section.id}`}>
+                    {section.icon}
+                    <span className="hidden sm:inline ml-1">{section.label}</span>
+                </a>
+                </Button>
+            ))}
+            </div>
+         </ScrollArea>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
@@ -780,10 +773,10 @@ export default function EditScenarioPage() {
               <AccordionContent className="pt-4 pb-2">
                 <Card className="border-none shadow-none">
                   <CardHeader className="p-0 pb-4">
-                    <CardDescription>Nur zur Referenz: So ist das Szenario aktuell in Firestore gespeichert.</CardDescription>
+                    <CardDescription>Nur zur Referenz während der Entwicklung.</CardDescription>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <ScrollArea className="w-full h-[200px] max-w-full" orientation="both">
+                    <ScrollArea className="w-[200px] h-[200px] max-w-full" orientation="both">
                       <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs">
                         {isLoading ? "Lade Originaldaten..." : JSON.stringify(originalScenarioData, null, 2)}
                       </pre>
@@ -798,3 +791,4 @@ export default function EditScenarioPage() {
     </form>
   );
 }
+
