@@ -91,20 +91,12 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const scenario = scenarios.find(s => s.id === sessionId); 
 
   const initializeBotsForSession = async (currentScenarioToInit: Scenario, currentSessionId: string) => {
-    if (!currentScenarioToInit || !currentScenarioToInit.defaultBotsConfig) {
-      console.log("Keine Bot-Konfiguration für dieses Szenario vorhanden oder Szenario nicht gefunden.");
-      const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
-      const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
-      const existingBotsSnap = await getDocs(existingBotsQuery);
-      if (!existingBotsSnap.empty) {
-        const batch = writeBatch(db);
-        existingBotsSnap.forEach(botDoc => batch.delete(botDoc.ref));
-        await batch.commit();
-        console.log("Alle bestehenden Bots für diese Sitzung gelöscht, da das Szenario keine Bots definiert.");
-      }
+    if (!currentScenarioToInit) {
+      console.log("Szenario nicht gefunden, Bot-Initialisierung übersprungen.");
       return;
     }
-  
+    const scenarioBotsConfig = currentScenarioToInit.defaultBotsConfig || [];
+
     const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
     const batch = writeBatch(db);
   
@@ -113,7 +105,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const firestoreBotsMap = new Map(existingBotsSnap.docs.map(doc => [doc.data().botScenarioId, doc.id]));
     const firestoreBotScenarioIdsOnDb = new Set(existingBotsSnap.docs.map(doc => doc.data().botScenarioId));
   
-    const scenarioBotsConfig = currentScenarioToInit.defaultBotsConfig || [];
     const scenarioBotConfigIds = new Set(scenarioBotsConfig.map(bc => bc.id));
   
     // Delete bots from Firestore that are no longer in the scenario config
@@ -133,7 +124,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         console.error("Ungültige Bot-Konfiguration gefunden:", botConfig);
         continue;
       }
-      const botScenarioId = botConfig.id;
+      // Ensure botConfig.id is a string; if it's a number, convert it.
+      const botScenarioId = String(botConfig.id); 
       if (!botScenarioId) {
         console.error("Bot config is missing a unique id:", botConfig);
         continue;
@@ -154,7 +146,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           autoTimerEnabled: botConfig.autoTimerEnabled ?? false,
           currentMission: botConfig.currentMission || "",
         },
-        botScenarioId: botScenarioId,
+        botScenarioId: botScenarioId, // Store the original ID from scenarios.ts
       };
   
       const existingBotDocId = firestoreBotsMap.get(botScenarioId);
@@ -178,6 +170,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             "botConfig.currentEscalation": botConfig.currentEscalation ?? existingBotData.botConfig?.currentEscalation ?? 0,
             "botConfig.autoTimerEnabled": botConfig.autoTimerEnabled ?? existingBotData.botConfig?.autoTimerEnabled ?? false,
             "botConfig.currentMission": missionToSet,
+            // Do not update botScenarioId here, it's the key
           });
           console.log(`Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
         }
@@ -284,12 +277,14 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
+    // Remove Firestore based sorting to avoid index error, sort client-side instead
     const participantsQuery = query(participantsColRef); 
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
+      // Client-side sorting
       fetchedParticipants.sort((a, b) => {
         if (a.isBot && !b.isBot) return -1;
         if (!a.isBot && b.isBot) return 1;
@@ -660,6 +655,75 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsRemovingAllParticipants(false);
     }
   };
+
+
+  const handleDownloadCsv = () => {
+    if (!chatMessages.length) {
+      toast({ title: "Keine Daten", description: "Es gibt keine Nachrichten zum Exportieren." });
+      return;
+    }
+
+    const participantMap = new Map(sessionParticipants.map(p => [p.userId, p]));
+
+    const headers = [
+      "Message ID", "Timestamp", "Sender UserID", "Sender Name", "Sender Role", "Sender Type",
+      "Content", "Image URL", "Image File Name",
+      "ReplyToMessageID", "ReplyToMessageSenderName", "ReplyToMessageContentSnippet",
+      "Reactions", "Bot Flag"
+    ];
+
+    const rows = chatMessages.map(msg => {
+      const sender = participantMap.get(msg.senderUserId);
+      const senderRole = sender ? sender.role : "Unbekannt";
+      
+      const reactionsArray = msg.reactions ? Object.entries(msg.reactions).map(([emoji, userIds]) => `${emoji}:${userIds.length}`) : [];
+      const reactionsString = reactionsArray.join(", ");
+
+      const escapeCsvField = (field: any): string => {
+        if (field === null || typeof field === 'undefined') return "";
+        let stringField = String(field);
+        if (stringField.includes(',') || stringField.includes('"') || stringField.includes('\n')) {
+          stringField = `"${stringField.replace(/"/g, '""')}"`;
+        }
+        return stringField;
+      };
+
+      return [
+        escapeCsvField(msg.id),
+        escapeCsvField(msg.timestamp instanceof Timestamp ? msg.timestamp.toDate().toLocaleString('de-DE') : String(msg.timestamp)),
+        escapeCsvField(msg.senderUserId),
+        escapeCsvField(msg.senderName),
+        escapeCsvField(senderRole),
+        escapeCsvField(msg.senderType),
+        escapeCsvField(msg.content),
+        escapeCsvField(msg.imageUrl || ""),
+        escapeCsvField(msg.imageFileName || ""),
+        escapeCsvField(msg.replyToMessageId || ""),
+        escapeCsvField(msg.replyToMessageSenderName || ""),
+        escapeCsvField(msg.replyToMessageContentSnippet || ""),
+        escapeCsvField(reactionsString),
+        escapeCsvField(msg.botFlag ? "Ja" : "Nein")
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `chatsim_session_${sessionId}_log_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast({ title: "CSV Export gestartet", description: "Der Download sollte in Kürze beginnen." });
+    } else {
+        toast({ variant: "destructive", title: "Export fehlgeschlagen", description: "Ihr Browser unterstützt diese Funktion nicht." });
+    }
+  };
+
 
 
   const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
@@ -1084,7 +1148,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                     <CardTitle className="flex items-center"><Download className="mr-2 h-5 w-5 text-primary" /> Datenexport</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <Button className="w-full" onClick={() => alert("CSV Export gestartet...")} >
+                    <Button className="w-full" onClick={handleDownloadCsv} disabled={chatMessages.length === 0}>
                         Chat-Protokoll als CSV herunterladen
                     </Button>
                 </CardContent>
@@ -1096,3 +1160,5 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
+
+    
