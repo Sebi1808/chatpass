@@ -4,10 +4,10 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2, NotebookPen, Crown } from "lucide-react";
+import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2, NotebookPen, Crown, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useRouter, useParams } from "next/navigation"; 
+import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent, useMemo, useCallback } from "react";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario, Participant as ParticipantType, Message as MessageType, SessionData, DisplayMessage, DisplayParticipant } from "@/lib/types";
@@ -52,25 +52,29 @@ interface ChatPageContentProps {
 
 const simpleHash = (str: string): number => {
   let hash = 0;
-  if (!str) return 0;
+  if (!str || str.length === 0) {
+    console.log("simpleHash: input is empty or null, returning 0");
+    return 0;
+  }
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = (hash << 5) - hash + char;
     hash |= 0; // Convert to 32bit integer
   }
-  return Math.abs(hash);
+  console.log(`simpleHash: input='${str}', output=${hash}`);
+  return hash;
 };
 
 
 export function ChatPageContent({
-  sessionId: propSessionId, 
+  sessionId: propSessionId,
   initialUserName,
   initialUserRole,
   initialUserId,
   initialUserAvatarFallback,
   isAdminView = false
 }: ChatPageContentProps) {
-  const sessionId = propSessionId; 
+  const sessionId = propSessionId;
   const { toast } = useToast();
   const router = useRouter();
 
@@ -94,14 +98,9 @@ export function ChatPageContent({
 
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
-  
+
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [showEmojiPickerForInput, setShowEmojiPickerForInput] = useState(false);
-
-  // Removed states for image modal
-  // const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
-  // const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
-
 
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +112,20 @@ export function ChatPageContent({
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
 
   const isSessionActive = useMemo(() => sessionData?.status === "active", [sessionData]);
+
+  // State for the new simple image modal
+  const [selectedImageForModal, setSelectedImageForModal] = useState<string | null>(null);
+  const [selectedImageFilenameForModal, setSelectedImageFilenameForModal] = useState<string | null>(null);
+
+  const handleOpenImageModal = (imageUrl: string, imageFileName?: string) => {
+    setSelectedImageForModal(imageUrl);
+    setSelectedImageFilenameForModal(imageFileName || "Bild");
+  };
+
+  const handleCloseImageModal = () => {
+    setSelectedImageForModal(null);
+    setSelectedImageFilenameForModal(null);
+  };
 
 
   useEffect(() => {
@@ -176,6 +189,11 @@ export function ChatPageContent({
     let unsubscribeParticipant: (() => void) | undefined;
     const findParticipantDocAndListen = async () => {
       const participantsColRef = collection(db, "sessions", sessionId, "participants");
+      // Check if userId is defined before querying
+      if (!userId) {
+        console.warn("Skipping participant listener because userId is null");
+        return;
+      }
       const q = query(participantsColRef, where("userId", "==", userId));
 
       try {
@@ -230,7 +248,7 @@ export function ChatPageContent({
   }, [sessionId, toast]);
 
   useEffect(() => {
-    if (!sessionId || !userId) return; 
+    if (!sessionId || !userId) return;
     setIsChatDataLoading(true);
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
@@ -256,7 +274,7 @@ export function ChatPageContent({
     });
 
     return () => unsubscribe();
-  }, [sessionId, toast, userId]); 
+  }, [sessionId, toast, userId]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -302,50 +320,44 @@ export function ChatPageContent({
 
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
-  const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
-    const adminColor: ParticipantColor = { name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
-    const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }; 
-    const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" };
-    
-    // Debugging logs
-    // console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}`);
+  const adminColor = useMemo((): ParticipantColor => ({ name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" }), []);
+  const botColor = useMemo((): ParticipantColor => ({ name: 'bot', bg: "bg-purple-600/80", text: "text-purple-50", nameText: "text-purple-100", ring: "ring-purple-600" }), []);
+  const ownColor = useMemo((): ParticipantColor => ({ name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" }), []);
 
-    if (isAdminView && pUserId === initialUserId) {
-        // console.log("Applying adminColor for admin in admin view");
-        return adminColor;
-    }
-    if (pSenderType === 'admin') {
-        // console.log("Applying adminColor for senderType admin");
-        return adminColor;
+
+  const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
+    console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
+
+    if (pSenderType === 'admin' || (isAdminView && pUserId === initialUserId)) {
+      console.log(`-> Resolved as ADMIN color`);
+      return adminColor;
     }
     if (pSenderType === 'bot' || (pUserId && pUserId.startsWith('bot-'))) {
-        // console.log("Applying botColor");
-        return botColor;
+      console.log(`-> Resolved as BOT color`);
+      return botColor;
     }
-    
-    if (!pUserId || !userId) { 
-        const defaultColor = participantColors[0];
-        // console.log("Applying defaultColor (no pUserId or userId)");
-        return { ...defaultColor, ring: defaultColor.ring || "ring-transparent" };
-    }
-    if (pUserId === userId && !isAdminView) {
-        // console.log("Applying ownColor");
-        return ownColor;
+    if (!isAdminView && pUserId === userId) {
+      console.log(`-> Resolved as OWN USER color`);
+      return ownColor;
     }
 
-    // Consistent color for other users
-    const hash = simpleHash(pUserId);
-    const colorIndex = hash % participantColors.length;
-    const selectedColor = participantColors[colorIndex];
-    // console.log(`Applying selectedColor for user ${pUserId}: index ${colorIndex}, color ${selectedColor.name}`);
-    return { ...selectedColor, ring: selectedColor.ring || "ring-transparent" };
-  }, [userId, isAdminView, initialUserId, participantColors]); // Added participantColors to dependency array
+    if (pUserId && participantColors.length > 0) {
+      const hash = simpleHash(pUserId);
+      const colorIndex = Math.abs(hash) % participantColors.length;
+      const selected = participantColors[colorIndex];
+      console.log(`-> Resolved as OTHER USER: userId=${pUserId}, hash=${hash}, colorIndex=${colorIndex}, selectedColorName=${selected?.name}`);
+      return selected || participantColors[0]; // Fallback to first color
+    }
+
+    console.log(`-> Fallback to default color (participantColors[0]) for userId=${pUserId}`);
+    return participantColors.length > 0 ? participantColors[0] : { name: 'default', bg: "bg-gray-500", text: "text-white", nameText: "text-gray-100", ring: "ring-gray-500" }; // Absolute fallback
+  }, [userId, isAdminView, initialUserId, adminColor, botColor, ownColor, participantColors]);
 
 
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { 
+      if (file.size > 5 * 1024 * 1024) {
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
@@ -413,7 +425,7 @@ export function ChatPageContent({
         const imageFileName = `${file.name}_${Date.now()}`;
         const imagePath = `chat_images/${sessionId}/${imageFileName}`;
         const sRef = storageRef(storage, imagePath);
-        
+
         console.log(`Attempting to upload ${file.name} to ${imagePath}`);
         console.log("Storage reference:", sRef);
 
@@ -478,6 +490,7 @@ export function ChatPageContent({
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: MessageType = {
+        id: '', // Firestore will generate ID
         senderUserId: userId,
         senderName: userName,
         senderType: isAdminView ? 'admin' : 'user',
@@ -562,7 +575,7 @@ export function ChatPageContent({
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) return;
-    setReactingToMessageId(null); 
+    setReactingToMessageId(null);
 
     const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
@@ -591,7 +604,6 @@ export function ChatPageContent({
         }
         transaction.update(messageRef, { reactions: newReactions });
       });
-       // Find the message locally to check if the user had reacted before to provide better toast
        const localMessage = messages.find(m => m.id === messageId);
        const hadReacted = localMessage?.reactions?.[emoji]?.includes(userId);
 
@@ -605,10 +617,6 @@ export function ChatPageContent({
       });
     }
   };
-  
-  // Removed image modal functionality and related states/handlers
-  // const handleOpenImageModal = (imageUrl: string, imageFileName?: string) => { ... };
-  // const handleCloseImageModal = () => { ... };
 
 
   if (isLoading && !isAdminView) {
@@ -707,9 +715,9 @@ export function ChatPageContent({
                 isChatDataLoading={isChatDataLoading}
                 isAdminView={isAdminView}
                 onOpenReactionPicker={handleOpenReactionPicker}
-                onReaction={handleReaction} 
+                onReaction={handleReaction}
                 reactingToMessageId={reactingToMessageId}
-                // onImageClick removed as modal is removed
+                onImageClick={handleOpenImageModal}
               />
             </ScrollArea>
 
@@ -742,19 +750,48 @@ export function ChatPageContent({
             />
           </main>
         </div>
-      
-        {/* Removed image modal Dialog */}
+
+      {selectedImageForModal && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4"
+          onClick={handleCloseImageModal}
+        >
+          <div
+            className="bg-card rounded-lg shadow-2xl p-4 relative max-w-[90vw] max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking on the image/title area
+          >
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="text-lg font-semibold text-card-foreground truncate">
+                {selectedImageFilenameForModal || "Bild"}
+                </h3>
+                <Button variant="ghost" size="icon" onClick={handleCloseImageModal} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-5 w-5" />
+                </Button>
+            </div>
+            <div className="relative flex-1 w-full h-full overflow-hidden"> {/* Container for image to respect aspect ratio */}
+              <Image
+                src={selectedImageForModal}
+                alt={selectedImageFilenameForModal || "Großansicht Bild"}
+                layout="fill"
+                objectFit="contain"
+                className="rounded"
+                data-ai-hint="modal image"
+              />
+            </div>
+          </div>
+        </div>
+      )}
       </div>
   );
 }
 
 
-interface ChatPageOuterProps { // Renamed to avoid conflict
+interface ChatPageOuterProps {
   params: ChatPageUrlParams;
 }
 
-export default function ChatPage(props: ChatPageOuterProps) { 
-  const { sessionId } = props.params;
+export default function ChatPage({ params: pageParamsOuter }: ChatPageOuterProps) {
+  const { sessionId } = pageParamsOuter;
 
   return (
     <Suspense fallback={

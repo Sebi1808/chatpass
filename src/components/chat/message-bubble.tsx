@@ -1,12 +1,12 @@
 
 "use client";
 
-import { type MouseEvent, useState } from 'react';
+import { useState } from 'react'; // Keep useState for local state like showReactionPicker
 import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CornerDownLeft, Quote, SmilePlus, Eye, Bot as BotIcon, User, Edit3, Crown } from "lucide-react"; 
+import { CornerDownLeft, Quote, SmilePlus, Bot as BotIcon, Crown, Edit3 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,8 +24,8 @@ interface MessageBubbleProps {
   onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   emojiCategories: typeof EmojiCategoriesType;
-  onOpenReactionPicker: (messageId: string) => void; 
-  onImageClick: (imageUrl: string, imageFileName?: string) => void; 
+  onOpenReactionPicker: (messageId: string) => void;
+  onImageClick: (imageUrl: string, imageFileName?: string) => void; // Prop for opening modal
 }
 
 export function MessageBubble({
@@ -39,16 +39,30 @@ export function MessageBubble({
   onReaction,
   emojiCategories,
   onOpenReactionPicker,
-  onImageClick,
+  onImageClick, // Use this prop
 }: MessageBubbleProps) {
-  const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false); // Local state for this bubble's picker
   const isOwn = message.senderUserId === currentUserId;
-  const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
+
+  // Determine bubble color. For own messages, check if it's an admin in admin view.
+  let bubbleColor: ParticipantColor;
+  if (isOwn) {
+    // If the current user is an admin (based on senderType from message), use admin color.
+    // This assumes message.senderType is correctly set to 'admin' for admins.
+    if (message.senderType === 'admin') {
+      bubbleColor = getParticipantColorClasses(message.senderUserId, 'admin');
+    } else {
+      // Otherwise, use the 'own' color for regular users.
+      bubbleColor = getParticipantColorClasses(message.senderUserId, 'user'); // Will resolve to ownColor
+    }
+  } else {
+    bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
+  }
 
 
   const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
-    setShowReactionPicker(false);
+    setShowReactionPicker(false); // Close picker after reaction
   };
 
 
@@ -72,9 +86,8 @@ export function MessageBubble({
               disabled={isOwn}
             >
               {message.senderName}
-              {message.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 flex items-center gap-1", isOwn ? "border-primary-foreground/50 text-primary-foreground/80 bg-primary-foreground/10" : `border-current text-current bg-transparent opacity-80`)}>🤖 BOT</Badge>}
+              {message.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 flex items-center gap-1", isOwn ? "border-primary-foreground/50 text-primary-foreground/80 bg-primary-foreground/10" : `border-accent/50 text-accent bg-accent/10`)}>🤖 BOT</Badge>}
               {message.senderType === 'admin' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 flex items-center gap-1", isOwn ? "border-primary-foreground/70 text-primary-foreground/80 bg-primary-foreground/10" : "border-destructive/70 text-destructive-foreground bg-destructive/20")}>👑 ADMIN</Badge>}
-
             </button>
             <span className={`text-xs ${isOwn ? "text-primary-foreground/70" : bubbleColor.text} opacity-70`}>{message.timestampDisplay}</span>
           </div>
@@ -93,16 +106,16 @@ export function MessageBubble({
           )}
 
         {message.imageUrl && (
-             <div
+            <div
               className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group cursor-pointer"
-              onClick={() => onImageClick(message.imageUrl!, message.imageFileName)}
+              onClick={() => onImageClick(message.imageUrl!, message.imageFileName)} // Use onImageClick prop
             >
               <Image
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
-                width={700} 
-                height={500} 
-                className="rounded-md h-auto object-contain" // max-w-full and h-auto are key
+                width={700} // Base width for aspect ratio calculation by Next/Image
+                height={500} // Base height
+                className="rounded-md object-contain h-auto" // h-auto is important
                 data-ai-hint="chat image"
               />
             </div>
@@ -125,7 +138,7 @@ export function MessageBubble({
                       "h-auto px-1.5 py-0.5 rounded-full text-xs",
                       currentUserReacted
                         ? (isOwn ? 'bg-primary-foreground/20 border border-primary-foreground/50 text-primary-foreground' : `bg-black/30 border border-current text-current`)
-                        : cn(bubbleColor.text, `hover:bg-black/10`) 
+                        : cn(bubbleColor.text, `hover:bg-black/10`)
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
                   >
@@ -150,15 +163,15 @@ export function MessageBubble({
             )}
             <Popover open={showReactionPicker} onOpenChange={setShowReactionPicker}>
               <PopoverTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className={cn("h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100", bubbleColor.text, "hover:bg-black/10")} 
-                  onClick={(e) => { 
-                    e.stopPropagation(); 
-                    onOpenReactionPicker(message.id); 
-                    setShowReactionPicker(true); 
-                  }} 
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn("h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100", bubbleColor.text, "hover:bg-black/10")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenReactionPicker(message.id); // Inform parent which message is being reacted to
+                    setShowReactionPicker(true);
+                  }}
                   aria-label="Reagieren"
                 >
                   <SmilePlus className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reagieren</span>
@@ -210,3 +223,4 @@ export function MessageBubble({
   );
 }
 
+    
