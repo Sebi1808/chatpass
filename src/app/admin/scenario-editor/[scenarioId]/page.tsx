@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon as ImageIconLucide, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, CheckSquare, Square } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
@@ -63,6 +63,9 @@ export default function EditScenarioPage() {
   
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
+  const [botSaveAsTemplateFlags, setBotSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
+  const [roleSaveAsTemplateFlags, setRoleSaveAsTemplateFlags] = useState<Record<string, boolean>>({});
+
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -80,7 +83,15 @@ export default function EditScenarioPage() {
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
         setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
         setSelectedTags(foundScenario.tags || []);
-        // Deep copy to prevent direct mutation of imported scenario data
+        
+        const initialBotFlags: Record<string, boolean> = {};
+        (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false); // Default to false
+        setBotSaveAsTemplateFlags(initialBotFlags);
+
+        const initialRoleFlags: Record<string, boolean> = {};
+        (foundScenario.humanRolesConfig || []).forEach(role => initialRoleFlags[role.id] = false); // Default to false
+        setRoleSaveAsTemplateFlags(initialRoleFlags);
+
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
       } else {
@@ -104,8 +115,9 @@ export default function EditScenarioPage() {
   };
 
   const handleAddBot = () => {
+    const newBotId = `bot-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setEditableBotsConfig([...editableBotsConfig, {
-        id: `bot-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Unique ID for manually added bot
+        id: newBotId, 
         name: "Neuer Bot",
         personality: "standard",
         avatarFallback: "NB",
@@ -113,24 +125,38 @@ export default function EditScenarioPage() {
         isActive: true,
         initialMission: "",
         autoTimerEnabled: false,
-        // templateId is not set for manually added bots
     }]);
+    setBotSaveAsTemplateFlags(prev => ({ ...prev, [newBotId]: false }));
   };
 
   const handleAddBotFromTemplate = (templateId: string) => {
     const template = botTemplates.find(t => t.templateId === templateId);
     if (template) {
+      const newBotId = `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       setEditableBotsConfig([...editableBotsConfig, {
-        ...template, // Spread template properties
-        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // New unique ID for this instance
-        templateId: template.templateId, // Store the ID of the template used
+        ...template, 
+        id: newBotId, 
+        templateId: template.templateId, 
       }]);
+      setBotSaveAsTemplateFlags(prev => ({ ...prev, [newBotId]: false }));
     }
   };
 
   const handleRemoveBot = (index: number) => {
+    const botToRemoveId = editableBotsConfig[index]?.id;
     const updatedBots = editableBotsConfig.filter((_, i) => i !== index);
     setEditableBotsConfig(updatedBots);
+    if (botToRemoveId) {
+        setBotSaveAsTemplateFlags(prev => {
+            const newFlags = {...prev};
+            delete newFlags[botToRemoveId];
+            return newFlags;
+        });
+    }
+  };
+
+  const handleBotSaveAsTemplateToggle = (botId: string) => {
+    setBotSaveAsTemplateFlags(prev => ({ ...prev, [botId]: !prev[botId] }));
   };
 
   const handleHumanRoleChange = (index: number, field: keyof HumanRoleConfig, value: string) => {
@@ -142,29 +168,45 @@ export default function EditScenarioPage() {
   };
 
   const handleAddHumanRole = () => {
+    const newRoleId = `role-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     setEditableHumanRoles([...editableHumanRoles, {
-        id: `role-man-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Unique ID for manually added role
+        id: newRoleId, 
         name: "Neue Rolle",
         description: "Beschreibung der neuen Rolle..."
-        // templateId is not set for manually added roles
     }]);
+    setRoleSaveAsTemplateFlags(prev => ({ ...prev, [newRoleId]: false }));
   };
 
   const handleAddHumanRoleFromTemplate = (templateId: string) => {
     const template = humanRoleTemplates.find(t => t.templateId === templateId);
     if (template) {
+      const newRoleId = `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       setEditableHumanRoles([...editableHumanRoles, {
-        ...template, // Spread template properties
-        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // New unique ID for this instance
-        templateId: template.templateId, // Store the ID of the template used
+        ...template, 
+        id: newRoleId, 
+        templateId: template.templateId, 
       }]);
+      setRoleSaveAsTemplateFlags(prev => ({ ...prev, [newRoleId]: false }));
     }
   };
 
   const handleRemoveHumanRole = (index: number) => {
+    const roleToRemoveId = editableHumanRoles[index]?.id;
     const updatedRoles = editableHumanRoles.filter((_, i) => i !== index);
     setEditableHumanRoles(updatedRoles);
+     if (roleToRemoveId) {
+        setRoleSaveAsTemplateFlags(prev => {
+            const newFlags = {...prev};
+            delete newFlags[roleToRemoveId];
+            return newFlags;
+        });
+    }
   };
+
+  const handleRoleSaveAsTemplateToggle = (roleId: string) => {
+    setRoleSaveAsTemplateFlags(prev => ({ ...prev, [roleId]: !prev[roleId] }));
+  };
+
 
   const handleTagToggle = (tagName: string) => {
     setSelectedTags(prevTags =>
@@ -179,7 +221,7 @@ export default function EditScenarioPage() {
     const newTags = manualTagInput
       .split(',')
       .map(tag => tag.trim())
-      .filter(tag => tag !== '' && !selectedTags.includes(tag)); // Avoid duplicates
+      .filter(tag => tag !== '' && !selectedTags.includes(tag)); 
     
     setSelectedTags(prevTags => [...prevTags, ...newTags]);
     setManualTagInput('');
@@ -208,8 +250,17 @@ export default function EditScenarioPage() {
 
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
+    
+    const botsToSaveAsTemplate = editableBotsConfig.filter(bot => botSaveAsTemplateFlags[bot.id]);
+    if (botsToSaveAsTemplate.length > 0) {
+        console.log("Bots flagged to be saved as templates:", botsToSaveAsTemplate);
+    }
+    const rolesToSaveAsTemplate = editableHumanRoles.filter(role => roleSaveAsTemplateFlags[role.id]);
+    if (rolesToSaveAsTemplate.length > 0) {
+        console.log("Roles flagged to be saved as templates:", rolesToSaveAsTemplate);
+    }
 
-    // Simulate saving
+
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -237,7 +288,7 @@ export default function EditScenarioPage() {
               Das Szenario mit der ID &quot;{scenarioId}&quot; konnte nicht gefunden werden.
             </p>
           </div>
-          <Button variant="outline" onClick={() => router.push('/admin')}>
+          <Button variant="outline" onClick={() => router.push('/admin/scenario-editor')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Zur Szenarienübersicht
           </Button>
@@ -260,7 +311,7 @@ export default function EditScenarioPage() {
           </p>
         </div>
         <div className="flex gap-2 md:gap-3">
-          <Button variant="outline" type="button" onClick={() => router.push('/admin')} disabled={isSaving}>
+          <Button variant="outline" type="button" onClick={() => router.push('/admin/scenario-editor')} disabled={isSaving}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Abbrechen
           </Button>
@@ -353,9 +404,16 @@ export default function EditScenarioPage() {
                         <Card key={bot.id || `bot-${index}`} className="p-4 bg-muted/20">
                           <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
                             <CardTitle className="text-md">Bot {index + 1} (ID: <span className="font-mono text-xs">{bot.id}</span>)</CardTitle>
-                            <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveBot(index)} disabled={isSaving}>
-                                <Trash2 className="h-4 w-4"/>
-                            </Button>
+                             <div className="flex items-center gap-2">
+                                <Switch id={`bot-saveAsTemplate-${bot.id}`} 
+                                        checked={botSaveAsTemplateFlags[bot.id] || false} 
+                                        onCheckedChange={() => handleBotSaveAsTemplateToggle(bot.id)}
+                                        disabled={isSaving} />
+                                <Label htmlFor={`bot-saveAsTemplate-${bot.id}`} className="text-xs text-muted-foreground">Als Vorlage speichern</Label>
+                                <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveBot(index)} disabled={isSaving}>
+                                    <Trash2 className="h-4 w-4"/>
+                                </Button>
+                            </div>
                           </CardHeader>
                           <CardContent className="p-0 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
@@ -439,9 +497,16 @@ export default function EditScenarioPage() {
                             <Card key={role.id || `role-${index}`} className="p-4 bg-muted/20">
                             <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
                                 <CardTitle className="text-md">Rolle {index + 1} (ID: <span className="font-mono text-xs">{role.id}</span>)</CardTitle>
-                                <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveHumanRole(index)} disabled={isSaving}>
-                                    <Trash2 className="h-4 w-4"/>
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Switch id={`role-saveAsTemplate-${role.id}`}
+                                            checked={roleSaveAsTemplateFlags[role.id] || false}
+                                            onCheckedChange={() => handleRoleSaveAsTemplateToggle(role.id)}
+                                            disabled={isSaving} />
+                                    <Label htmlFor={`role-saveAsTemplate-${role.id}`} className="text-xs text-muted-foreground">Als Vorlage speichern</Label>
+                                    <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveHumanRole(index)} disabled={isSaving}>
+                                        <Trash2 className="h-4 w-4"/>
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent className="p-0 space-y-4">
                                 <div className="space-y-1.5">
@@ -612,3 +677,4 @@ export default function EditScenarioPage() {
     </form>
   );
 }
+
