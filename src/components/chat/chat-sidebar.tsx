@@ -1,6 +1,7 @@
 
 "use client";
 
+import { memo } from 'react'; // Added memo
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -23,7 +24,7 @@ interface ChatSidebarProps {
   isAdminView?: boolean;
 }
 
-export function ChatSidebar({
+const ChatSidebar = memo(function ChatSidebar({ // Wrapped with React.memo
   participants,
   currentUserId,
   userName,
@@ -53,7 +54,7 @@ export function ChatSidebar({
                 <div>
                   <p className="text-sm font-medium flex items-center">
                     <span className={cn(pColor.nameText)}>{p.name}</span>
-                    {p.isBot && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent bg-accent/10 flex items-center gap-1")}><BotIcon className="h-3 w-3" />BOT</Badge>}
+                    {p.isBot && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 border-purple-500/50 text-purple-300 bg-purple-600/30 flex items-center gap-1")}><BotIcon className="h-3 w-3" />BOT</Badge>}
                     {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0 flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
                     {p.userId === currentUserId && !isAdminView && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">Du</Badge>}
                     {isCurrentParticipantMuted && !p.isBot && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
@@ -95,4 +96,8 @@ export function ChatSidebar({
       )}
     </>
   );
-}
+});
+
+ChatSidebar.displayName = "ChatSidebar"; // For React DevTools
+
+export { ChatSidebar };
