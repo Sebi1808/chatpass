@@ -11,9 +11,19 @@ export const scenarios: Scenario[] = [
     standardRollen: 8, // z.B. 6 Teilnehmer + 2 Bots
     iconName: 'ShieldAlert',
     tags: ['Konflikt', 'Respekt', 'Online-Sicherheit'],
+    lernziele: [
+        "Hate-Speech erkennen und definieren können.",
+        "Strategien zur Reaktion auf Hate-Speech entwickeln (Gegenrede, Melden, Ignorieren).",
+        "Emotionale Auswirkungen von Hate-Speech auf Betroffene verstehen."
+    ],
     defaultBotsConfig: [
-      { id: '1-prov-0', personality: 'provokateur' },
-      { id: '1-vert-1', personality: 'verteidiger' },
+      { id: '1-prov-0', name: "Provokateur Alpha", personality: 'provokateur', avatarFallback: 'PA', currentEscalation: 1, isActive: true, initialMission: "Störe die Diskussion mit aggressiven Kommentaren." },
+      { id: '1-vert-1', name: "Verteidiger Beta", personality: 'verteidiger', avatarFallback: 'VB', currentEscalation: 0, isActive: true, initialMission: "Tritt für einen respektvollen Umgang ein und widersprich dem Provokateur." },
+    ],
+    humanRolesConfig: [
+        { id: "1-opfer-0", name: "Zielperson der Angriffe", description: "Du hast einen neutralen Kommentar gepostet und wirst nun Ziel von verbalen Attacken. Versuche, dich zu behaupten oder Hilfe zu suchen." },
+        { id: "1-unterstuetzer-0", name: "Unterstützer*in", description: "Du beobachtest die Angriffe auf die Zielperson. Entscheide, ob und wie du eingreifst, um zu helfen oder zu deeskalieren." },
+        { id: "1-beobachter-0", name: "Stiller Beobachter", description: "Du liest im Chat mit, greifst aber zunächst nicht aktiv ein. Überlege, was deine Zurückhaltung bewirkt und wann ein Eingreifen für dich sinnvoll wäre." }
     ]
   },
   {
@@ -25,9 +35,18 @@ export const scenarios: Scenario[] = [
     standardRollen: 10,
     iconName: 'Code2',
     tags: ['Extremismus', 'Propaganda', 'Medienkompetenz'],
+    lernziele: [
+        "Codierte Sprache und Symbole des digitalen Rechtsextremismus identifizieren.",
+        "Manipulative Strategien in rechtsextremen Online-Inhalten analysieren.",
+        "Handlungsmöglichkeiten gegen die Verbreitung solcher Inhalte diskutieren."
+    ],
     defaultBotsConfig: [
-      { id: '2-info-0', personality: 'informant' }, 
-      { id: '2-prov-1', personality: 'provokateur' } 
+      { id: '2-info-0', name: "Agitator Gamma", personality: 'informant', avatarFallback: 'AG', currentEscalation: 0, isActive: true, initialMission: "Verbreite subtil rechtsextreme Narrative und teste die Reaktionen." },
+      { id: '2-prov-1', name: "Rekrutierer Delta", personality: 'provokateur', avatarFallback: 'RD', currentEscalation: 1, isActive: true, initialMission: "Versuche, andere von deinen 'alternativen Fakten' zu überzeugen und für deine Gruppe zu gewinnen." }
+    ],
+    humanRolesConfig: [
+        { id: "2-kritiker-0", name: "Kritische Stimme", description: "Du erkennst die problematischen Inhalte und versuchst, argumentativ dagegenzuhalten und andere zu warnen." },
+        { id: "2-unsicher-0", name: "Unsichere Person", description: "Du bist neu in der Online-Gruppe und unsicher, wie du die geteilten Informationen einordnen sollst. Du bist anfällig für einfache Erklärungen." }
     ]
   },
   {
@@ -39,10 +58,13 @@ export const scenarios: Scenario[] = [
     standardRollen: 12,
     iconName: 'Users',
     tags: ['Soziale Dynamik', 'Kommunikation', 'Alltag'],
+    lernziele: [], // Beispiel für leere Lernziele
     defaultBotsConfig: [
-      { id: '3-std-0', personality: 'standard' } 
+      { id: '3-std-0', name: "Mitschüler Epsilon", personality: 'standard', avatarFallback: 'ME', currentEscalation: 0, isActive: true, initialMission: "Nimm an der Diskussion teil, stelle Fragen und reagiere auf andere." }
     ]
   },
+  // Ensure all other scenarios also have at least an empty defaultBotsConfig array if they have defaultBots > 0
+  // and an empty humanRolesConfig if desired.
   {
     id: '4',
     title: 'Fake News',
@@ -50,10 +72,10 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Teilnehmende werden mit viralen Falschmeldungen und Desinformation konfrontiert. Ziel ist es, die Mechanismen von Fake News zu verstehen, Quellenkritik zu üben und Strategien zur Verifizierung von Informationen zu erlernen.',
     defaultBots: 1,
     standardRollen: 10,
-    iconName: 'Annoyed', 
+    iconName: 'Annoyed',
     tags: ['Desinformation', 'Medienkritik', 'Quellenprüfung'],
     defaultBotsConfig: [
-      { id: '4-info-0', personality: 'informant' } 
+      { id: '4-info-0', name: "Nachrichtenstreuer Zeta", personality: 'informant', avatarFallback: 'NZ', currentEscalation: 1, isActive: true, initialMission: "Poste eine reißerische Falschmeldung und beobachte die Reaktionen." }
     ]
   },
   {
@@ -63,10 +85,10 @@ export const scenarios: Scenario[] = [
     langbeschreibung: 'Dieses Szenario setzt sich mit der Verbreitung und Wirkung von Verschwörungstheorien auseinander. Teilnehmende analysieren deren typische Merkmale und lernen, kritisch mit solchen Narrativen umzugehen.',
     defaultBots: 1,
     standardRollen: 10,
-    iconName: 'Zap', 
+    iconName: 'Zap',
     tags: ['Verschwörung', 'Kritisches Denken', 'Manipulation'],
      defaultBotsConfig: [
-      { id: '5-info-0', personality: 'informant' } 
+      { id: '5-info-0', name: "Theoretiker Eta", personality: 'informant', avatarFallback: 'TE', currentEscalation: 0, isActive: true, initialMission: "Präsentiere eine obskure Theorie als absolute Wahrheit." }
     ]
   },
   {
@@ -74,13 +96,13 @@ export const scenarios: Scenario[] = [
     title: 'Cybermobbing',
     kurzbeschreibung: 'Ausgrenzung und Belästigung Einzelner.',
     langbeschreibung: 'Simuliert eine Situation von Cybermobbing, bei der eine Person online ausgegrenzt, beleidigt oder bedroht wird. Fokus liegt auf Empathie, Zivilcourage und Hilfsangeboten für Betroffene und Beobachtende.',
-    defaultBots: 2, 
+    defaultBots: 2,
     standardRollen: 9,
-    iconName: 'MessageSquare', 
+    iconName: 'MessageSquare',
     tags: ['Mobbing', 'Soziale Verantwortung', 'Hilfe'],
     defaultBotsConfig: [
-      { id: '6-prov-0', personality: 'provokateur' }, 
-      { id: '6-vert-1', personality: 'verteidiger' } 
+      { id: '6-prov-0', name: "Mobber Theta", personality: 'provokateur', avatarFallback: 'MT', currentEscalation: 1, isActive: true, initialMission: "Suche dir ein Opfer und beginne mit subtilen Sticheleien, die sich steigern." },
+      { id: '6-vert-1', name: "Helfer Iota", personality: 'verteidiger', avatarFallback: 'HI', currentEscalation: 0, isActive: true, initialMission: "Erkenne das Mobbing und versuche, dem Opfer beizustehen." }
     ]
   },
   {
@@ -93,8 +115,8 @@ export const scenarios: Scenario[] = [
     iconName: 'Film',
     tags: ['Extremismus', 'Social Media', 'Propaganda'],
     defaultBotsConfig: [
-      { id: '7-info-0', personality: 'informant' }, 
-      { id: '7-prov-1', personality: 'provokateur' } 
+      { id: '7-info-0', name: "Meme Lord Kappa", personality: 'informant', avatarFallback: 'MK', currentEscalation: 0, isActive: true, initialMission: "Teile Memes, die auf den zweiten Blick problematische Ideologien transportieren." },
+      { id: '7-prov-1', name: "Verharmloser Lambda", personality: 'provokateur', avatarFallback: 'VL', currentEscalation: 0, isActive: true, initialMission: "Tue kritische Nachfragen zu den Memes als Überempfindlichkeit ab." }
     ]
   },
   {
@@ -107,7 +129,7 @@ export const scenarios: Scenario[] = [
     iconName: 'ShoppingBag',
     tags: ['Werbung', 'Konsumkritik', 'Social Media'],
     defaultBotsConfig: [
-      { id: '8-info-0', personality: 'informant' } 
+      { id: '8-info-0', name: "Influencer My", personality: 'informant', avatarFallback: 'IM', currentEscalation: 0, isActive: true, initialMission: "Bewerbe ein Produkt auf übertriebene Weise und starte ein unrealistisches Gewinnspiel." }
     ]
   },
   {
@@ -115,13 +137,13 @@ export const scenarios: Scenario[] = [
     title: 'Sextortion',
     kurzbeschreibung: 'Grooming & Erpressung mit intimen Inhalten.',
     langbeschreibung: 'Dieses ernste Szenario simuliert Anbahnungsversuche (Grooming) und Erpressung mit intimen Bildern oder Videos (Sextortion). Es soll für Gefahren sensibilisieren und Handlungsoptionen aufzeigen.',
-    defaultBots: 2, 
+    defaultBots: 2,
     standardRollen: 8,
     iconName: 'Lock',
     tags: ['Sexuelle Gewalt', 'Erpressung', 'Prävention'],
     defaultBotsConfig: [
-      { id: '9-prov-0', personality: 'provokateur' }, 
-      { id: '9-vert-1', personality: 'verteidiger' }  
+      { id: '9-prov-0', name: "Groomer Ny", personality: 'provokateur', avatarFallback: 'GN', currentEscalation: 0, isActive: true, initialMission: "Baue Vertrauen zu jemandem auf, um an private Informationen oder Bilder zu gelangen." },
+      { id: '9-vert-1', name: "Warner Xi", personality: 'verteidiger', avatarFallback: 'WX', currentEscalation: 0, isActive: true, initialMission: "Versuche, potenzielle Opfer vor den Maschen des Groomers zu warnen, ohne direkt zu konfrontieren." }
     ]
   },
   {
@@ -134,7 +156,8 @@ export const scenarios: Scenario[] = [
     iconName: 'BotMessageSquare',
     tags: ['Künstliche Intelligenz', 'Manipulation', 'Medienkompetenz'],
     defaultBotsConfig: [
-      { id: '10-info-0', personality: 'informant' } 
+      { id: '10-info-0', name: "Fälscher Omikron", personality: 'informant', avatarFallback: 'FO', currentEscalation: 0, isActive: true, initialMission: "Präsentiere ein überzeugendes Deepfake-Video als echt und verteidige dessen Authentizität." }
     ]
   },
 ];
+    

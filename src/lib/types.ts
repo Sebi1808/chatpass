@@ -2,17 +2,24 @@
 import type { LucideIcon } from 'lucide-react';
 import type { Timestamp } from 'firebase/firestore';
 
+export interface HumanRoleConfig {
+  id: string; // Unique ID for the role within the scenario, e.g., "angeklagter", "zeuge-1"
+  name: string; // Display name of the role, e.g., "Angeklagte Person", "Zeuge der Anklage"
+  description: string; // Detailed description, goals, secret information etc. for the participant
+}
+
 export interface Scenario {
   id: string;
   title: string;
   kurzbeschreibung: string;
   langbeschreibung: string;
-  lernziele?: string[]; // Added for scenario editor
+  lernziele?: string[];
   defaultBots: number;
   standardRollen: number; // Gesamtzahl der Rollen inkl. Bots
   iconName: string; // Should match a key in iconMap in ScenarioCard
   tags: string[];
   defaultBotsConfig?: BotConfig[];
+  humanRolesConfig?: HumanRoleConfig[]; // Added for structured human roles
 }
 
 export interface BotConfig {
@@ -76,5 +83,4 @@ export interface DisplayMessage extends Message {
   isOwn: boolean;
   timestampDisplay: string;
 }
-
     
