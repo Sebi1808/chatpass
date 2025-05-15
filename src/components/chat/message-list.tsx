@@ -21,7 +21,8 @@ interface MessageListProps {
   isChatDataLoading: boolean;
   isAdminView?: boolean;
   onOpenReactionPicker: (messageId: string) => void;
-  reactingToMessageId: string | null; // Add this prop
+  reactingToMessageId: string | null;
+  handleOpenImageModal: (imageUrl: string, imageFileName?: string) => void;
 }
 
 export function MessageList({
@@ -38,7 +39,8 @@ export function MessageList({
   isChatDataLoading,
   isAdminView = false,
   onOpenReactionPicker,
-  reactingToMessageId, // Use this prop
+  reactingToMessageId,
+  handleOpenImageModal,
 }: MessageListProps) {
   return (
     <div className="space-y-6">
@@ -54,8 +56,9 @@ export function MessageList({
           onScrollToMessage={onScrollToMessage}
           onReaction={onReaction} 
           emojiCategories={emojiCategories} 
+          reactingToMessageId={reactingToMessageId}
           onOpenReactionPicker={onOpenReactionPicker}
-          // reactingToMessageId is implicitly handled by Popover's open state in MessageBubble
+          handleOpenImageModal={handleOpenImageModal}
         />
       ))}
       <div ref={messagesEndRef} />
@@ -75,3 +78,4 @@ export function MessageList({
     </div>
   );
 }
+
