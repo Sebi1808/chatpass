@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CornerDownLeft, Quote, SmilePlus, Eye, Bot as BotIcon, User } from "lucide-react";
+import { CornerDownLeft, Quote, SmilePlus, Eye, Bot as BotIcon, User, Edit3 } from "lucide-react"; // Edit3 can be used for highlight/mark if needed later
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,37 +16,32 @@ import type { ParticipantColor, emojiCategories as EmojiCategoriesType } from '@
 
 interface MessageBubbleProps {
   message: DisplayMessage;
-  isOwn: boolean;
   currentUserId: string | null;
   getParticipantColorClasses: (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot') => ParticipantColor;
   onMentionUser: (name: string) => void;
   onSetReply: (message: DisplayMessage) => void;
   onSetQuote: (message: DisplayMessage) => void;
   onScrollToMessage: (messageId: string) => void;
-  onSetImageForModal: (imageUrl: string | null, imageFileName?: string | null) => void;
   onReaction: (messageId: string, emoji: string) => void;
   emojiCategories: typeof EmojiCategoriesType;
-  onOpenReactionPicker: (messageId: string) => void; // To inform parent about opening
+  onOpenReactionPicker: (messageId: string) => void; 
 }
 
 export function MessageBubble({
   message,
-  isOwn,
   currentUserId,
   getParticipantColorClasses,
   onMentionUser,
   onSetReply,
   onSetQuote,
   onScrollToMessage,
-  onSetImageForModal,
   onReaction,
   emojiCategories,
   onOpenReactionPicker,
 }: MessageBubbleProps) {
   const [showReactionPicker, setShowReactionPicker] = useState(false);
-  const bubbleColor = isOwn
-    ? (message.senderType === 'admin' ? getParticipantColorClasses(currentUserId || undefined, 'admin') : { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90", ring: "ring-primary" })
-    : getParticipantColorClasses(message.senderUserId, message.senderType);
+  const isOwn = message.senderUserId === currentUserId;
+  const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
 
   const handleMessageClick = (e: MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, a, img, [data-radix-popover-content-wrapper]')) {
@@ -54,7 +49,7 @@ export function MessageBubble({
     }
   };
 
-  const handleEmojiSelectForReaction = (emoji: string) => {
+  const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
     setShowReactionPicker(false);
   };
@@ -69,7 +64,7 @@ export function MessageBubble({
       {!isOwn && (
         <Avatar className={cn("h-10 w-10 border-2 self-end shrink-0", bubbleColor.ring)}>
           <AvatarImage src={`https://placehold.co/40x40.png?text=${message.avatarFallback}`} alt={message.senderName} data-ai-hint="person user"/>
-          <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>{message.avatarFallback}</AvatarFallback>
+          <AvatarFallback className={cn(bubbleColor.bg, bubbleColor.text)}>{message.avatarFallback}</AvatarFallback>
         </Avatar>
       )}
       <div className={cn("max-w-xs md:max-w-md lg:max-w-lg rounded-xl shadow-md", bubbleColor.bg, bubbleColor.text)}>
@@ -82,16 +77,15 @@ export function MessageBubble({
             >
               {message.senderName}
               {message.senderType === 'bot' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0", isOwn ? "border-primary-foreground/50 text-primary-foreground/80 bg-primary-foreground/10" : "border-current text-current bg-transparent opacity-80")}>🤖 BOT</Badge>}
-              {message.senderType === 'admin' && !isOwn && <Badge variant="destructive" className={cn("ml-1.5 text-xs px-1.5 py-0")}>👑 ADMIN</Badge>}
-              {message.senderType === 'admin' && isOwn && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0 border-primary-foreground/70 text-primary-foreground/80 bg-primary-foreground/10")}>👑 ADMIN (Du)</Badge>}
+              {message.senderType === 'admin' && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1.5 py-0", isOwn ? "border-primary-foreground/70 text-primary-foreground/80 bg-primary-foreground/10" : "border-destructive/70 text-destructive-foreground bg-destructive/20")}>{isOwn ? "👑 ADMIN (Du)" : "👑 ADMIN"}</Badge>}
 
             </button>
-            <span className={`text-xs ${isOwn ? "text-primary-foreground/70" : "opacity-70"}`}>{message.timestampDisplay}</span>
+            <span className={`text-xs ${isOwn ? "text-primary-foreground/70" : bubbleColor.text} opacity-70`}>{message.timestampDisplay}</span>
           </div>
 
           {message.replyToMessageId && message.replyToMessageSenderName && message.replyToMessageContentSnippet && (
             <div
-              className={`text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 ${isOwn ? "bg-black/20" : "bg-black/10"} opacity-80 cursor-pointer hover:opacity-100`}
+              className={cn("text-xs p-1.5 rounded-md mb-1.5 flex items-center gap-1 cursor-pointer hover:opacity-100", isOwn ? "bg-black/20 text-primary-foreground/80" : "bg-black/10 text-current opacity-80")}
               onClick={() => onScrollToMessage(message.replyToMessageId as string)}
               title="Zum Original springen"
             >
@@ -104,27 +98,24 @@ export function MessageBubble({
 
           {message.imageUrl && (
              <div
-              className="my-2 relative w-full max-w-[250px] sm:max-w-[300px] aspect-auto rounded-md overflow-hidden cursor-pointer group"
-              onClick={(e) => { e.stopPropagation(); onSetImageForModal(message.imageUrl || null, message.imageFileName || "Bild");}}
+              className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group"
             >
               <Image
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
-                width={300} 
-                height={200} // Default height, adjust if needed or use intrinsic
-                sizes="(max-width: 640px) 250px, 300px"
+                width={500} // Provide a base width, Next.js will optimize
+                height={400} // Provide a base height
+                sizes="(max-width: 640px) 250px, (max-width: 768px) 320px, 450px" // Adjust sizes as needed
                 style={{
                   maxWidth: "100%",
-                  height: "auto", 
+                  height: "auto", // Important for maintaining aspect ratio
                   objectFit: "contain", 
-                  display: "block"
+                  display: "block",
+                  borderRadius: '0.375rem', // Corresponds to rounded-md
                 }}
-                className="transition-transform duration-300 group-hover:scale-105"
+                className="transition-transform duration-300 group-hover:scale-[1.02]"
                 data-ai-hint="chat image"
               />
-              <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <Eye className="h-8 w-8 text-white" />
-              </div>
             </div>
           )}
           {message.imageFileName && !message.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {message.imageFileName}</p>}
@@ -145,8 +136,8 @@ export function MessageBubble({
                       "h-auto px-1.5 py-0.5 rounded-full text-xs",
                        // Ensure proper contrast for selected reactions
                       currentUserReacted
-                        ? (bubbleColor.bg === 'bg-primary' ? 'bg-primary-foreground/20 border border-primary-foreground/50 text-primary-foreground' : 'bg-black/30 border border-current text-current')
-                        : `${bubbleColor.text} hover:bg-black/10`
+                        ? (isOwn ? 'bg-primary-foreground/20 border border-primary-foreground/50 text-primary-foreground' : 'bg-black/30 border border-current text-current')
+                        : cn(bubbleColor.text, `hover:bg-black/10`) 
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
                   >
@@ -161,10 +152,10 @@ export function MessageBubble({
           <div className="flex items-center gap-1 mt-1.5">
             {!isOwn && (
               <>
-                <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
+                <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100", bubbleColor.text, "hover:bg-black/10")} onClick={(e) => { e.stopPropagation(); onSetReply(message); }} aria-label="Antworten">
                   <CornerDownLeft className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Antworten</span>
                 </Button>
-                 <Button variant="ghost" size="sm" className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} onClick={(e) => { e.stopPropagation(); onSetQuote(message); }} aria-label="Zitieren">
+                 <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100", bubbleColor.text, "hover:bg-black/10")} onClick={(e) => { e.stopPropagation(); onSetQuote(message); }} aria-label="Zitieren">
                   <Quote className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Zitieren</span>
                 </Button>
               </>
@@ -174,10 +165,10 @@ export function MessageBubble({
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className={`h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100 ${bubbleColor.text} hover:bg-black/10`} 
+                  className={cn("h-auto px-1.5 py-0.5 opacity-60 hover:opacity-100", bubbleColor.text, "hover:bg-black/10")} 
                   onClick={(e) => { 
                     e.stopPropagation(); 
-                    onOpenReactionPicker(message.id); // Inform parent
+                    onOpenReactionPicker(message.id); 
                     setShowReactionPicker(true); 
                   }} 
                   aria-label="Reagieren"
@@ -204,7 +195,7 @@ export function MessageBubble({
                               variant="ghost"
                               size="icon"
                               className="text-xl p-0 h-8 w-8"
-                              onClick={() => handleEmojiSelectForReaction(emoji)}
+                              onClick={() => handleLocalEmojiSelectForReaction(emoji)}
                             >
                               {emoji}
                             </Button>
@@ -222,13 +213,11 @@ export function MessageBubble({
       {isOwn && message.senderName && message.avatarFallback && (
         <Avatar className={cn("h-10 w-10 border-2 self-end shrink-0", bubbleColor.ring)}>
           <AvatarImage src={`https://placehold.co/40x40.png?text=${message.avatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
-          <AvatarFallback className={`${bubbleColor.bg} ${bubbleColor.text}`}>
-            {message.senderType === 'admin' ? "👑AD" : message.avatarFallback}
+          <AvatarFallback className={cn(bubbleColor.bg, bubbleColor.text)}>
+            {message.senderType === 'admin' ? "👑" : message.avatarFallback}
           </AvatarFallback>
         </Avatar>
       )}
     </div>
   );
 }
-
-    

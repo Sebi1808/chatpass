@@ -15,13 +15,13 @@ interface MessageListProps {
   onSetReply: (message: DisplayMessage) => void;
   onSetQuote: (message: DisplayMessage) => void;
   onScrollToMessage: (messageId: string) => void;
-  onSetImageForModal: (imageUrl: string | null, imageFileName?: string | null) => void;
   onReaction: (messageId: string, emoji: string) => void; 
   emojiCategories: typeof EmojiCategoriesType; 
   messagesEndRef: RefObject<HTMLDivElement>;
   isChatDataLoading: boolean;
   isAdminView?: boolean;
   onOpenReactionPicker: (messageId: string) => void;
+  reactingToMessageId: string | null; // Add this prop
 }
 
 export function MessageList({
@@ -32,13 +32,13 @@ export function MessageList({
   onSetReply,
   onSetQuote,
   onScrollToMessage,
-  onSetImageForModal,
   onReaction, 
   emojiCategories, 
   messagesEndRef,
   isChatDataLoading,
   isAdminView = false,
   onOpenReactionPicker,
+  reactingToMessageId, // Use this prop
 }: MessageListProps) {
   return (
     <div className="space-y-6">
@@ -46,17 +46,16 @@ export function MessageList({
         <MessageBubble
           key={msg.id}
           message={msg}
-          isOwn={msg.isOwn}
           currentUserId={currentUserId}
           getParticipantColorClasses={getParticipantColorClasses}
           onMentionUser={onMentionUser}
           onSetReply={onSetReply}
           onSetQuote={onSetQuote}
           onScrollToMessage={onScrollToMessage}
-          onSetImageForModal={onSetImageForModal}
           onReaction={onReaction} 
           emojiCategories={emojiCategories} 
           onOpenReactionPicker={onOpenReactionPicker}
+          // reactingToMessageId is implicitly handled by Popover's open state in MessageBubble
         />
       ))}
       <div ref={messagesEndRef} />
@@ -76,5 +75,3 @@ export function MessageList({
     </div>
   );
 }
-
-    

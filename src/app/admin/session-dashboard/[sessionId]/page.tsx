@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -44,7 +43,7 @@ interface AdminDashboardMessage extends MessageType {
 const DEFAULT_COOLDOWN = 0;
 
 const generateToken = () => Math.random().toString(36).substring(2, 10);
-const generateBotId = (scenarioBotId: string) => `bot-${scenarioBotId}-${Date.now()}`;
+const generateBotId = (scenarioBotId: string) => `bot-${scenarioBotId}-${Date.now().toString().slice(-6)}`;
 
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
@@ -69,7 +68,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
   const chatMessagesEndRef = useRef<null | HTMLDivElement>(null);
-  const mirroredChatMessagesEndRef = useRef<null | HTMLDivElement>(null);
 
 
   const displayedInvitationLink = sessionData?.invitationLink && sessionData.invitationToken
@@ -78,7 +76,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
   const getBotDisplayName = (botConfig: BotConfig, index?: number): string => {
     if (botConfig.name) return botConfig.name;
-    let nameSuffix = index !== undefined ? ` ${index + 1}` : "";
+    let nameSuffix = scenario.defaultBotsConfig && scenario.defaultBotsConfig.length > 1 ? ` ${index !== undefined ? index + 1 : ''}` : "";
     switch (botConfig.personality) {
       case 'provokateur': return `Bot Provokateur${nameSuffix}`;
       case 'verteidiger': return `Bot Verteidiger${nameSuffix}`;
@@ -86,51 +84,47 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       default: return `Bot Standard${nameSuffix}`;
     }
   };
+  
+  const scenario = scenarios.find(s => s.id === sessionId); // Define scenario once
 
-  const initializeBotsForSession = async (scenario: Scenario, currentSessionId: string) => {
-    if (!scenario.defaultBotsConfig || scenario.defaultBotsConfig.length === 0) {
-         // If no bots are defined in scenario, delete any existing bots for this session
-        const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
-        const botQuery = query(participantsColRef, where("isBot", "==", true));
-        const botSnap = await getDocs(botQuery);
-        if (!botSnap.empty) {
-            const batch = writeBatch(db);
-            botSnap.docs.forEach(doc => batch.delete(doc.ref));
-            await batch.commit();
-            console.log("Deleted existing bots as none are defined in current scenario config.");
-        }
-        return;
-    }
+  const initializeBotsForSession = async (currentScenarioToInit: Scenario, currentSessionId: string) => {
+    if (!currentScenarioToInit) return;
 
-    const batch = writeBatch(db);
     const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
-    const existingBotsSnap = await getDocs(query(participantsColRef, where("isBot", "==", true)));
-    const existingBotScenarioIds = new Set(existingBotsSnap.docs.map(doc => doc.data().botScenarioId));
-    const scenarioBotIds = new Set(scenario.defaultBotsConfig.map(bc => bc.id));
+    const batch = writeBatch(db);
+
+    // Fetch existing bots from Firestore for this session
+    const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
+    const existingBotsSnap = await getDocs(existingBotsQuery);
+    const firestoreBotsMap = new Map(existingBotsSnap.docs.map(doc => [doc.data().botScenarioId, doc.id]));
+
+    // Bots defined in the current scenario config
+    const scenarioBotsConfig = currentScenarioToInit.defaultBotsConfig || [];
+    const scenarioBotIds = new Set(scenarioBotsConfig.map(bc => bc.id));
 
     // Delete bots from Firestore that are no longer in the scenario config
-    existingBotsSnap.docs.forEach(botDoc => {
-        const botData = botDoc.data();
-        if (!scenarioBotIds.has(botData.botScenarioId)) {
-            batch.delete(botDoc.ref);
-            console.log(`Deleting bot ${botData.name} (ID: ${botData.botScenarioId}) as it's no longer in scenario config.`);
-        }
+    existingBotsSnap.forEach(botDoc => {
+      const botData = botDoc.data();
+      if (!scenarioBotIds.has(botData.botScenarioId)) {
+        batch.delete(botDoc.ref);
+        console.log(`Deleting bot ${botData.name} (ID: ${botData.botScenarioId}) as it's no longer in scenario config.`);
+      }
     });
 
     // Add or update bots based on scenario config
-    for (const [index, botConfig] of scenario.defaultBotsConfig.entries()) {
-      const botScenarioId = botConfig.id || `${botConfig.personality}-${index}`; // Ensure botConfig has an id
-      const botQuery = query(participantsColRef, where("isBot", "==", true), where("botScenarioId", "==", botScenarioId));
-      const botSnap = await getDocs(botQuery);
+    for (const [index, botConfig] of scenarioBotsConfig.entries()) {
+      const botScenarioId = botConfig.id; // This ID must be unique within defaultBotsConfig
+      if (!botScenarioId) {
+        console.error("Bot config is missing a unique id:", botConfig);
+        continue; 
+      }
 
-      const botParticipantData: Participant = {
-        id: '', // Will be set by Firestore for new docs, or existing id
-        userId: '', // Will be set
+      const botParticipantData: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any } = {
+        userId: `bot-${botScenarioId}`, // Make userId deterministic based on botScenarioId
         name: getBotDisplayName(botConfig, index),
         role: `Bot (${botConfig.personality})`,
         avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0,2).toUpperCase(),
         isBot: true,
-        joinedAt: serverTimestamp(),
         status: "Aktiv",
         botConfig: {
           ...botConfig,
@@ -142,30 +136,33 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         botScenarioId: botScenarioId,
       };
 
-      if (botSnap.empty) {
-        const botId = generateBotId(botScenarioId);
-        botParticipantData.id = botId;
-        botParticipantData.userId = botId;
-        batch.set(doc(participantsColRef, botId), botParticipantData);
-        console.log(`Adding new bot: ${botParticipantData.name} (ID: ${botScenarioId})`);
-      } else {
-        const existingBotDoc = botSnap.docs[0];
-        const existingBotData = existingBotDoc.data() as Participant;
-        // Preserve existing mission if new mission is empty and there was an existing one
-        const missionToSet = botConfig.currentMission || existingBotData.botConfig?.currentMission || "";
+      const existingBotDocId = firestoreBotsMap.get(botScenarioId);
 
-        batch.update(existingBotDoc.ref, {
-            name: getBotDisplayName(botConfig, index),
-            role: `Bot (${botConfig.personality})`,
-            avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0,2).toUpperCase(),
-            "botConfig.personality": botConfig.personality,
-            "botConfig.isActive": botConfig.isActive ?? existingBotData.botConfig?.isActive ?? true,
-            "botConfig.currentEscalation": botConfig.currentEscalation ?? existingBotData.botConfig?.currentEscalation ?? 0,
-            "botConfig.autoTimerEnabled": botConfig.autoTimerEnabled ?? existingBotData.botConfig?.autoTimerEnabled ?? false,
-            "botConfig.currentMission": missionToSet,
-            botScenarioId: botScenarioId, // Ensure this is always set/updated
-        });
-        console.log(`Updating existing bot: ${botParticipantData.name} (ID: ${botScenarioId})`);
+      if (!existingBotDocId) {
+        // Bot does not exist, create it
+        const newBotDocRef = doc(participantsColRef); // Let Firestore generate ID
+        batch.set(newBotDocRef, { ...botParticipantData, id: newBotDocRef.id, joinedAt: serverTimestamp() });
+        console.log(`Adding new bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
+      } else {
+        // Bot exists, update it
+        const botDocRef = doc(participantsColRef, existingBotDocId);
+        const existingBotSnap = await getDoc(botDocRef); // get the specific doc to ensure it exists before update
+        if (existingBotSnap.exists()){
+            const existingBotData = existingBotSnap.data() as Participant;
+            const missionToSet = botConfig.currentMission || existingBotData.botConfig?.currentMission || "";
+             batch.update(botDocRef, {
+                name: getBotDisplayName(botConfig, index),
+                role: `Bot (${botConfig.personality})`,
+                avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0,2).toUpperCase(),
+                "botConfig.personality": botConfig.personality,
+                "botConfig.isActive": botConfig.isActive ?? existingBotData.botConfig?.isActive ?? true,
+                "botConfig.currentEscalation": botConfig.currentEscalation ?? existingBotData.botConfig?.currentEscalation ?? 0,
+                "botConfig.autoTimerEnabled": botConfig.autoTimerEnabled ?? existingBotData.botConfig?.autoTimerEnabled ?? false,
+                "botConfig.currentMission": missionToSet,
+                // botScenarioId should not change if we're updating based on it
+            });
+            console.log(`Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
+        }
       }
     }
     await batch.commit();
@@ -174,7 +171,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
 
   useEffect(() => {
-    const scenario = scenarios.find(s => s.id === sessionId);
+    // scenario is already defined outside
     setCurrentScenario(scenario);
 
     if (scenario) {
@@ -219,9 +216,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
               await updateDoc(sessionDocRef, updates);
             }
 
-            setSessionData(prev => ({...prev, ...existingData, ...updates})); // Ensure previous data is spread correctly
+            setSessionData(prev => ({...prev, ...existingData, ...updates})); 
             setPaceValue(existingData.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
-            await initializeBotsForSession(scenario, sessionId);
+            await initializeBotsForSession(scenario, sessionId); // Always re-sync bots
           }
         } catch (error) {
           console.error("Error managing session document: ", error);
@@ -236,7 +233,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setSessionData(null);
       toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} nicht gefunden.`})
     }
-  }, [sessionId, toast]); // Removed currentScenario from deps as it's derived from sessionId
+  }, [sessionId, toast]); 
 
 
   useEffect(() => {
@@ -263,7 +260,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    const participantsQuery = query(participantsColRef, orderBy("joinedAt", "asc"));
+    const participantsQuery = query(participantsColRef, orderBy("isBot", "asc"), orderBy("joinedAt", "asc")); // Sort bots first, then by joinedAt
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
       const fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
@@ -279,7 +276,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId]);
 
   useEffect(() => {
-    if (!sessionId || showParticipantMirrorView) { // Dont load admin messages if mirror view is active
+    if (!sessionId || showParticipantMirrorView) { 
       setIsLoadingMessages(false);
       return;
     }
@@ -311,15 +308,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages, showParticipantMirrorView]);
-
-  // Separate useEffect for mirrored chat view scroll
-  useEffect(() => {
-    if (showParticipantMirrorView && mirroredChatMessagesEndRef.current) {
-      // This depends on the ChatPageContent having its own scroll mechanism and ref
-      // For now, we can't directly control its internal scroll.
-      // Consider passing a prop to ChatPageContent to trigger scroll if needed.
-    }
-  }, [showParticipantMirrorView]);
 
 
   const copyToClipboard = () => {
@@ -366,11 +354,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         scenarioId: sessionId,
         invitationLink: baseLink,
         invitationToken: newSessionToken,
-        createdAt: serverTimestamp(), // Explicitly set new creation/restart time
+        createdAt: serverTimestamp(), 
     };
 
     try {
-        await setDoc(sessionDocRef, sessionUpdateData, { merge: true }); // Use merge to update or create if not exists
+        await setDoc(sessionDocRef, sessionUpdateData, { merge: true }); 
         await initializeBotsForSession(currentScenario, sessionId);
         toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv mit neuem Link-Token." });
     } catch (error) {
@@ -389,7 +377,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
 
     try {
-      // Delete all messages
       const messagesSnap = await getDocs(messagesColRef);
       if (!messagesSnap.empty) {
           const batchMessages = writeBatch(db);
@@ -397,7 +384,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           await batchMessages.commit();
       }
       
-      // Delete all participants (including bots)
       const participantsSnap = await getDocs(participantsColRef);
       if (!participantsSnap.empty) {
           const batchParticipants = writeBatch(db);
@@ -405,7 +391,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           await batchParticipants.commit();
       }
 
-      // Reset session data
       let baseLink = "";
       if (typeof window !== "undefined") {
         baseLink = `${window.location.origin}/join/${sessionId}`;
@@ -419,8 +404,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
       };
-      await setDoc(sessionDocRef, newSessionData); // Overwrite existing session data
-      await initializeBotsForSession(currentScenario, sessionId); // Re-initialize bots
+      await setDoc(sessionDocRef, newSessionData); 
+      await initializeBotsForSession(currentScenario, sessionId); 
 
       toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Neuer Link-Token generiert." });
     } catch (error) {
@@ -463,14 +448,12 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const handlePaceChange = async (newPace: number[]) => {
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const newCooldown = newPace[0];
-    setPaceValue(newCooldown); // Update local state immediately for responsiveness
+    setPaceValue(newCooldown); 
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { messageCooldownSeconds: newCooldown });
     } catch (error) {
       console.error("Error updating pace: ", error);
-      // Optionally revert local state if DB update fails
-      // setPaceValue(sessionData.messageCooldownSeconds ?? DEFAULT_COOLDOWN); 
       toast({ variant: "destructive", title: "Fehler", description: "Pace konnte nicht angepasst werden." });
     }
   };
@@ -478,7 +461,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const handleMuteAllUsers = async () => {
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    const q = query(participantsColRef, where("isBot", "==", false)); // Only mute human participants
+    const q = query(participantsColRef, where("isBot", "==", false)); 
     try {
       const querySnapshot = await getDocs(q);
       if (querySnapshot.empty) {
@@ -560,7 +543,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     setIsPostingForBot(botParticipant.id);
     try {
       const chatHistoryMessages = chatMessages
-        .slice(-10) // Get last 10 messages for context
+        .slice(-10) 
         .map(msg => `${msg.senderName}: ${msg.content}`)
         .join('\n');
 
@@ -576,7 +559,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const newMessageData: MessageType = {
-        id: '', // Firestore will generate ID
+        id: '', 
         senderUserId: botParticipant.userId,
         senderName: botParticipant.name,
         senderType: 'bot',
@@ -592,8 +575,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipant.id);
         await updateDoc(botDocRef, { "botConfig.currentEscalation": botResponse.escalationLevel });
       }
-      // Clear mission for this bot after posting, if desired
-      // setBotMissions(prev => ({ ...prev, [botParticipant.id]: "" }));
       toast({ title: `Nachricht von ${botParticipant.name} gesendet.`});
 
     } catch (error) {
@@ -606,7 +587,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
 
   const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
-  // Calculate expected human roles based on scenario.standardRollen and number of defined bots
   const expectedStudentRoles = currentScenario ? currentScenario.standardRollen - (currentScenario.defaultBotsConfig?.length || 0) : 0;
 
 
@@ -629,7 +609,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 isBot: false,
                 status: "Nicht beigetreten",
                 avatarFallback: `T${String.fromCharCode(65 + i)}`,
-                joinedAt: new Date(0), // Ensure a default joinedAt for sorting if needed
+                joinedAt: new Date(0), 
             });
             placeholderIndex++;
         }
@@ -713,7 +693,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 sessionId={sessionId}
                 initialUserName="Admin"
                 initialUserRole="Moderator"
-                initialUserId="ADMIN_USER_ID_FIXED" // Ensure this ID is unique and does not clash
+                initialUserId="ADMIN_USER_ID_FIXED" 
                 initialUserAvatarFallback="AD"
                 isAdminView={true}
               />
@@ -778,7 +758,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                         {msg.senderName}:
                       </span>
                       <span className="ml-1">{msg.content}</span>
-                      {msg.imageUrl && <img src={msg.imageUrl} alt="Bild" className="max-w-xs max-h-32 rounded mt-1" data-ai-hint="chat image" />}
+                      {msg.imageUrl && 
+                        <div className="mt-1">
+                            <Image src={msg.imageUrl} alt="Bild im Chat" width={200} height={150} className="rounded max-w-xs max-h-32 object-contain" data-ai-hint="chat image"/>
+                        </div>
+                      }
                       <span className="text-xs text-muted-foreground/70 float-right pt-1">{msg.timestampDisplay}</span>
                     </div>
                   ))}
@@ -989,5 +973,3 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
-
-    

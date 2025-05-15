@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from '@/lib/utils';
 import type { Scenario, DisplayParticipant } from "@/lib/types";
 import type { ParticipantColor } from '@/lib/config';
-import { Bot as BotIcon, User, VolumeX } from "lucide-react";
+import { Bot as BotIcon, User, VolumeX, ShieldCheck } from "lucide-react"; // ShieldCheck for Admin
 
 interface ChatSidebarProps {
   participants: DisplayParticipant[];
@@ -42,19 +42,20 @@ export function ChatSidebar({
           {participants.map((p) => {
             const pColor = getParticipantColorClasses(p.userId, p.isBot ? 'bot' : (p.userId === currentUserId && isAdminView ? 'admin' : 'user'));
             const isAdminParticipant = p.userId === currentUserId && isAdminView;
-            const isCurrentParticipantMuted = p.isMuted ?? false; // Use participant's own muted status
+            const isCurrentParticipantMuted = p.isMuted ?? false;
 
             return (
               <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted">
                 <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
                   <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.name} data-ai-hint="person user" />
-                  <AvatarFallback className={`${pColor.bg} ${pColor.text}`}>{p.avatarFallback}</AvatarFallback>
+                  <AvatarFallback className={cn(pColor.bg, pColor.text)}>{p.avatarFallback}</AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="text-sm font-medium">
                     {p.name}
                     {p.isBot && <Badge variant="outline" className={cn("ml-1.5 text-xs px-1 py-0 border-accent/50 text-accent bg-accent/10")}>🤖 BOT</Badge>}
                     {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0">👑 ADMIN</Badge>}
+                    {p.userId === currentUserId && !isAdminView && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">Du</Badge>}
                     {isCurrentParticipantMuted && !p.isBot && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                   </p>
                   <p className="text-xs text-muted-foreground">{p.role}</p>
@@ -64,15 +65,15 @@ export function ChatSidebar({
           })}
         </div>
       </ScrollArea>
-      {!isAdminView && userRole && currentScenario && userName && (
+      {!isAdminView && userRole && currentScenario && userName && userId && ( // Added userId check
         <>
           <Separator />
           <Card className="mt-auto bg-muted/30">
             <CardHeader className="p-3">
               <div className="flex items-center gap-2">
-                <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(currentUserId, 'user').ring)}>
+                <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(userId, 'user').ring)}>
                   <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user" />
-                  <AvatarFallback className={`${getParticipantColorClasses(currentUserId, 'user').bg} ${getParticipantColorClasses(currentUserId, 'user').text}`}>
+                  <AvatarFallback className={cn(getParticipantColorClasses(userId, 'user').bg, getParticipantColorClasses(userId, 'user').text)}>
                     {userAvatarFallback}
                   </AvatarFallback>
                 </Avatar>
@@ -83,7 +84,7 @@ export function ChatSidebar({
               </div>
             </CardHeader>
             <CardContent className="p-3 pt-0">
-              <ScrollArea className="h-[200px] text-xs">
+              <ScrollArea className="h-[150px] text-xs">
                 <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
                   {currentScenario.langbeschreibung}
                 </CardDescription>
@@ -95,5 +96,3 @@ export function ChatSidebar({
     </>
   );
 }
-
-    

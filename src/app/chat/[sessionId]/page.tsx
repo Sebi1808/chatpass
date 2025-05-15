@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Paperclip, Send, Smile, Mic, User, Bot as BotIcon, CornerDownLeft, Settings, Users, MessageSquare, AlertTriangle, LogOut, PauseCircle, PlayCircle, VolumeX, XCircle, ThumbsUp, SmilePlus, Quote, Eye, Image as ImageIcon, Trash2, NotebookPen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation"; 
 import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent } from "react";
 import { scenarios } from "@/lib/scenarios";
 import type { Scenario, Participant as ParticipantType, Message as MessageType, SessionData, DisplayMessage, DisplayParticipant } from "@/lib/types";
@@ -18,9 +18,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import { db, storage } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -37,10 +35,6 @@ import { ChatSidebar } from '@/components/chat/chat-sidebar';
 
 interface ChatPageUrlParams {
   sessionId: string;
-}
-
-interface ChatPageOuterProps {
-  params: ChatPageUrlParams;
 }
 
 interface ChatPageContentProps {
@@ -65,7 +59,7 @@ const simpleHash = (str: string): number => {
 
 
 export function ChatPageContent({
-  sessionId: currentSessionIdFromProps,
+  sessionId, 
   initialUserName,
   initialUserRole,
   initialUserId,
@@ -74,7 +68,6 @@ export function ChatPageContent({
 }: ChatPageContentProps) {
   const { toast } = useToast();
   const router = useRouter();
-  const sessionId = currentSessionIdFromProps;
 
   const [userName, setUserName] = useState<string | null>(initialUserName || null);
   const [userRole, setUserRole] = useState<string | null>(initialUserRole || null);
@@ -96,10 +89,9 @@ export function ChatPageContent({
 
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
+  
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
-
   const [showEmojiPickerForInput, setShowEmojiPickerForInput] = useState(false);
-  const [showEmojiPickerForReaction, setShowEmojiPickerForReaction] = useState(false);
 
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -107,8 +99,6 @@ export function ChatPageContent({
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
-  const [imageForModal, setImageForModal] = useState<string | null>(null);
-  const [imageFileNameForModal, setImageFileNameForModal] = useState<string | null>(null);
 
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
@@ -231,7 +221,7 @@ export function ChatPageContent({
   }, [sessionId, toast]);
 
   useEffect(() => {
-    if (!sessionId || !userId) return;
+    if (!sessionId || !userId) return; 
     setIsChatDataLoading(true);
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
     const q_msg = query(messagesColRef, orderBy("timestamp", "asc"));
@@ -257,7 +247,7 @@ export function ChatPageContent({
     });
 
     return () => unsubscribe();
-  }, [sessionId, toast, userId]);
+  }, [sessionId, toast, userId]); 
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -304,29 +294,30 @@ export function ChatPageContent({
   const getScenarioTitle = () => currentScenario?.title || "Szenario wird geladen...";
 
   const getParticipantColorClasses = (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot'): ParticipantColor => {
-    if (isAdminView && pUserId === userId && pSenderType === 'admin') {
-       return { name: 'admin', bg: "bg-destructive/80", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
-    }
     if (pSenderType === 'admin') {
-      return { name: 'admin-other', bg: "bg-destructive/70", text: "text-destructive-foreground", nameText: "text-destructive-foreground/90", ring: "ring-destructive" };
+       return { name: 'admin', bg: "bg-destructive/90", text: "text-destructive-foreground", nameText: "text-destructive-foreground", ring: "ring-destructive" };
     }
     if (pSenderType === 'bot') {
-      return { name: 'bot', bg: "bg-accent/60", text: "text-accent-foreground", nameText: "text-accent-foreground/90", ring: "ring-accent" };
+      return { name: 'bot', bg: "bg-accent/80", text: "text-accent-foreground", nameText: "text-accent-foreground", ring: "ring-accent" };
     }
-    if (!pUserId) {
-        const defaultColor = participantColors[0]; // Should ideally not happen if pUserId is always present for users
-        return { ...defaultColor, ring: defaultColor.ring || "ring-gray-400" };
+    if (!pUserId || !userId) { 
+        const defaultColor = participantColors[0]; 
+        return { ...defaultColor };
     }
+    if (pUserId === userId && !isAdminView) { 
+      return { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground", ring: "ring-primary" };
+    }
+
     const colorIndex = simpleHash(pUserId) % participantColors.length;
     const selectedColor = participantColors[colorIndex];
-    return { ...selectedColor, ring: selectedColor.ring || `ring-${selectedColor.name}-400`};
+    return { ...selectedColor };
   };
 
 
   const handleImageFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0];
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) { 
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bitte wählen Sie ein Bild unter 5MB." });
         return;
       }
@@ -394,7 +385,7 @@ export function ChatPageContent({
         const imageFileName = `${file.name}_${Date.now()}`;
         const imagePath = `chat_images/${sessionId}/${imageFileName}`;
         const sRef = storageRef(storage, imagePath);
-
+        
         console.log(`Attempting to upload ${file.name} to ${imagePath}`);
         console.log("Storage reference:", sRef);
 
@@ -407,52 +398,25 @@ export function ChatPageContent({
               console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
               setImageUploadProgress(progress);
               switch (snapshot.state) {
-                case 'paused':
-                  console.log('Upload is paused');
-                  break;
-                case 'running':
-                  console.log('Upload is running');
-                  break;
+                case 'paused': console.log('Upload is paused'); break;
+                case 'running': console.log('Upload is running'); break;
               }
             },
             (error) => {
               console.error("Firebase Storage upload error: ", error);
               let errorMessage = `Fehler: ${error.code || 'Unbekannt'}`;
-              if (error.message) errorMessage += ` - ${error.message}`;
               switch (error.code) {
-                case 'storage/unauthorized':
-                  errorMessage = "Fehler: Keine Berechtigung zum Hochladen. Storage-Regeln oder CORS prüfen.";
-                  break;
-                case 'storage/canceled':
-                  errorMessage = "Upload abgebrochen.";
-                  break;
-                case 'storage/object-not-found':
-                    errorMessage = "Fehler: Objekt nicht gefunden. Pfad oder Bucket überprüfen.";
-                    break;
-                case 'storage/bucket-not-found':
-                    errorMessage = "Fehler: Storage Bucket nicht gefunden.";
-                    break;
-                case 'storage/project-not-found':
-                    errorMessage = "Fehler: Firebase Projekt nicht gefunden.";
-                    break;
-                case 'storage/quota-exceeded':
-                    errorMessage = "Fehler: Speicher-Quota überschritten.";
-                    break;
-                case 'storage/unauthenticated':
-                    errorMessage = "Fehler: Nicht authentifiziert. Anmeldung erforderlich oder Regeln prüfen.";
-                    break;
-                case 'storage/retry-limit-exceeded':
-                    errorMessage = "Fehler: Zeitlimit für Upload überschritten. Netzwerk prüfen.";
-                    break;
-                case 'storage/invalid-checksum':
-                     errorMessage = "Fehler: Prüfsumme der Datei stimmt nicht überein. Datei erneut versuchen.";
-                     break;
-                case 'storage/unknown':
-                  errorMessage = "Unbekannter Fehler beim Upload. Server-Antwort prüfen.";
-                  break;
-                default:
-                  errorMessage = `Storage Fehler: ${error.code} - ${error.message}`;
-                  break;
+                case 'storage/unauthorized': errorMessage = "Fehler: Keine Berechtigung zum Hochladen. Storage-Regeln oder CORS prüfen."; break;
+                case 'storage/canceled': errorMessage = "Upload abgebrochen."; break;
+                case 'storage/object-not-found': errorMessage = "Fehler: Objekt nicht gefunden. Pfad oder Bucket überprüfen."; break;
+                case 'storage/bucket-not-found': errorMessage = "Fehler: Storage Bucket nicht gefunden."; break;
+                case 'storage/project-not-found': errorMessage = "Fehler: Firebase Projekt nicht gefunden."; break;
+                case 'storage/quota-exceeded': errorMessage = "Fehler: Speicher-Quota überschritten."; break;
+                case 'storage/unauthenticated': errorMessage = "Fehler: Nicht authentifiziert. Anmeldung erforderlich oder Regeln prüfen."; break;
+                case 'storage/retry-limit-exceeded': errorMessage = "Fehler: Zeitlimit für Upload überschritten. Netzwerk prüfen."; break;
+                case 'storage/invalid-checksum': errorMessage = "Fehler: Prüfsumme der Datei stimmt nicht überein. Datei erneut versuchen."; break;
+                case 'storage/unknown': errorMessage = "Unbekannter Fehler beim Upload. Server-Antwort prüfen."; break;
+                default: errorMessage = `Storage Fehler: ${error.code} - ${error.message}`; break;
               }
               toast({ variant: "destructive", title: "Bild-Upload fehlgeschlagen", description: errorMessage });
               reject(new Error(errorMessage));
@@ -486,7 +450,6 @@ export function ChatPageContent({
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const messageData: MessageType = {
-        // id will be auto-generated by Firestore
         senderUserId: userId,
         senderName: userName,
         senderType: isAdminView ? 'admin' : 'user',
@@ -565,21 +528,13 @@ export function ChatPageContent({
     setShowEmojiPickerForInput(false);
   };
 
-  const handleEmojiSelectForReaction = (emoji: string) => {
-    if (reactingToMessageId) {
-      handleReaction(reactingToMessageId, emoji);
-    }
-    setShowEmojiPickerForReaction(false);
-    setReactingToMessageId(null);
-  };
-
   const handleOpenReactionPicker = (messageId: string) => {
     setReactingToMessageId(messageId);
-    setShowEmojiPickerForReaction(true); // This will now be handled by individual popovers in MessageBubble
   };
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) return;
+    setReactingToMessageId(null); // Close picker after selection
 
     const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
 
@@ -618,11 +573,6 @@ export function ChatPageContent({
     }
   };
 
-  const handleSetImageForModal = (imageUrl: string | null, imageFileName: string | null = null) => {
-    setImageForModal(imageUrl);
-    setImageFileNameForModal(imageFileName);
-  };
-
 
   if (isLoading && !isAdminView) {
     return (
@@ -641,7 +591,6 @@ export function ChatPageContent({
 
 
   return (
-    <Dialog open={!!imageForModal} onOpenChange={(isOpen) => { if (!isOpen) handleSetImageForModal(null); }}>
       <div className={cn("flex flex-col bg-muted/40", isAdminView ? "h-full" : "h-screen")}>
         {!isAdminView && (
           <header className="flex h-16 items-center justify-between border-b bg-background px-4 md:px-6 shrink-0">
@@ -654,9 +603,9 @@ export function ChatPageContent({
               </Badge>
               {userName && userRole && userId && (
                 <>
-                  <Avatar className={cn("h-8 w-8 border hidden sm:flex", getParticipantColorClasses(userId, 'user').ring, "ring-2")}>
+                  <Avatar className={cn("h-8 w-8 border-2 hidden sm:flex", getParticipantColorClasses(userId, 'user').ring)}>
                     <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="User Avatar" data-ai-hint="person user"/>
-                    <AvatarFallback className={`${getParticipantColorClasses(userId, 'user').bg} ${getParticipantColorClasses(userId, 'user').text}`}>
+                    <AvatarFallback className={cn(getParticipantColorClasses(userId, 'user').bg, getParticipantColorClasses(userId, 'user').text)}>
                       {userAvatarFallback}
                     </AvatarFallback>
                   </Avatar>
@@ -716,13 +665,13 @@ export function ChatPageContent({
                 onSetReply={handleSetReply}
                 onSetQuote={handleSetQuote}
                 onScrollToMessage={scrollToMessage}
-                onSetImageForModal={handleSetImageForModal}
-                onReaction={handleReaction}
                 emojiCategories={emojiCategories}
                 messagesEndRef={messagesEndRef}
                 isChatDataLoading={isChatDataLoading}
                 isAdminView={isAdminView}
                 onOpenReactionPicker={handleOpenReactionPicker}
+                onReaction={handleReaction} 
+                reactingToMessageId={reactingToMessageId}
               />
             </ScrollArea>
 
@@ -756,27 +705,6 @@ export function ChatPageContent({
           </main>
         </div>
       </div>
-      <DialogContent className="p-0 sm:p-0 max-w-[90vw] w-auto h-auto md:max-w-[80vw] lg:max-w-[70vw] max-h-[85vh] flex flex-col bg-background/95 backdrop-blur-md shadow-2xl rounded-xl">
-        <DialogHeader className="p-3 sm:p-4 flex-shrink-0 border-b">
-          <DialogTitle className="text-foreground/90 truncate pr-10">
-            {imageFileNameForModal || "Bildvorschau"}
-          </DialogTitle>
-          <DialogClose className="absolute right-2 top-2 sm:right-3 sm:top-3" />
-        </DialogHeader>
-        {imageForModal && (
-           <div className="relative flex-1 w-full h-full min-h-0 p-1 sm:p-2 md:p-4 flex items-center justify-center overflow-hidden">
-            <Image
-              src={imageForModal}
-              alt={imageFileNameForModal || "Vollbild-Vorschau"}
-              fill
-              style={{ objectFit: "contain" }}
-              className="rounded-md"
-              data-ai-hint="image modal"
-            />
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -785,7 +713,7 @@ interface ChatPageProps {
   params: ChatPageUrlParams;
 }
 
-export default function ChatPage(props: ChatPageOuterProps) {
+export default function ChatPage(props: ChatPageProps) { 
   const sessionId = props.params.sessionId; 
 
   return (
@@ -801,6 +729,3 @@ export default function ChatPage(props: ChatPageOuterProps) {
     </Suspense>
   );
 }
-
-
-    
