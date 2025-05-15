@@ -48,8 +48,9 @@ export default function EditScenarioPage() {
         setLangbeschreibung(foundScenario.langbeschreibung);
         setLernziele(foundScenario.lernziele?.join('\n') || '');
         setTagsInput(foundScenario.tags.join(', '));
-        setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || []))); // Deep copy
-        setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || []))); // Deep copy
+        // Deep copy to prevent direct mutation of the imported scenarios
+        setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || []))); 
+        setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || []))); 
       } else {
         setCurrentScenario(null); // Scenario not found
       }
@@ -74,7 +75,8 @@ export default function EditScenarioPage() {
         avatarFallback: "NB",
         currentEscalation: 0,
         isActive: true,
-        initialMission: ""
+        initialMission: "",
+        autoTimerEnabled: false,
     }]);
   };
 
@@ -110,7 +112,7 @@ export default function EditScenarioPage() {
     if (!currentScenario) return;
     setIsSaving(true);
 
-    const updatedScenarioData = {
+    const updatedScenarioData: Scenario = {
       id: currentScenario.id,
       title,
       kurzbeschreibung,
@@ -118,9 +120,8 @@ export default function EditScenarioPage() {
       lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
       tags: tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag),
       iconName: currentScenario.iconName, // Not editable for now
-      // Calculate defaultBots and standardRollen based on editable configs if needed, or keep static for now
       defaultBots: editableBotsConfig.length, 
-      standardRollen: currentScenario.standardRollen, // This might need adjustment based on human roles count
+      standardRollen: currentScenario.standardRollen, // This might need adjustment based on human roles count + bots
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
     };
@@ -128,6 +129,7 @@ export default function EditScenarioPage() {
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
+    // Simulate API call
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -155,9 +157,9 @@ export default function EditScenarioPage() {
               Das Szenario mit der ID &quot;{scenarioId}&quot; konnte nicht gefunden werden.
             </p>
           </div>
-          <Button variant="outline" onClick={() => router.push('/admin')}>
+          <Button variant="outline" onClick={() => router.push('/admin/scenario-editor')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Zurück zur Szenarienübersicht
+            Zurück zur Editor-Übersicht
           </Button>
         </div>
         <Separator />
@@ -267,7 +269,7 @@ export default function EditScenarioPage() {
                     <Card key={bot.id || `bot-${index}`} className="p-4 bg-muted/20">
                       <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
                         <CardTitle className="text-md">Bot {index + 1} (ID: <span className="font-mono text-xs">{bot.id}</span>)</CardTitle>
-                        <Button type="button" variant="ghost" size="icon" className="text-destructive h-7 w-7" onClick={() => handleRemoveBot(index)} disabled={isSaving}>
+                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveBot(index)} disabled={isSaving}>
                             <Trash2 className="h-4 w-4"/>
                         </Button>
                       </CardHeader>
@@ -291,8 +293,8 @@ export default function EditScenarioPage() {
                           </Select>
                         </div>
                         <div className="space-y-1.5">
-                          <Label htmlFor={`bot-avatar-${index}`}>Avatar Kürzel (2 Zeichen)</Label>
-                          <Input id={`bot-avatar-${index}`} value={bot.avatarFallback || ''} onChange={(e) => handleBotConfigChange(index, 'avatarFallback', e.target.value)} placeholder="BK" maxLength={2} disabled={isSaving}/>
+                          <Label htmlFor={`bot-avatar-${index}`}>Avatar Kürzel (max. 2 Zeichen)</Label>
+                          <Input id={`bot-avatar-${index}`} value={bot.avatarFallback || ''} onChange={(e) => handleBotConfigChange(index, 'avatarFallback', e.target.value.substring(0,2))} placeholder="BK" maxLength={2} disabled={isSaving}/>
                         </div>
                         <div className="space-y-1.5">
                           <Label htmlFor={`bot-escalation-${index}`}>Initiale Eskalation (0-3)</Label>
@@ -337,7 +339,7 @@ export default function EditScenarioPage() {
                     <Card key={role.id || `role-${index}`} className="p-4 bg-muted/20">
                        <CardHeader className="p-0 pb-4 flex flex-row items-center justify-between">
                         <CardTitle className="text-md">Rolle {index + 1} (ID: <span className="font-mono text-xs">{role.id}</span>)</CardTitle>
-                        <Button type="button" variant="ghost" size="icon" className="text-destructive h-7 w-7" onClick={() => handleRemoveHumanRole(index)} disabled={isSaving}>
+                        <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveHumanRole(index)} disabled={isSaving}>
                             <Trash2 className="h-4 w-4"/>
                         </Button>
                       </CardHeader>
@@ -419,4 +421,6 @@ export default function EditScenarioPage() {
     </form>
   );
 }
+    
+
     
