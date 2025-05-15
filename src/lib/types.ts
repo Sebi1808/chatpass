@@ -15,10 +15,11 @@ export interface Scenario {
   kurzbeschreibung: string;
   langbeschreibung: string;
   lernziele?: string[];
-  defaultBots: number; // This will be dynamically calculated based on defaultBotsConfig.length
-  standardRollen: number; // Gesamtzahl der Rollen inkl. Bots - will be dynamically calculated
+  defaultBots: number;
+  standardRollen: number;
   iconName: string;
   tags: string[];
+  previewImageUrl?: string; // Added for scenario preview image
   defaultBotsConfig?: BotConfig[];
   humanRolesConfig?: HumanRoleConfig[];
 }

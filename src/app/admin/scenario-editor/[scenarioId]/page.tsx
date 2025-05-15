@@ -9,15 +9,32 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen } from 'lucide-react';
+import { ArrowLeft, Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, ImageIcon } from 'lucide-react';
 import { scenarios } from '@/lib/scenarios';
 import type { Scenario, BotConfig, HumanRoleConfig } from '@/lib/types';
 import { botTemplates } from '@/lib/bot-templates';
 import { humanRoleTemplates } from '@/lib/role-templates';
-import { useEffect, useState, type FormEvent, type ChangeEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { tagTaxonomy, type TagCategory, type Tag as TaxonomyTag } from '@/lib/tag-taxonomy';
+import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+
+
+const availableIcons = [
+    { value: 'ShieldAlert', label: '🛡️ ShieldAlert' },
+    { value: 'Code2', label: '💻 Code2' },
+    { value: 'Users', label: '👥 Users' },
+    { value: 'MessageSquare', label: '💬 MessageSquare' },
+    { value: 'Zap', label: '⚡ Zap' },
+    { value: 'Film', label: '🎬 Film' },
+    { value: 'ShoppingBag', label: '🛍️ ShoppingBag' },
+    { value: 'Lock', label: '🔒 Lock' },
+    { value: 'BotMessageSquare', label: '🤖 BotMessageSquare' },
+    { value: 'ImageIcon', label: '🖼️ ImageIcon (Default)'}
+];
 
 export default function EditScenarioPage() {
   const params = useParams();
@@ -30,8 +47,10 @@ export default function EditScenarioPage() {
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
   const [lernziele, setLernziele] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
+  const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [iconNameInput, setIconNameInput] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
 
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
@@ -48,14 +67,14 @@ export default function EditScenarioPage() {
         setTitle(foundScenario.title);
         setKurzbeschreibung(foundScenario.kurzbeschreibung);
         setLangbeschreibung(foundScenario.langbeschreibung);
-        setLernziele(foundScenario.lernziele?.join('\n') || '');
-        setTagsInput(foundScenario.tags.join(', '));
-        setIconNameInput(foundScenario.iconName || '');
-        // Deep copy to avoid mutating original scenario data directly
+        setLernziele(foundScenario.lernziele?.join('\\n') || '');
+        setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
+        setIconNameInput(foundScenario.iconName || 'ImageIcon');
+        setSelectedTags(foundScenario.tags || []);
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
       } else {
-        setCurrentScenario(null);
+        setCurrentScenario(null); // Scenario not found
       }
     }
     setIsLoading(false);
@@ -71,7 +90,7 @@ export default function EditScenarioPage() {
 
   const handleAddBot = () => {
     setEditableBotsConfig([...editableBotsConfig, {
-        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID
+        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: "Neuer Bot",
         personality: "standard",
         avatarFallback: "NB",
@@ -86,8 +105,8 @@ export default function EditScenarioPage() {
     const template = botTemplates.find(t => t.templateId === templateId);
     if (template) {
       setEditableBotsConfig([...editableBotsConfig, {
-        ...template, // Spread template properties
-        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID for this instance
+        ...template,
+        id: `bot-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       }]);
     }
   };
@@ -107,7 +126,7 @@ export default function EditScenarioPage() {
 
   const handleAddHumanRole = () => {
     setEditableHumanRoles([...editableHumanRoles, {
-        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID
+        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: "Neue Rolle",
         description: "Beschreibung der neuen Rolle..."
     }]);
@@ -117,8 +136,8 @@ export default function EditScenarioPage() {
     const template = humanRoleTemplates.find(t => t.templateId === templateId);
     if (template) {
       setEditableHumanRoles([...editableHumanRoles, {
-        ...template, // Spread template properties
-        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID
+        ...template,
+        id: `role-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       }]);
     }
   };
@@ -128,35 +147,46 @@ export default function EditScenarioPage() {
     setEditableHumanRoles(updatedRoles);
   };
 
+  const handleTagToggle = (tagName: string) => {
+    setSelectedTags(prevTags =>
+      prevTags.includes(tagName)
+        ? prevTags.filter(t => t !== tagName)
+        : [...prevTags, tagName]
+    );
+  };
+
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!currentScenario) return;
     setIsSaving(true);
 
     const updatedScenarioData: Scenario = {
-      id: currentScenario.id,
+      ...currentScenario, // Preserve other fields like id
       title,
       kurzbeschreibung,
       langbeschreibung,
-      lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
-      tags: tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag),
+      lernziele: lernziele.split('\\n').map(ziel => ziel.trim()).filter(ziel => ziel),
+      previewImageUrl: previewImageUrlInput,
       iconName: iconNameInput,
-      defaultBots: editableBotsConfig.length, // Dynamically calculated
-      standardRollen: editableBotsConfig.length + editableHumanRoles.length, // Dynamically calculated
+      tags: selectedTags,
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
+      defaultBots: editableBotsConfig.length,
+      standardRollen: editableBotsConfig.length + editableHumanRoles.length,
     };
 
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
-    // Simulate saving
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
         description: `Änderungen für "${title}" wurden in der Konsole geloggt. In einer echten Anwendung würden sie in einer Datenbank gespeichert.`,
       });
       setIsSaving(false);
+      // Optional: Update currentScenario state to reflect saved data if not redirecting
+      // setCurrentScenario(updatedScenarioData);
     }, 1000);
   };
 
@@ -178,9 +208,9 @@ export default function EditScenarioPage() {
               Das Szenario mit der ID &quot;{scenarioId}&quot; konnte nicht gefunden werden.
             </p>
           </div>
-          <Button variant="outline" onClick={() => router.push('/admin/scenario-editor')}>
+          <Button variant="outline" onClick={() => router.push('/admin')}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Zur Editor-Übersicht
+            Zur Szenarienübersicht
           </Button>
         </div>
         <Separator />
@@ -211,10 +241,10 @@ export default function EditScenarioPage() {
           </Button>
         </div>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          
+
           <div className="lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
@@ -243,7 +273,7 @@ export default function EditScenarioPage() {
                 </div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
@@ -379,26 +409,101 @@ export default function EditScenarioPage() {
               <Card>
                   <CardHeader>
                   <CardTitle>Szenario-Metadaten</CardTitle>
-                  <CardDescription>Weitere Einstellungen wie Icon und Tags.</CardDescription>
+                  <CardDescription>Weitere Einstellungen wie Icon und Vorschaubild.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                       <div className="space-y-1.5">
+                          <Label htmlFor="previewImageUrlInput">Vorschaubild URL</Label>
+                          <Input id="previewImageUrlInput" value={previewImageUrlInput} onChange={(e) => setPreviewImageUrlInput(e.target.value)} placeholder="https://beispiel.com/bild.png" disabled={isSaving} className="mt-1"/>
+                          <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild, das in der Szenario-Übersicht angezeigt wird.</p>
+                      </div>
+                      <div className="space-y-1.5">
                           <Label htmlFor="iconNameInput">Icon Name (aus Lucide-React)</Label>
-                          <Input id="iconNameInput" value={iconNameInput} onChange={(e) => setIconNameInput(e.target.value)} placeholder="z.B. ShieldAlert" disabled={isSaving} className="mt-1"/>
-                          <p className="text-xs text-muted-foreground mt-1">Bearbeitung/Auswahl des Icons folgt später. Gültige Namen sind z.B. ShieldAlert, Code2, Users etc.</p>
+                          <Select value={iconNameInput} onValueChange={setIconNameInput} disabled={isSaving}>
+                            <SelectTrigger id="iconNameInput" className="mt-1">
+                                <SelectValue placeholder="Icon wählen..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableIcons.map(icon => (
+                                    <SelectItem key={icon.value} value={icon.value}>{icon.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground mt-1">Wählen Sie ein passendes Icon für das Szenario.</p>
                       </div>
                        <div className="space-y-1.5">
                           <Label htmlFor="standardRollenGesamt">Standard-Rollenzahl (gesamt)</Label>
                           <Input id="standardRollenGesamt" type="number" value={editableBotsConfig.length + editableHumanRoles.length} disabled className="mt-1 bg-muted/80"/>
                           <p className="text-xs text-muted-foreground mt-1">Wird automatisch aus Bot-Anzahl und menschlichen Rollen berechnet.</p>
                       </div>
-                      <div className="space-y-1.5">
-                          <Label htmlFor="tagsInput">Tags (kommagetrennt)</Label>
-                          <Input id="tagsInput" value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="Konflikt, Social Media, Fake News" disabled={isSaving}/>
-                          <p className="text-xs text-muted-foreground mt-1">Ein Klick-basiertes Tag-System aus der Taxonomie folgt.</p>
-                      </div>
                   </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center"><TagsIcon className="mr-2 h-5 w-5" />Themen-Tags</CardTitle>
+                    <CardDescription>Weisen Sie dem Szenario passende Tags zu.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="mb-4">
+                        <Label>Ausgewählte Tags:</Label>
+                        {selectedTags.length > 0 ? (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                                {selectedTags.map(tag => (
+                                    <Badge key={tag} variant="secondary" className="cursor-pointer hover:bg-destructive/80 hover:text-destructive-foreground" onClick={() => handleTagToggle(tag)}>
+                                        {tag} <Trash2 className="ml-1.5 h-3 w-3" />
+                                    </Badge>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-muted-foreground mt-1">Keine Tags ausgewählt.</p>
+                        )}
+                    </div>
+                    <Separator className="my-4" />
+                    <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
+                    <Accordion type="multiple" className="w-full mt-2">
+                        {tagTaxonomy.map((category, catIndex) => (
+                            <AccordionItem value={`category-${catIndex}`} key={category.categoryName}>
+                                <AccordionTrigger className="text-sm font-medium py-2">
+                                    {category.emoji && <span className="mr-2">{category.emoji}</span>}
+                                    {category.categoryName}
+                                </AccordionTrigger>
+                                <AccordionContent className="pt-1 pb-2 pl-2">
+                                    <div className="flex flex-wrap gap-2">
+                                        {category.tags.map(tag => (
+                                            <React.Fragment key={tag.name}>
+                                                <Badge
+                                                    variant={selectedTags.includes(tag.name) ? "default" : "outline"}
+                                                    className="cursor-pointer hover:bg-primary/80"
+                                                    onClick={() => handleTagToggle(tag.name)}
+                                                >
+                                                    {tag.emoji && <span className="mr-1.5">{tag.emoji}</span>}
+                                                    {tag.name}
+                                                </Badge>
+                                                {/* For now, only display first-level subTags. Deeper nesting UI later. */}
+                                                {tag.subTags && tag.subTags.slice(0,5).map(subTag => (
+                                                     <Badge
+                                                        key={subTag.name}
+                                                        variant={selectedTags.includes(subTag.name) ? "default" : "outline"}
+                                                        className="cursor-pointer hover:bg-primary/80 ml-2 text-xs"
+                                                        onClick={() => handleTagToggle(subTag.name)}
+                                                    >
+                                                        {subTag.emoji && <span className="mr-1">{subTag.emoji}</span>}
+                                                        {subTag.name}
+                                                    </Badge>
+                                                ))}
+                                                {tag.subTags && tag.subTags.length > 5 && <span className="text-xs text-muted-foreground ml-2">...</span>}
+                                            </React.Fragment>
+                                        ))}
+                                    </div>
+                                </AccordionContent>
+                            </AccordionItem>
+                        ))}
+                    </Accordion>
+                    <p className="text-xs text-muted-foreground mt-3">Das Tag-System wird weiter ausgebaut (tiefere Verschachtelung, Suche etc.).</p>
+                </CardContent>
+              </Card>
+
               <Card>
                   <CardHeader>
                       <CardTitle>Originaldaten (aus `scenarios.ts`)</CardTitle>

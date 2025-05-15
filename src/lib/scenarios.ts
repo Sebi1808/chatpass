@@ -8,9 +8,10 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Beschimpfungen & Grenzüberschreitungen im Chat.',
     langbeschreibung: 'In diesem Szenario wird ein Online-Diskurs simuliert, der durch Hate-Speech, persönliche Angriffe und verbale Grenzüberschreitungen gekennzeichnet ist. Teilnehmende lernen, solche Situationen zu erkennen, darauf zu reagieren und Strategien zur Deeskalation oder Meldung zu entwickeln.',
     defaultBots: 2,
-    standardRollen: 8, // z.B. 6 Teilnehmer + 2 Bots
+    standardRollen: 5, // 3 Humans + 2 Bots
     iconName: 'ShieldAlert',
     tags: ['Konflikt', 'Respekt', 'Online-Sicherheit'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     lernziele: [
         "Hate-Speech erkennen und definieren können.",
         "Strategien zur Reaktion auf Hate-Speech entwickeln (Gegenrede, Melden, Ignorieren).",
@@ -32,9 +33,10 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Codierte Symbole & Ideologien erkennen.',
     langbeschreibung: 'Dieses Szenario thematisiert die Verbreitung rechtsextremer Ideologien im digitalen Raum. Teilnehmende werden mit codierten Symbolen, subtiler Propaganda und extremistischen Narrativen konfrontiert, um Sensibilität und kritisches Denken zu fördern.',
     defaultBots: 2,
-    standardRollen: 10,
+    standardRollen: 4, // 2 Humans + 2 Bots
     iconName: 'Code2',
     tags: ['Extremismus', 'Propaganda', 'Medienkompetenz'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     lernziele: [
         "Codierte Sprache und Symbole des digitalen Rechtsextremismus identifizieren.",
         "Manipulative Strategien in rechtsextremen Online-Inhalten analysieren.",
@@ -55,28 +57,30 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Alltagsdiskussion, Gruppendruck und soziale Dynamiken.',
     langbeschreibung: 'Simuliert eine typische Diskussion in einem Klassenchat. Themen können von Hausaufgaben bis zu Freizeitaktivitäten reichen, wobei auch Gruppendruck, Missverständnisse und soziale Ausgrenzung eine Rolle spielen können.',
     defaultBots: 1,
-    standardRollen: 12,
+    standardRollen: 1, // 0 Humans + 1 Bot (example)
     iconName: 'Users',
     tags: ['Soziale Dynamik', 'Kommunikation', 'Alltag'],
-    lernziele: [], // Beispiel für leere Lernziele
+    previewImageUrl: 'https://placehold.co/600x400.png',
+    lernziele: [],
     defaultBotsConfig: [
       { id: '3-std-0', name: "Mitschüler Epsilon", personality: 'standard', avatarFallback: 'ME', currentEscalation: 0, isActive: true, initialMission: "Nimm an der Diskussion teil, stelle Fragen und reagiere auf andere." }
-    ]
+    ],
+    humanRolesConfig: []
   },
-  // Ensure all other scenarios also have at least an empty defaultBotsConfig array if they have defaultBots > 0
-  // and an empty humanRolesConfig if desired.
   {
     id: '4',
     title: 'Fake News',
     kurzbeschreibung: 'Umgang mit reißerischen Falschmeldungen.',
     langbeschreibung: 'Teilnehmende werden mit viralen Falschmeldungen und Desinformation konfrontiert. Ziel ist es, die Mechanismen von Fake News zu verstehen, Quellenkritik zu üben und Strategien zur Verifizierung von Informationen zu erlernen.',
     defaultBots: 1,
-    standardRollen: 10,
+    standardRollen: 1, // 0 Humans + 1 Bot
     iconName: 'Annoyed',
     tags: ['Desinformation', 'Medienkritik', 'Quellenprüfung'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     defaultBotsConfig: [
       { id: '4-info-0', name: "Nachrichtenstreuer Zeta", personality: 'informant', avatarFallback: 'NZ', currentEscalation: 1, isActive: true, initialMission: "Poste eine reißerische Falschmeldung und beobachte die Reaktionen." }
-    ]
+    ],
+    humanRolesConfig: []
   },
   {
     id: '5',
@@ -84,12 +88,14 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: '„Geheime Pläne“ & QAnon-ähnliche Themen.',
     langbeschreibung: 'Dieses Szenario setzt sich mit der Verbreitung und Wirkung von Verschwörungstheorien auseinander. Teilnehmende analysieren deren typische Merkmale und lernen, kritisch mit solchen Narrativen umzugehen.',
     defaultBots: 1,
-    standardRollen: 10,
+    standardRollen: 1, // 0 Humans + 1 Bot
     iconName: 'Zap',
     tags: ['Verschwörung', 'Kritisches Denken', 'Manipulation'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
      defaultBotsConfig: [
       { id: '5-info-0', name: "Theoretiker Eta", personality: 'informant', avatarFallback: 'TE', currentEscalation: 0, isActive: true, initialMission: "Präsentiere eine obskure Theorie als absolute Wahrheit." }
-    ]
+    ],
+    humanRolesConfig: []
   },
   {
     id: '6',
@@ -97,13 +103,15 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Ausgrenzung und Belästigung Einzelner.',
     langbeschreibung: 'Simuliert eine Situation von Cybermobbing, bei der eine Person online ausgegrenzt, beleidigt oder bedroht wird. Fokus liegt auf Empathie, Zivilcourage und Hilfsangeboten für Betroffene und Beobachtende.',
     defaultBots: 2,
-    standardRollen: 9,
+    standardRollen: 2, // 0 Humans + 2 Bots
     iconName: 'MessageSquare',
     tags: ['Mobbing', 'Soziale Verantwortung', 'Hilfe'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     defaultBotsConfig: [
       { id: '6-prov-0', name: "Mobber Theta", personality: 'provokateur', avatarFallback: 'MT', currentEscalation: 1, isActive: true, initialMission: "Suche dir ein Opfer und beginne mit subtilen Sticheleien, die sich steigern." },
       { id: '6-vert-1', name: "Helfer Iota", personality: 'verteidiger', avatarFallback: 'HI', currentEscalation: 0, isActive: true, initialMission: "Erkenne das Mobbing und versuche, dem Opfer beizustehen." }
-    ]
+    ],
+    humanRolesConfig: []
   },
   {
     id: '7',
@@ -111,13 +119,15 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Kurzvideo-Links & Memes mit extremistischen Inhalten.',
     langbeschreibung: 'Konfrontiert Teilnehmende mit scheinbar harmlosen Kurzvideos oder Memes, die extremistische, insbesondere faschistische, Inhalte transportieren. Ziel ist die Schulung der Wahrnehmung für subtile Propaganda in sozialen Medien.',
     defaultBots: 2,
-    standardRollen: 8,
+    standardRollen: 2, // 0 Humans + 2 Bots
     iconName: 'Film',
     tags: ['Extremismus', 'Social Media', 'Propaganda'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     defaultBotsConfig: [
       { id: '7-info-0', name: "Meme Lord Kappa", personality: 'informant', avatarFallback: 'MK', currentEscalation: 0, isActive: true, initialMission: "Teile Memes, die auf den zweiten Blick problematische Ideologien transportieren." },
       { id: '7-prov-1', name: "Verharmloser Lambda", personality: 'provokateur', avatarFallback: 'VL', currentEscalation: 0, isActive: true, initialMission: "Tue kritische Nachfragen zu den Memes als Überempfindlichkeit ab." }
-    ]
+    ],
+    humanRolesConfig: []
   },
   {
     id: '8',
@@ -125,12 +135,14 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Schleichwerbung & unseriöse Gewinnspiele.',
     langbeschreibung: 'Teilnehmende analysieren Posts von Influencern, die (Schleich-)Werbung und fragwürdige Gewinnspiele enthalten. Es geht um die kritische Auseinandersetzung mit kommerziellen Interessen auf Social Media.',
     defaultBots: 1,
-    standardRollen: 10,
+    standardRollen: 1, // 0 Humans + 1 Bot
     iconName: 'ShoppingBag',
     tags: ['Werbung', 'Konsumkritik', 'Social Media'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     defaultBotsConfig: [
       { id: '8-info-0', name: "Influencer My", personality: 'informant', avatarFallback: 'IM', currentEscalation: 0, isActive: true, initialMission: "Bewerbe ein Produkt auf übertriebene Weise und starte ein unrealistisches Gewinnspiel." }
-    ]
+    ],
+    humanRolesConfig: []
   },
   {
     id: '9',
@@ -138,13 +150,15 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Grooming & Erpressung mit intimen Inhalten.',
     langbeschreibung: 'Dieses ernste Szenario simuliert Anbahnungsversuche (Grooming) und Erpressung mit intimen Bildern oder Videos (Sextortion). Es soll für Gefahren sensibilisieren und Handlungsoptionen aufzeigen.',
     defaultBots: 2,
-    standardRollen: 8,
+    standardRollen: 2, // 0 Humans + 2 Bots
     iconName: 'Lock',
     tags: ['Sexuelle Gewalt', 'Erpressung', 'Prävention'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     defaultBotsConfig: [
       { id: '9-prov-0', name: "Groomer Ny", personality: 'provokateur', avatarFallback: 'GN', currentEscalation: 0, isActive: true, initialMission: "Baue Vertrauen zu jemandem auf, um an private Informationen oder Bilder zu gelangen." },
       { id: '9-vert-1', name: "Warner Xi", personality: 'verteidiger', avatarFallback: 'WX', currentEscalation: 0, isActive: true, initialMission: "Versuche, potenzielle Opfer vor den Maschen des Groomers zu warnen, ohne direkt zu konfrontieren." }
-    ]
+    ],
+    humanRolesConfig: []
   },
   {
     id: '10',
@@ -152,12 +166,13 @@ export const scenarios: Scenario[] = [
     kurzbeschreibung: 'Manipulierte Bilder/Videos und deren Auswirkungen.',
     langbeschreibung: 'Teilnehmende werden mit KI-generierten Deepfakes (manipulierte Bilder/Videos) konfrontiert. Das Szenario thematisiert die technologischen Möglichkeiten, die Gefahren der Manipulation und den kritischen Umgang mit visuellen Medien.',
     defaultBots: 1,
-    standardRollen: 10,
+    standardRollen: 1, // 0 Humans + 1 Bot
     iconName: 'BotMessageSquare',
     tags: ['Künstliche Intelligenz', 'Manipulation', 'Medienkompetenz'],
+    previewImageUrl: 'https://placehold.co/600x400.png',
     defaultBotsConfig: [
       { id: '10-info-0', name: "Fälscher Omikron", personality: 'informant', avatarFallback: 'FO', currentEscalation: 0, isActive: true, initialMission: "Präsentiere ein überzeugendes Deepfake-Video als echt und verteidige dessen Authentizität." }
-    ]
+    ],
+    humanRolesConfig: []
   },
 ];
-    

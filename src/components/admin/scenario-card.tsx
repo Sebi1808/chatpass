@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import {
   Users,
   Bot,
-  NotebookPen, // Changed from Info
+  NotebookPen,
   PlayCircle,
   ShieldAlert,
   Code2,
@@ -16,15 +16,16 @@ import {
   ShoppingBag,
   Lock,
   BotMessageSquare,
-  type LucideIcon
+  type LucideIcon,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type React from 'react';
 import Link from 'next/link';
+import Image from 'next/image'; // Import next/image
 
 interface ScenarioCardProps {
   scenario: Scenario;
-  onStartSimulation: (scenarioId: string) => void;
 }
 
 const iconMap: Record<string, LucideIcon> = {
@@ -38,23 +39,42 @@ const iconMap: Record<string, LucideIcon> = {
   ShoppingBag,
   Lock,
   BotMessageSquare,
+  ImageIcon, // Default/fallback icon
 };
 
 const renderTagContent = (tag: string | { name?: any; [key: string]: any }): string => {
   if (typeof tag === 'string') {
     return tag;
   }
+  // Attempt to access tag.name if it's an object, otherwise return a fallback.
   if (tag && typeof tag.name === 'string') {
     return tag.name;
+  }
+  // Fallback for unexpected tag structures
+  if (tag && typeof (tag as any).value === 'string') {
+    return (tag as any).value;
   }
   return 'Invalid Tag';
 };
 
-export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps) {
-  const IconComponent = scenario.iconName ? iconMap[scenario.iconName] : null;
+
+export function ScenarioCard({ scenario }: ScenarioCardProps) {
+  const IconComponent = scenario.iconName && iconMap[scenario.iconName] ? iconMap[scenario.iconName] : ImageIcon; // Fallback to ImageIcon
 
   return (
     <Card className="flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300">
+      {scenario.previewImageUrl && (
+        <div className="relative w-full h-40 md:h-48 rounded-t-lg overflow-hidden">
+          <Image
+            src={scenario.previewImageUrl}
+            alt={`Vorschau für ${scenario.title}`}
+            layout="fill"
+            objectFit="cover"
+            className="rounded-t-lg"
+            data-ai-hint="scenario preview"
+          />
+        </div>
+      )}
       <CardHeader className="pb-4">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-xl font-semibold leading-tight flex items-center">
@@ -69,23 +89,24 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
       <CardContent className="flex-grow space-y-3 text-sm">
         <div className="flex items-center text-muted-foreground">
           <Users className="h-4 w-4 mr-2 text-primary/80" />
-          <span>{scenario.standardRollen} Standard-Rollen</span>
+          <span>{scenario.humanRolesConfig?.length || 0} Teilnehmer-Rollen</span>
         </div>
         <div className="flex items-center text-muted-foreground">
           <Bot className="h-4 w-4 mr-2 text-primary/80" />
-          <span>{scenario.defaultBots} Default-Bot(s)</span>
+          <span>{scenario.defaultBotsConfig?.length || 0} Bot(s)</span>
         </div>
         {scenario.tags && scenario.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 pt-1">
-            {scenario.tags.map((tag, index) => (
-              <Badge 
-                key={typeof tag === 'string' ? tag : (tag as any)?.id || `tag-${index}`} 
-                variant="secondary" 
+            {scenario.tags.slice(0, 5).map((tag, index) => ( // Show max 5 tags for brevity
+              <Badge
+                key={typeof tag === 'string' ? tag : (tag as any)?.id || `tag-${index}`}
+                variant="secondary"
                 className="text-xs"
               >
                 {renderTagContent(tag)}
               </Badge>
             ))}
+            {scenario.tags.length > 5 && <Badge variant="outline" className="text-xs">...</Badge>}
           </div>
         )}
       </CardContent>
@@ -96,14 +117,15 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
               Bearbeiten
           </Button>
         </Link>
-        <Button 
-            size="sm" 
-            className="w-full sm:w-auto" 
-            onClick={() => onStartSimulation(scenario.id)} 
-        >
-          <PlayCircle className="mr-2 h-4 w-4" />
-          Simulation starten
-        </Button>
+        <Link href={`/admin/session-dashboard/${scenario.id}`} passHref legacyBehavior>
+          <Button
+              size="sm"
+              className="w-full sm:w-auto"
+          >
+            <PlayCircle className="mr-2 h-4 w-4" />
+            Simulation starten
+          </Button>
+        </Link>
       </CardFooter>
     </Card>
   );
