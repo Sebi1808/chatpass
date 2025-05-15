@@ -31,8 +31,8 @@ export default function EditScenarioPage() {
   const [langbeschreibung, setLangbeschreibung] = useState('');
   const [lernziele, setLernziele] = useState('');
   const [tagsInput, setTagsInput] = useState('');
-  const [iconNameInput, setIconNameInput] = useState(''); // For icon name editing
-  
+  const [iconNameInput, setIconNameInput] = useState('');
+
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
 
@@ -51,8 +51,9 @@ export default function EditScenarioPage() {
         setLernziele(foundScenario.lernziele?.join('\n') || '');
         setTagsInput(foundScenario.tags.join(', '));
         setIconNameInput(foundScenario.iconName || '');
-        setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || []))); 
-        setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || []))); 
+        // Deep copy to avoid mutating original scenario data directly
+        setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
+        setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
       } else {
         setCurrentScenario(null);
       }
@@ -70,7 +71,7 @@ export default function EditScenarioPage() {
 
   const handleAddBot = () => {
     setEditableBotsConfig([...editableBotsConfig, {
-        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, 
+        id: `bot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID
         name: "Neuer Bot",
         personality: "standard",
         avatarFallback: "NB",
@@ -95,7 +96,7 @@ export default function EditScenarioPage() {
     const updatedBots = editableBotsConfig.filter((_, i) => i !== index);
     setEditableBotsConfig(updatedBots);
   };
-  
+
   const handleHumanRoleChange = (index: number, field: keyof HumanRoleConfig, value: string) => {
     const updatedRoles = [...editableHumanRoles];
     if (updatedRoles[index]) {
@@ -106,7 +107,7 @@ export default function EditScenarioPage() {
 
   const handleAddHumanRole = () => {
     setEditableHumanRoles([...editableHumanRoles, {
-        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        id: `role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`, // Ensure unique ID
         name: "Neue Rolle",
         description: "Beschreibung der neuen Rolle..."
     }]);
@@ -140,8 +141,8 @@ export default function EditScenarioPage() {
       lernziele: lernziele.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel),
       tags: tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag),
       iconName: iconNameInput,
-      defaultBots: editableBotsConfig.length, 
-      standardRollen: editableBotsConfig.length + editableHumanRoles.length,
+      defaultBots: editableBotsConfig.length, // Dynamically calculated
+      standardRollen: editableBotsConfig.length + editableHumanRoles.length, // Dynamically calculated
       defaultBotsConfig: editableBotsConfig,
       humanRolesConfig: editableHumanRoles,
     };
@@ -149,6 +150,7 @@ export default function EditScenarioPage() {
     console.log("Saving scenario (ID: ", currentScenario.id, "):");
     console.log(JSON.stringify(updatedScenarioData, null, 2));
 
+    // Simulate saving
     setTimeout(() => {
       toast({
         title: "Szenario gespeichert (Simulation)",
@@ -246,7 +248,7 @@ export default function EditScenarioPage() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                     <CardTitle>Bot-Konfiguration</CardTitle>
-                    <CardDescription>Standard-Bots für dieses Szenario.</CardDescription>
+                    <CardDescription>Standard-Bots für dieses Szenario. (ID: {currentScenario.id})</CardDescription>
                 </div>
                 <div className="flex gap-2">
                     <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving}>
