@@ -15,19 +15,19 @@ export interface Scenario {
 }
 
 export interface BotConfig {
+  id: string; // Eindeutige ID für den Bot innerhalb des Szenarios, z.B. "provokateur-01"
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   name?: string;
   avatarFallback?: string;
   currentEscalation?: number;
   isActive?: boolean;
   autoTimerEnabled?: boolean;
-  id?: string; // Eindeutige ID für den Bot innerhalb des Szenarios
-  currentMission?: string; // Für die Missionseingabe durch den Admin
+  currentMission?: string;
 }
 
 export interface SessionData {
   scenarioId: string;
-  createdAt: Timestamp | Date;
+  createdAt: Timestamp | Date; // Firestore serverTimestamp on creation
   invitationLink: string;
   invitationToken?: string;
   status: "active" | "paused" | "ended";
@@ -35,31 +35,31 @@ export interface SessionData {
 }
 
 export interface Participant {
-  id: string;
-  userId: string;
+  id: string; // Firestore document ID
+  userId: string; // Eindeutige ID des Benutzers (kann generiert werden)
   name: string;
   role: string;
   avatarFallback: string;
   isBot: boolean;
-  joinedAt?: Timestamp | Date;
+  joinedAt?: Timestamp | Date; // Firestore serverTimestamp on join
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
   isMuted?: boolean;
-  botConfig?: BotConfig; // Wird für Bot-Teilnehmer verwendet
+  botConfig?: BotConfig; // Nur für Bot-Teilnehmer relevant
   botScenarioId?: string; // ID der Bot-Konfiguration aus dem Szenario
 }
 
 export interface DisplayParticipant extends Participant {
-  // Keine zusätzlichen Felder für DisplayParticipant in diesem Fall
+  // Vorerst keine zusätzlichen Felder benötigt
 }
 
 export interface Message {
-  id: string;
+  id: string; // Firestore document ID
   senderUserId: string;
   senderName: string;
   senderType: 'admin' | 'user' | 'bot';
   avatarFallback: string;
   content: string;
-  timestamp: Timestamp | Date;
+  timestamp: Timestamp | Date | null; // Kann null sein, bevor der Server-Timestamp gesetzt wird
   replyToMessageId?: string;
   replyToMessageContentSnippet?: string;
   replyToMessageSenderName?: string;

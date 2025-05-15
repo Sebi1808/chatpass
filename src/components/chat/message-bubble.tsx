@@ -1,12 +1,12 @@
 
 "use client";
 
-import { type MouseEvent, memo } from 'react'; // Removed useState as it's handled by parent now for reactingToMessageId
-import Image from 'next/image';
+import { type MouseEvent, memo, useState } from 'react';
+import NextImage from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CornerDownLeft, Quote, SmilePlus, Bot as BotIcon, Crown, Trash2, MessageSquare } from "lucide-react";
+import { CornerDownLeft, Quote, SmilePlus, Bot as BotIcon, Crown, Trash2, MessageSquare, ThumbsUp, Heart, Laugh, Angry, Check, ClappingHands } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -23,10 +23,10 @@ interface MessageBubbleProps {
   onSetQuote: (message: DisplayMessage) => void;
   onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
-  reactingToMessageId: string | null; // To control which popover is open
-  setReactingToMessageId: (messageId: string | null) => void; // To open/close this specific popover
+  reactingToMessageId: string | null; 
+  setReactingToMessageId: (messageId: string | null) => void; 
   emojiCategories: typeof EmojiCategoriesType;
-  // onOpenImageModal was removed
+  isAdminView?: boolean;
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -41,19 +41,22 @@ const MessageBubble = memo(function MessageBubble({
   reactingToMessageId,
   setReactingToMessageId,
   emojiCategories,
+  isAdminView = false,
 }: MessageBubbleProps) {
 
-  const isOwn = message.senderUserId === currentUserId && message.senderType !== 'admin'; // Admin messages are not "own" in this context
+  const isOwn = message.senderUserId === currentUserId && (!isAdminView || message.senderType !== 'admin');
   const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
+
+  // console.log(`MessageBubble for ${message.senderName} (own: ${isOwn}): bg=${bubbleColor.bg}, text=${bubbleColor.text}, nameText=${bubbleColor.nameText}`);
+
 
   const handleLocalEmojiSelectForReaction = (emoji: string) => {
     onReaction(message.id, emoji);
-    setReactingToMessageId(null); // Close popover after selection
+    setReactingToMessageId(null); 
   };
 
   const handleOpenReactionPicker = (e: MouseEvent) => {
     e.stopPropagation();
-    // Toggle: if this message's picker is already open, close it. Otherwise, open it.
     setReactingToMessageId(reactingToMessageId === message.id ? null : message.id);
   };
 
@@ -62,8 +65,8 @@ const MessageBubble = memo(function MessageBubble({
     <div
       id={`msg-${message.id}`}
       className={cn(
-        "flex w-full items-start gap-2 group/message py-1", // Added py-1 for a bit more vertical space around bubbles
-        isOwn ? "justify-end pl-10 sm:pl-16" : "justify-start pr-10 sm:pr-16" // Added padding to prevent full width on mobile
+        "flex w-full items-start gap-2 group/message py-1",
+        isOwn ? "justify-end pl-10 sm:pl-16" : "justify-start pr-10 sm:pr-16"
       )}
     >
       {!isOwn && (
@@ -74,7 +77,7 @@ const MessageBubble = memo(function MessageBubble({
       )}
       <div
         className={cn(
-          "max-w-[85%] sm:max-w-[70%] md:max-w-[65%] lg:max-w-[60%]", // Max width for bubbles
+          "max-w-[85%] sm:max-w-[70%] md:max-w-[65%] lg:max-w-[60%]",
           "rounded-xl shadow-md flex flex-col",
           bubbleColor.bg, 
           bubbleColor.text  
@@ -124,23 +127,24 @@ const MessageBubble = memo(function MessageBubble({
             </div>
           )}
 
-        {message.imageUrl && (
+        {message.imageUrl && 
             <div className="my-2 relative w-full max-w-xs sm:max-w-sm md:max-w-md rounded-md overflow-hidden group">
-              <Image
+              <NextImage
                 src={message.imageUrl}
                 alt={message.imageFileName || "Hochgeladenes Bild"}
                 width={700} 
                 height={500} 
-                className="rounded-md object-contain h-auto w-full" // Ensure image scales within its container
+                className="rounded-md object-contain h-auto w-full"
                 data-ai-hint="chat image"
                 priority={false} 
               />
             </div>
-          )}
-          {message.imageFileName && !message.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {message.imageFileName}</p>}
+        }
+        {message.imageFileName && !message.imageUrl && <p className="text-xs opacity-70 mt-1 italic">Bild wird geladen: {message.imageFileName}</p>}
 
           {message.content && <p className="text-sm whitespace-pre-wrap">{message.content}</p>}
-
+          
+          {/* Reactions Display */}
           {message.reactions && Object.keys(message.reactions).length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {Object.entries(message.reactions).map(([emoji, reactedUserIds]) => {
@@ -149,12 +153,12 @@ const MessageBubble = memo(function MessageBubble({
                 return (
                   <Button
                     key={emoji}
-                    variant={"ghost"}
+                    variant={"ghost"} // Use ghost and style manually for better control
                     size="sm"
                     className={cn(
                       "h-auto px-1.5 py-0.5 rounded-full text-xs border",
-                      "bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20", // Default style for reaction button
-                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/40 ring-1 ring-current/40 shadow-md' // Highlight for own reaction
+                      "bg-black/10 dark:bg-white/10 border-current/20 hover:bg-black/20 dark:hover:bg-white/20",
+                      currentUserReacted && 'bg-black/30 dark:bg-white/30 border-current/40 ring-1 ring-current/40 shadow-md'
                     )}
                     onClick={(e) => { e.stopPropagation(); onReaction(message.id, emoji); }}
                   >
@@ -166,7 +170,7 @@ const MessageBubble = memo(function MessageBubble({
             </div>
           )}
           
-          {/* Action buttons always visible */}
+          {/* Action buttons */}
           <div className="flex items-center gap-1 mt-1.5 -ml-1 opacity-100 transition-opacity duration-150">
             {!isOwn && (
               <>
@@ -180,7 +184,9 @@ const MessageBubble = memo(function MessageBubble({
             )}
             <Popover open={reactingToMessageId === message.id} onOpenChange={(open) => {
                 if (!open) {
-                    setReactingToMessageId(null); // Close this specific popover
+                    setReactingToMessageId(null); 
+                } else {
+                    setReactingToMessageId(message.id); // Ensure this message's picker is targeted
                 }
             }}>
               <PopoverTrigger asChild>
@@ -194,7 +200,13 @@ const MessageBubble = memo(function MessageBubble({
                   <SmilePlus className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reagieren</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs z-20" side="top" align={isOwn ? "end" : "start"} onClick={(e) => e.stopPropagation()}>
+              <PopoverContent 
+                className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs z-20" 
+                side="top" 
+                align={isOwn ? "end" : "start"} 
+                onClick={(e) => e.stopPropagation()}
+                onInteractOutside={() => setReactingToMessageId(null)} // Close on outside click
+              >
                 <Tabs defaultValue={emojiCategories[0].name} className="w-full">
                   <TabsList className="grid w-full grid-cols-5 h-auto p-1">
                     {emojiCategories.map(category => (
@@ -243,6 +255,3 @@ const MessageBubble = memo(function MessageBubble({
 MessageBubble.displayName = "MessageBubble";
 
 export { MessageBubble };
-
-
-    

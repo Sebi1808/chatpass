@@ -16,11 +16,12 @@ interface MessageListProps {
   onSetQuote: (message: DisplayMessage) => void;
   onScrollToMessage: (messageId: string) => void;
   onReaction: (messageId: string, emoji: string) => void; 
+  reactingToMessageId: string | null; 
+  setReactingToMessageId: (messageId: string | null) => void;
   emojiCategories: typeof EmojiCategoriesType; 
   messagesEndRef: RefObject<HTMLDivElement>;
   isChatDataLoading: boolean;
   isAdminView?: boolean;
-  // onOpenImageModal: (imageUrl: string, imageFileName?: string) => void; // Removed
 }
 
 export function MessageList({
@@ -32,14 +33,15 @@ export function MessageList({
   onSetQuote,
   onScrollToMessage,
   onReaction, 
+  reactingToMessageId,
+  setReactingToMessageId,
   emojiCategories, 
   messagesEndRef,
   isChatDataLoading,
   isAdminView = false,
-  // onOpenImageModal, // Removed
 }: MessageListProps) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-1"> {/* Reduced space-y for tighter packing */}
       {messages.map((msg) => (
         <MessageBubble
           key={msg.id}
@@ -51,8 +53,10 @@ export function MessageList({
           onSetQuote={onSetQuote}
           onScrollToMessage={onScrollToMessage}
           onReaction={onReaction} 
-          emojiCategories={emojiCategories} 
-          // onOpenImageModal={onOpenImageModal} // Removed
+          reactingToMessageId={reactingToMessageId}
+          setReactingToMessageId={setReactingToMessageId}
+          emojiCategories={emojiCategories}
+          isAdminView={isAdminView}
         />
       ))}
       <div ref={messagesEndRef} />
