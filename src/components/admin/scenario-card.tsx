@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import {
   Users,
   Bot,
-  Info,
+  NotebookPen, // Changed from Info
   PlayCircle,
   ShieldAlert,
   Code2,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type React from 'react';
+import Link from 'next/link';
 
 interface ScenarioCardProps {
   scenario: Scenario;
@@ -43,11 +44,9 @@ const renderTagContent = (tag: string | { name?: any; [key: string]: any }): str
   if (typeof tag === 'string') {
     return tag;
   }
-  // If tag is an object, try to use its 'name' property, but only if 'name' is a string.
   if (tag && typeof tag.name === 'string') {
     return tag.name;
   }
-  // Fallback for other cases (e.g., tag is an object but name is not a string or undefined)
   return 'Invalid Tag';
 };
 
@@ -90,11 +89,13 @@ export function ScenarioCard({ scenario, onStartSimulation }: ScenarioCardProps)
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col items-stretch sm:flex-row sm:justify-between gap-2 pt-4">
-        <Button variant="outline" size="sm" onClick={() => alert(`Details für: ${scenario.title}\n\n${scenario.langbeschreibung}`)}>
-            <Info className="mr-2 h-4 w-4" />
-            Mehr Infos
-        </Button>
+      <CardFooter className="flex flex-col sm:flex-row sm:justify-between gap-2 pt-4">
+        <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
+          <Button variant="outline" size="sm" className="w-full sm:w-auto">
+              <NotebookPen className="mr-2 h-4 w-4" />
+              Bearbeiten
+          </Button>
+        </Link>
         <Button 
             size="sm" 
             className="w-full sm:w-auto" 

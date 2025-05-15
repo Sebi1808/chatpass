@@ -64,7 +64,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </Link>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <Link href="/admin/scenario-editor" legacyBehavior passHref>
+              <Link href="/admin/scenario-editor" legacyBehavior passHref> 
+                {/* This link now points to the generic editor landing page */}
                 <SidebarMenuButton tooltip="Szenario Editor">
                   <NotebookPen />
                   <span>Szenario Editor</span>
