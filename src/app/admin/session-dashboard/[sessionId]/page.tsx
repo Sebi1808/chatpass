@@ -7,12 +7,11 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft } from "lucide-react"; // Added ArrowLeft
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { scenarios } from "@/lib/scenarios";
 import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData } from "@/lib/types";
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/firebase";
@@ -42,7 +41,7 @@ interface AdminDashboardMessage extends MessageType {
   timestampDisplay: string;
 }
 
-const DEFAULT_COOLDOWN = 0;
+const DEFAULT_COOLDOWN = 0; 
 
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
@@ -54,7 +53,8 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
   const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
   const [chatMessages, setChatMessages] = useState<AdminDashboardMessage[]>([]);
 
-  const [isLoadingSessionData, setIsLoadingSessionData] = useState(true);
+  const [isLoadingScenario, setIsLoadingScenario] = useState(true);
+  const [isLoadingSessionData, setIsLoadingSessionData] = useState(true); 
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
   const [isEndingSession, setIsEndingSession] = useState(false);
@@ -67,19 +67,156 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
   const [isRemovingParticipant, setIsRemovingParticipant] = useState<string | null>(null);
   const [isRemovingAllParticipants, setIsRemovingAllParticipants] = useState(false);
 
-
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
   const chatMessagesEndRef = useRef<null | HTMLDivElement>(null);
-
 
   const displayedInvitationLink = sessionData?.invitationLink && sessionData.invitationToken
     ? `${sessionData.invitationLink}?token=${sessionData.invitationToken}`
     : "Wird generiert...";
 
+  // Effect to fetch current scenario from Firestore
+  useEffect(() => {
+    if (!sessionId) {
+      console.error("AdminDashboard: No sessionId provided for scenario fetching.");
+      setCurrentScenario(undefined);
+      setIsLoadingScenario(false);
+      return;
+    }
+    setIsLoadingScenario(true);
+    console.log(`AdminDashboard: Attempting to fetch scenario with ID: ${sessionId}`);
+    const scenarioDocRef = doc(db, "scenarios", sessionId);
+    
+    const unsubscribeScenario = onSnapshot(scenarioDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const foundScenario = { id: docSnap.id, ...docSnap.data() } as Scenario;
+        console.log("AdminDashboard: Scenario found/updated in Firestore:", foundScenario);
+        setCurrentScenario(foundScenario);
+      } else {
+        console.error(`AdminDashboard: Scenario with ID "${sessionId}" not found in Firestore during snapshot listener.`);
+        toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} nicht gefunden.` });
+        setCurrentScenario(undefined);
+      }
+      setIsLoadingScenario(false);
+    }, (error) => {
+      console.error(`AdminDashboard: Error fetching scenario ${sessionId} via onSnapshot:`, error);
+      toast({ variant: "destructive", title: "Ladefehler Szenario", description: "Szenario konnte nicht geladen werden." });
+      setCurrentScenario(undefined);
+      setIsLoadingScenario(false);
+    });
+    
+    return () => unsubscribeScenario();
+  }, [sessionId, toast]);
+
+  // Effect to setup/ensure the session document in Firestore exists and has link/token
+  useEffect(() => {
+    if (!sessionId) {
+      console.error("AdminDashboard: No sessionId for session document setup.");
+      return;
+    }
+    
+    console.log(`AdminDashboard: Running effect to setup session document for sessionId: ${sessionId}`);
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    
+    const ensureSessionDocument = async () => {
+      try {
+        const docSnap = await getDoc(sessionDocRef);
+        let baseLink = "";
+        if (typeof window !== "undefined") {
+          baseLink = `${window.location.origin}/join/${sessionId}`;
+        } else {
+          console.warn("AdminDashboard: window is undefined, cannot form baseLink for invitation.");
+        }
+
+        if (!docSnap.exists()) {
+          console.log(`AdminDashboard: Session document for ${sessionId} does not exist. Creating...`);
+          const newSessionToken = generateToken();
+          const newSessionData: SessionData = {
+            scenarioId: sessionId, // Link to the scenario
+            createdAt: serverTimestamp() as Timestamp,
+            invitationLink: baseLink,
+            invitationToken: newSessionToken,
+            status: "active",
+            messageCooldownSeconds: DEFAULT_COOLDOWN,
+          };
+          await setDoc(sessionDocRef, newSessionData);
+          console.log(`AdminDashboard: New session document created for ${sessionId}.`);
+        } else {
+          const existingData = docSnap.data() as SessionData;
+          const updates: Partial<SessionData> = {};
+          let needsDbUpdate = false;
+
+          if (existingData.invitationLink !== baseLink && baseLink) {
+            updates.invitationLink = baseLink;
+            needsDbUpdate = true;
+          }
+          if (!existingData.invitationToken) {
+            updates.invitationToken = generateToken();
+            needsDbUpdate = true;
+          }
+           if (existingData.scenarioId !== sessionId) {
+              updates.scenarioId = sessionId;
+              needsDbUpdate = true;
+          }
+          if(typeof existingData.messageCooldownSeconds === 'undefined'){
+              updates.messageCooldownSeconds = DEFAULT_COOLDOWN;
+              needsDbUpdate = true;
+          }
+
+          if (needsDbUpdate) {
+            console.log(`AdminDashboard: Updating session document for ${sessionId} with:`, updates);
+            await updateDoc(sessionDocRef, updates);
+          } else {
+            // console.log(`AdminDashboard: Session document for ${sessionId} is up to date regarding link/token.`);
+          }
+        }
+      } catch (error) {
+        console.error(`AdminDashboard: Error managing session document for ${sessionId}:`, error);
+        toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzungsdokument konnte nicht initialisiert werden." });
+      }
+    };
+    
+    ensureSessionDocument();
+  }, [sessionId, toast]); // Runs when sessionId changes
+
+  // Effect to listen for real-time sessionData changes from Firestore (e.g., status, cooldown, token)
+  useEffect(() => {
+    if (!sessionId) {
+      console.log("AdminDashboard: No sessionId, skipping sessionData listener setup.");
+      setSessionData(null);
+      setIsLoadingSessionData(false);
+      return;
+    }
+    setIsLoadingSessionData(true);
+    const sessionDocRef = doc(db, "sessions", sessionId);
+    console.log(`AdminDashboard: Setting up onSnapshot listener for sessionData: sessions/${sessionId}`);
+    const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as SessionData;
+        console.log("AdminDashboard: SessionData snapshot received:", data);
+        setSessionData(data);
+        setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
+      } else {
+        console.log(`AdminDashboard: No session document found for ${sessionId} in onSnapshot. A new one might be created by another effect.`);
+        setSessionData(null); 
+      }
+      setIsLoadingSessionData(false);
+    }, (error) => {
+      console.error("AdminDashboard: Error listening to session data: ", error);
+      toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzungsstatus konnte nicht geladen werden." });
+      setIsLoadingSessionData(false);
+    });
+    return () => {
+      console.log(`AdminDashboard: Cleaning up onSnapshot listener for sessionData: sessions/${sessionId}`);
+      unsubscribeSessionData();
+    }
+  }, [sessionId, toast]);
+  
   const getBotDisplayName = useCallback((botConfig: BotConfig, scenarioBotsConfig: BotConfig[] = [], index?: number): string => {
     if (botConfig.name) return botConfig.name;
     const nameSuffix = scenarioBotsConfig.length > 1 && index !== undefined ? ` ${index + 1}` : "";
-    switch (botConfig.personality) {
+    // Default personalities if not provided in config (should not happen with proper scenario setup)
+    const personality = botConfig.personality || 'standard';
+    switch (personality) {
       case 'provokateur': return `Bot Provokateur${nameSuffix}`;
       case 'verteidiger': return `Bot Verteidiger${nameSuffix}`;
       case 'informant': return `Bot Informant${nameSuffix}`;
@@ -87,46 +224,42 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     }
   }, []);
   
-  const scenario = scenarios.find(s => s.id === sessionId); 
-
-  const initializeBotsForSession = useCallback(async (currentScenarioToInit: Scenario, currentSessionId: string) => {
-    if (!currentScenarioToInit || !currentScenarioToInit.defaultBotsConfig) {
-      console.log("Szenario nicht gefunden oder keine Bot-Konfiguration vorhanden, Bot-Initialisierung übersprungen.");
+  const initializeBotsForSession = useCallback(async (scenarioToInit: Scenario, sId: string) => {
+    if (!scenarioToInit || !scenarioToInit.defaultBotsConfig) {
+      console.log("AdminDashboard: initializeBotsForSession - Scenario data or bot config missing for scenario ID:", sId);
       return;
     }
-    const scenarioBotsConfig = currentScenarioToInit.defaultBotsConfig || [];
-
-    const participantsColRef = collection(db, "sessions", currentSessionId, "participants");
+    console.log(`AdminDashboard: Initializing bots for scenario: ${scenarioToInit.title} (ID: ${sId})`);
+    const scenarioBotsConfig = scenarioToInit.defaultBotsConfig || [];
+    const participantsColRef = collection(db, "sessions", sId, "participants");
     const batch = writeBatch(db);
   
     const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
     const existingBotsSnap = await getDocs(existingBotsQuery);
-    const firestoreBotsMap = new Map(existingBotsSnap.docs.map(doc => [doc.data().botScenarioId, doc.id]));
-    const firestoreBotScenarioIdsOnDb = new Set(existingBotsSnap.docs.map(doc => doc.data().botScenarioId));
-  
+    const firestoreBotsMap = new Map(existingBotsSnap.docs.map(d => [d.data().botScenarioId, d.id]));
+    const firestoreBotScenarioIdsOnDb = new Set(existingBotsSnap.docs.map(d => d.data().botScenarioId));
     const scenarioBotConfigIds = new Set(scenarioBotsConfig.map(bc => bc.id));
   
-    // Delete bots from Firestore that are no longer in the scenario config
     firestoreBotScenarioIdsOnDb.forEach(dbBotScenarioId => {
       if (!scenarioBotConfigIds.has(dbBotScenarioId)) {
         const docIdToDelete = firestoreBotsMap.get(dbBotScenarioId);
         if (docIdToDelete) {
           const botDocRef = doc(participantsColRef, docIdToDelete);
           batch.delete(botDocRef);
-          console.log(`Deleting bot with ScenarioID: ${dbBotScenarioId} (DocID: ${docIdToDelete}) as it's no longer in scenario config.`);
+          console.log(`AdminDashboard: Deleting bot with ScenarioID: ${dbBotScenarioId} (DocID: ${docIdToDelete}) as it's no longer in scenario config.`);
         }
       }
     });
   
     for (const [index, botConfig] of scenarioBotsConfig.entries()) {
       if (!botConfig || typeof botConfig !== 'object') {
-        console.error("Ungültige Bot-Konfiguration gefunden:", botConfig);
+        console.error("AdminDashboard: Invalid bot configuration found:", botConfig);
         continue;
       }
       
       const botScenarioId = botConfig.id; 
       if (!botScenarioId) {
-        console.error("Bot config is missing a unique id:", botConfig);
+        console.error("AdminDashboard: Bot config is missing a unique id:", botConfig);
         continue; 
       }
   
@@ -134,8 +267,8 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       const botParticipantData: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any } = {
         userId: `bot-${botScenarioId}`, 
         name: botDisplayName,
-        role: `Bot (${botConfig.personality})`,
-        avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0, 2).toUpperCase(),
+        role: `Bot (${botConfig.personality || 'standard'})`,
+        avatarFallback: botConfig.avatarFallback || (botConfig.personality || 'standard').substring(0, 2).toUpperCase(),
         isBot: true,
         status: "Aktiv",
         botConfig: {
@@ -143,7 +276,8 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
           isActive: botConfig.isActive ?? true,
           currentEscalation: botConfig.currentEscalation ?? 0,
           autoTimerEnabled: botConfig.autoTimerEnabled ?? false,
-          currentMission: botConfig.currentMission || "",
+          currentMission: botConfig.initialMission || "", 
+          initialMission: botConfig.initialMission || "",
         },
         botScenarioId: botScenarioId, 
       };
@@ -151,155 +285,69 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       const existingBotDocId = firestoreBotsMap.get(botScenarioId);
   
       if (!existingBotDocId) {
-        const newBotDocRef = doc(collection(db, "sessions", currentSessionId, "participants"));
+        const newBotDocRef = doc(collection(db, "sessions", sId, "participants"));
         batch.set(newBotDocRef, { ...botParticipantData, id: newBotDocRef.id, joinedAt: serverTimestamp() });
-        console.log(`Adding new bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
+        console.log(`AdminDashboard: Adding new bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId}) to session ${sId}`);
       } else {
         const botDocRef = doc(participantsColRef, existingBotDocId);
-        const existingBotSnap = await getDoc(botDocRef); 
-        if (existingBotSnap.exists()) {
-          const existingBotData = existingBotSnap.data() as Participant;
-          const missionToSet = botConfig.currentMission || existingBotData.botConfig?.currentMission || "";
-          batch.update(botDocRef, {
-            name: botDisplayName, 
-            role: `Bot (${botConfig.personality})`,
-            avatarFallback: botConfig.avatarFallback || botConfig.personality.substring(0, 2).toUpperCase(),
-            "botConfig.personality": botConfig.personality,
-            "botConfig.isActive": botConfig.isActive ?? existingBotData.botConfig?.isActive ?? true,
-            "botConfig.currentEscalation": botConfig.currentEscalation ?? existingBotData.botConfig?.currentEscalation ?? 0,
-            "botConfig.autoTimerEnabled": botConfig.autoTimerEnabled ?? existingBotData.botConfig?.autoTimerEnabled ?? false,
-            "botConfig.currentMission": missionToSet,
-          });
-          console.log(`Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId})`);
-        }
+        // Prepare update data carefully to avoid overwriting botConfig with partial data if not all fields are present in botConfig from scenario
+        const updateData: Partial<Participant> & { [key: string]: any } = {
+            name: botDisplayName,
+            role: `Bot (${botConfig.personality || 'standard'})`,
+            avatarFallback: botConfig.avatarFallback || (botConfig.personality || 'standard').substring(0, 2).toUpperCase(),
+            'botConfig.personality': botConfig.personality || 'standard',
+            'botConfig.isActive': botConfig.isActive ?? true,
+            'botConfig.currentEscalation': botConfig.currentEscalation ?? 0,
+            'botConfig.autoTimerEnabled': botConfig.autoTimerEnabled ?? false,
+            'botConfig.initialMission': botConfig.initialMission || "",
+            // Only update currentMission if it's explicitly in the scenario's botConfig,
+            // otherwise, let the existing currentMission (potentially set by admin) persist.
+            // However, for re-initialization, it's better to reset to initialMission.
+            'botConfig.currentMission': botConfig.initialMission || "",
+        };
+        batch.update(botDocRef, updateData);
+        console.log(`AdminDashboard: Updating existing bot: ${botParticipantData.name} (ScenarioID: ${botScenarioId}) in session ${sId}`);
       }
     }
-    await batch.commit();
-    console.log("Bot initialization/update complete.");
+    try {
+        await batch.commit();
+        console.log(`AdminDashboard: Bot initialization/update batch commit successful for session ${sId}.`);
+    } catch (e) {
+        console.error(`AdminDashboard: Error committing bot initialization batch for session ${sId}:`, e);
+    }
   }, [getBotDisplayName]);
 
-
+  // Effect to initialize bots when currentScenario is loaded and valid
   useEffect(() => {
-    setCurrentScenario(scenario);
-
-    if (scenario) {
-      const sessionDocRef = doc(db, "sessions", sessionId);
-      const setupSession = async () => {
-        setIsLoadingSessionData(true);
-        try {
-          const docSnap = await getDoc(sessionDocRef);
-          let baseLink = "";
-          if (typeof window !== "undefined") {
-            baseLink = `${window.location.origin}/join/${sessionId}`;
-          }
-
-          if (!docSnap.exists()) {
-            const newSessionToken = generateToken();
-            const newSessionData: SessionData = {
-              scenarioId: sessionId,
-              createdAt: serverTimestamp(),
-              invitationLink: baseLink,
-              invitationToken: newSessionToken,
-              status: "active",
-              messageCooldownSeconds: DEFAULT_COOLDOWN,
-            };
-            await setDoc(sessionDocRef, newSessionData);
-            setSessionData(newSessionData);
-            // setPaceValue(DEFAULT_COOLDOWN); // This will be set by the sessionData listener
-            await initializeBotsForSession(scenario, sessionId);
-          } else {
-            const existingData = docSnap.data() as SessionData;
-            const updates: Partial<SessionData> = {};
-            let needsDbUpdate = false;
-
-            if (existingData.invitationLink !== baseLink && baseLink) {
-              updates.invitationLink = baseLink;
-              needsDbUpdate = true;
-            }
-            if (!existingData.invitationToken) {
-              updates.invitationToken = generateToken();
-              needsDbUpdate = true;
-            }
-            if (existingData.scenarioId !== sessionId) {
-                updates.scenarioId = sessionId;
-                needsDbUpdate = true;
-            }
-            if(typeof existingData.messageCooldownSeconds === 'undefined'){
-                updates.messageCooldownSeconds = DEFAULT_COOLDOWN;
-                needsDbUpdate = true;
-            }
-
-
-            if (needsDbUpdate) {
-              await updateDoc(sessionDocRef, updates);
-            }
-            
-            // setSessionData(prev => ({...prev, ...existingData, ...updates})); // Let onSnapshot handle this
-            // setPaceValue(existingData.messageCooldownSeconds ?? DEFAULT_COOLDOWN); // Let onSnapshot handle this
-            await initializeBotsForSession(scenario, sessionId); 
-          }
-        } catch (error) {
-          console.error("Error managing session document: ", error);
-          toast({ variant: "destructive", title: "Firestore Fehler", description: "Sitzung konnte nicht erstellt/geladen werden." });
-        } finally {
-          setIsLoadingSessionData(false);
-        }
-      };
-      setupSession();
-    } else {
-      setIsLoadingSessionData(false);
-      setSessionData(null); 
-      toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} nicht gefunden.`})
+    if (currentScenario && sessionId && !isLoadingScenario) {
+      console.log("AdminDashboard: Scenario data available, initializing/updating bots for session:", sessionId);
+      initializeBotsForSession(currentScenario, sessionId);
+    } else if (!isLoadingScenario && !currentScenario) {
+        console.log("AdminDashboard: Scenario not loaded or invalid, cannot initialize bots for session:", sessionId);
     }
-  }, [sessionId, toast, initializeBotsForSession, scenario, getBotDisplayName]); 
-
-
-  useEffect(() => {
-    if (!sessionId) return;
-    const sessionDocRef = doc(db, "sessions", sessionId);
-    const unsubscribeSessionData = onSnapshot(sessionDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data() as SessionData;
-        setSessionData(data);
-        setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN); // Ensure paceValue is updated from Firestore
-      } else {
-        setSessionData(null);
-      }
-      setIsLoadingSessionData(false);
-    }, (error) => {
-      console.error("Error listening to session data: ", error);
-      setIsLoadingSessionData(false);
-    });
-    return () => unsubscribeSessionData();
-  }, [sessionId]);
+  }, [currentScenario, sessionId, isLoadingScenario, initializeBotsForSession]);
 
 
   useEffect(() => {
     if (!sessionId) return;
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    const participantsQuery = query(participantsColRef); 
+    // Sorting by isBot (desc) then joinedAt (asc) to show bots first, then users by join time
+    const participantsQuery = query(participantsColRef, orderBy("isBot", "desc"), orderBy("joinedAt", "asc")); 
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
-      fetchedParticipants.sort((a, b) => {
-        if (a.isBot && !b.isBot) return -1;
-        if (!a.isBot && b.isBot) return 1;
-        const aTimestamp = a.joinedAt instanceof Timestamp ? a.joinedAt.toMillis() : (typeof a.joinedAt === 'object' && a.joinedAt ? (a.joinedAt as any).seconds * 1000 : 0);
-        const bTimestamp = b.joinedAt instanceof Timestamp ? b.joinedAt.toMillis() : (typeof b.joinedAt === 'object' && b.joinedAt ? (b.joinedAt as any).seconds * 1000 : 0);
-        return aTimestamp - bTimestamp;
-      });
-
       setSessionParticipants(fetchedParticipants);
       setIsLoadingParticipants(false);
     }, (error) => {
-      console.error("Error fetching participants: ", error);
+      console.error("AdminDashboard: Error fetching participants: ", error);
       setIsLoadingParticipants(false);
+      toast({ variant: "destructive", title: "Fehler Teilnehmerliste", description: "Teilnehmer konnten nicht geladen werden." });
     });
     return () => unsubscribeParticipants();
-  }, [sessionId]);
+  }, [sessionId, toast]);
 
   useEffect(() => {
     if (!sessionId || showParticipantMirrorView) { 
@@ -323,18 +371,12 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       setChatMessages(fetchedMessages);
       setIsLoadingMessages(false);
     }, (error) => {
-      console.error("Error fetching messages: ", error);
+      console.error("AdminDashboard: Error fetching messages: ", error);
       setIsLoadingMessages(false);
+      toast({ variant: "destructive", title: "Fehler Chatverlauf", description: "Nachrichten konnten nicht geladen werden." });
     });
     return () => unsubscribeMessages();
-  }, [sessionId, showParticipantMirrorView]);
-
- // Removed the useEffect that auto-scrolled the admin chat preview
- // useEffect(() => {
- //   if (!showParticipantMirrorView && chatMessagesEndRef.current) {
- //     chatMessagesEndRef.current.scrollIntoView({ behavior: "smooth" });
- //   }
- // }, [chatMessages, showParticipantMirrorView]);
+  }, [sessionId, showParticipantMirrorView, toast]);
 
 
   const copyToClipboard = () => {
@@ -358,7 +400,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await updateDoc(sessionDocRef, { invitationToken: newSessionToken });
       toast({ title: "Neuer Einladungslink generiert", description: "Der Token wurde aktualisiert." });
     } catch (error) {
-      console.error("Error generating new invitation token: ", error);
+      console.error("AdminDashboard: Error generating new invitation token: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Neuer Link-Token konnte nicht generiert werden." });
     } finally {
       setIsGeneratingLink(false);
@@ -366,11 +408,14 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
   };
 
   const handleStartRestartSession = async () => {
-    if (!sessionId || !currentScenario) return;
+    if (!sessionId || !currentScenario) { 
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen."});
+        return;
+    }
     setIsStartingOrRestartingSession(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
-    let baseLink = sessionData?.invitationLink || "";
-    if (typeof window !== "undefined" && !baseLink) {
+    let baseLink = "";
+     if (typeof window !== "undefined") {
         baseLink = `${window.location.origin}/join/${sessionId}`;
     }
     const newSessionToken = generateToken();
@@ -381,7 +426,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
         scenarioId: sessionId, 
         invitationLink: baseLink,
         invitationToken: newSessionToken,
-        createdAt: serverTimestamp(), 
+        createdAt: serverTimestamp() as Timestamp, 
     };
 
     try {
@@ -389,7 +434,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
         await initializeBotsForSession(currentScenario, sessionId);
         toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv mit neuem Link-Token." });
     } catch (error) {
-        console.error("Error starting/restarting session: ", error);
+        console.error("AdminDashboard: Error starting/restarting session: ", error);
         toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht gestartet/aktualisiert werden." });
     } finally {
         setIsStartingOrRestartingSession(false);
@@ -397,7 +442,10 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
   };
 
   const handleResetSession = async () => {
-    if (!sessionId || !currentScenario) return;
+    if (!sessionId || !currentScenario) { 
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen."});
+        return;
+    }
     setIsResettingSession(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
@@ -409,7 +457,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
           const batchMessages = writeBatch(db);
           messagesSnap.forEach(messageDoc => batchMessages.delete(messageDoc.ref));
           await batchMessages.commit();
-          console.log("All messages deleted for session reset.");
+          console.log("AdminDashboard: All messages deleted for session reset.");
       }
       
       const participantsSnap = await getDocs(participantsColRef);
@@ -417,7 +465,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
           const batchParticipants = writeBatch(db);
           participantsSnap.forEach(participantDoc => batchParticipants.delete(participantDoc.ref));
           await batchParticipants.commit();
-          console.log("All participants deleted for session reset.");
+          console.log("AdminDashboard: All participants deleted for session reset.");
       }
 
       let baseLink = "";
@@ -427,7 +475,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       const newSessionToken = generateToken();
       const newSessionData: SessionData = {
         scenarioId: sessionId,
-        createdAt: serverTimestamp(),
+        createdAt: serverTimestamp() as Timestamp,
         invitationLink: baseLink,
         invitationToken: newSessionToken,
         status: "active",
@@ -438,7 +486,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
 
       toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Neuer Link-Token generiert." });
     } catch (error) {
-      console.error("Error resetting session: ", error);
+      console.error("AdminDashboard: Error resetting session: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht zurückgesetzt werden." });
     } finally {
       setIsResettingSession(false);
@@ -454,7 +502,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await updateDoc(sessionDocRef, { status: "ended" });
       toast({ title: "Sitzung beendet", description: "Die Sitzung wurde als beendet markiert." });
     } catch (error) {
-      console.error("Error ending session: ", error);
+      console.error("AdminDashboard: Error ending session: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht beendet werden." });
     } finally {
         setIsEndingSession(false);
@@ -469,7 +517,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await updateDoc(sessionDocRef, { status: newStatus });
       toast({ title: "Simulationsstatus geändert", description: `Simulation ist jetzt ${newStatus === 'active' ? 'aktiv' : 'pausiert'}.` });
     } catch (error) {
-      console.error("Error toggling simulation active: ", error);
+      console.error("AdminDashboard: Error toggling simulation active: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Simulationsstatus konnte nicht geändert werden." });
     }
   };
@@ -477,13 +525,11 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
   const handlePaceChange = async (newPaceValues: number[]) => {
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const newCooldown = newPaceValues[0];
-    // No need to call setPaceValue here as it's driven by sessionData effect
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { messageCooldownSeconds: newCooldown });
-      // Toast can be added here if desired, but the slider updating from Firestore is the main feedback
     } catch (error) {
-      console.error("Error updating pace: ", error);
+      console.error("AdminDashboard: Error updating pace: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Pace konnte nicht angepasst werden." });
     }
   };
@@ -506,7 +552,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await batch.commit();
       toast({ title: "Alle Teilnehmer stummgeschaltet" });
     } catch (error) {
-      console.error("Error muting all users: ", error);
+      console.error("AdminDashboard: Error muting all users: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnten nicht alle stummgeschaltet werden." });
     }
   };
@@ -518,7 +564,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await updateDoc(participantDocRef, { isMuted: !currentMuteStatus });
       toast({ title: `Teilnehmer ${!currentMuteStatus ? 'stummgeschaltet' : 'freigeschaltet'}` });
     } catch (error) {
-      console.error("Error toggling mute for participant: ", error);
+      console.error("AdminDashboard: Error toggling mute for participant: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Stummschaltung konnte nicht geändert werden." });
     }
   };
@@ -530,7 +576,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await updateDoc(botDocRef, { "botConfig.isActive": !currentActiveStatus });
       toast({ title: `Bot ${!currentActiveStatus ? 'aktiviert' : 'deaktiviert'}` });
     } catch (error) {
-      console.error("Error toggling bot active state: ", error);
+      console.error("AdminDashboard: Error toggling bot active state: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Bot-Status konnte nicht geändert werden." });
     }
   };
@@ -548,7 +594,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     try {
       await updateDoc(botDocRef, { "botConfig.currentEscalation": newEscalation });
     } catch (error) {
-      console.error("Error changing bot escalation: ", error);
+      console.error("AdminDashboard: Error changing bot escalation: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Bot-Eskalation konnte nicht geändert werden." });
     }
   };
@@ -560,7 +606,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await updateDoc(botDocRef, { "botConfig.autoTimerEnabled": !currentAutoTimerStatus });
       toast({ title: `Bot Auto-Timer ${!currentAutoTimerStatus ? 'aktiviert' : 'deaktiviert'}` });
     } catch (error) {
-      console.error("Error toggling bot auto-timer: ", error);
+      console.error("AdminDashboard: Error toggling bot auto-timer: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Bot Auto-Timer konnte nicht geändert werden." });
     }
   };
@@ -568,10 +614,31 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
   const handleBotMissionChange = (botParticipantId: string, mission: string) => {
     setBotMissions(prev => ({ ...prev, [botParticipantId]: mission }));
   };
+  
+  const handleUpdateBotMissionInFirestore = async (botParticipantId: string, mission: string) => {
+    if (!sessionId) return;
+    const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipantId);
+    try {
+      await updateDoc(botDocRef, { "botConfig.currentMission": mission });
+    } catch (error) {
+      console.error("AdminDashboard: Error updating bot mission in Firestore: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Bot-Mission konnte nicht gespeichert werden." });
+    }
+  };
+
 
   const handlePostForBot = async (botParticipant: Participant) => {
-    if (!sessionId || !currentScenario || !botParticipant.botConfig || !sessionData) return;
+    if (!sessionId || !currentScenario || !botParticipant.botConfig || !sessionData) {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Notwendige Daten für Bot-Post fehlen."});
+        return;
+    }
     setIsPostingForBot(botParticipant.id);
+    
+    const missionForThisPost = botMissions[botParticipant.id] || botParticipant.botConfig.currentMission || "";
+    if (botMissions[botParticipant.id] && botMissions[botParticipant.id] !== botParticipant.botConfig.currentMission) {
+        await handleUpdateBotMissionInFirestore(botParticipant.id, botMissions[botParticipant.id]);
+    }
+
     try {
       const chatHistoryMessages = chatMessages
         .slice(-10) 
@@ -579,14 +646,16 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
         .join('\n');
 
       const botMessageInput = {
-        scenarioContext: currentScenario.langbeschreibung,
-        botPersonality: botParticipant.botConfig.personality,
+        scenarioContext: currentScenario.langbeschreibung || "Allgemeiner Chat.", // Fallback
+        botPersonality: botParticipant.botConfig.personality || 'standard', // Fallback
         chatHistory: chatHistoryMessages,
         escalationLevel: botParticipant.botConfig.currentEscalation ?? 0,
-        currentMission: botMissions[botParticipant.id] || botParticipant.botConfig.currentMission || "",
+        currentMission: missionForThisPost,
       };
 
+      console.log("AdminDashboard: Generating bot message with input:", JSON.stringify(botMessageInput, null, 2));
       const botResponse = await generateBotMessage(botMessageInput);
+      console.log("AdminDashboard: Bot response received:", botResponse);
 
       const messagesColRef = collection(db, "sessions", sessionId, "messages");
       const newMessageData: MessageType = {
@@ -602,15 +671,15 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       };
       await addDoc(messagesColRef, newMessageData);
 
-      if (botResponse.escalationLevel !== botParticipant.botConfig.currentEscalation) {
+      if (typeof botResponse.escalationLevel === 'number' && botResponse.escalationLevel !== botParticipant.botConfig.currentEscalation) {
         const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipant.id);
         await updateDoc(botDocRef, { "botConfig.currentEscalation": botResponse.escalationLevel });
       }
       toast({ title: `Nachricht von ${botParticipant.name} gesendet.`});
 
-    } catch (error) {
-      console.error("Error posting for bot:", error);
-      toast({ variant: "destructive", title: "Fehler beim Posten für Bot", description: "Nachricht konnte nicht generiert oder gesendet werden." });
+    } catch (error: any) {
+      console.error("AdminDashboard: Error posting for bot:", error);
+      toast({ variant: "destructive", title: "Fehler beim Posten für Bot", description: error.message || "Nachricht konnte nicht generiert oder gesendet werden." });
     } finally {
       setIsPostingForBot(null);
     }
@@ -625,7 +694,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await deleteDoc(participantDocRef);
       toast({ title: "Teilnehmer entfernt", description: "Der Teilnehmer wurde erfolgreich aus der Sitzung entfernt." });
     } catch (error) {
-      console.error("Error removing participant: ", error);
+      console.error("AdminDashboard: Error removing participant: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnte nicht entfernt werden." });
     } finally {
       setIsRemovingParticipant(null);
@@ -651,7 +720,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
       await batch.commit();
       toast({ title: "Alle Teilnehmer entfernt", description: "Alle menschlichen Teilnehmer wurden aus der Sitzung entfernt." });
     } catch (error) {
-      console.error("Error removing all participants: ", error);
+      console.error("AdminDashboard: Error removing all participants: ", error);
       toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnten nicht entfernt werden." });
     } finally {
       setIsRemovingAllParticipants(false);
@@ -727,39 +796,35 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
   };
 
 
-
   const scenarioTitle = currentScenario?.title || "Szenario wird geladen...";
-  const expectedStudentRoles = currentScenario ? currentScenario.standardRollen - (currentScenario.defaultBotsConfig?.length || 0) : 0;
+  const expectedStudentRoles = currentScenario ? (currentScenario.humanRolesConfig?.length || 0) : 0;
 
 
   const displayParticipantsList: Participant[] = [...sessionParticipants];
   if (currentScenario && !isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).length < expectedStudentRoles) {
     const placeholdersToAdd = expectedStudentRoles - displayParticipantsList.filter(p => !p.isBot).length;
+    const existingRoleNames = new Set(sessionParticipants.filter(p => !p.isBot).map(p => p.role));
 
     let placeholderIndex = 0;
-    for (let i = 0; i < expectedStudentRoles && placeholderIndex < placeholdersToAdd; i++) {
-        const potentialPlaceholderId = `student-placeholder-${String.fromCharCode(65 + i)}`;
-        const roleName = `Teilnehmer ${String.fromCharCode(65 + i)}`;
-        const isRoleTakenByRealUser = sessionParticipants.some(p => !p.isBot && p.role === roleName);
-
-        if (!isRoleTakenByRealUser) {
+    (currentScenario.humanRolesConfig || []).forEach(roleConfig => {
+        if (placeholderIndex < placeholdersToAdd && !existingRoleNames.has(roleConfig.name)) {
              displayParticipantsList.push({
-                id: potentialPlaceholderId,
-                userId: potentialPlaceholderId,
-                name: roleName,
-                role: roleName,
+                id: `student-placeholder-${roleConfig.id || placeholderIndex}`,
+                userId: `student-placeholder-${roleConfig.id || placeholderIndex}`,
+                name: roleConfig.name, 
+                role: roleConfig.name,
                 isBot: false,
                 status: "Nicht beigetreten",
-                avatarFallback: `T${String.fromCharCode(65 + i)}`,
+                avatarFallback: roleConfig.name.substring(0,2).toUpperCase(),
                 joinedAt: new Date(0), 
             });
             placeholderIndex++;
         }
-    }
+    });
   }
 
+
   const isSessionEnded = sessionData?.status === "ended";
-  const isSessionPaused = sessionData?.status === "paused";
   const isSessionActive = sessionData?.status === "active";
   const isSessionInteractable = !isSessionEnded;
 
@@ -769,6 +834,38 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     if (sessionData.status === 'paused') return "Fortsetzen & Initialisieren";
     return "Neu initialisieren";
   };
+
+  if (isLoadingScenario) {
+    return (
+      <div className="flex items-center justify-center h-full p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader><CardTitle>Lade Szenariodaten...</CardTitle></CardHeader>
+          <CardContent className="flex items-center justify-center py-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mr-3" />
+            <p>Szenario wird geladen...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!isLoadingScenario && !currentScenario) {
+     return (
+      <div className="flex flex-col items-center justify-center h-full p-6">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Szenario nicht geladen</CardTitle>
+            <CardDescription>Das Szenario mit der ID "{sessionId}" konnte nicht aus der Datenbank geladen werden oder existiert nicht. Bitte überprüfen Sie die ID oder wählen Sie ein anderes Szenario.</CardDescription>
+            </CardHeader>
+          <CardContent>
+            <Button onClick={() => router.push('/admin')} variant="outline"> {/* Changed to router.push */}
+              <ArrowLeft className="mr-2 h-4 w-4"/> Zurück zur Szenarienübersicht
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
 
   return (
@@ -791,7 +888,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isEndingSession || (!isSessionActive && !isSessionPaused)}>
+              <Button variant="destructive" disabled={isEndingSession || (!sessionData?.status || sessionData.status === 'ended')}>
                 <Power className="mr-2 h-4 w-4" /> Sitzung beenden
               </Button>
             </AlertDialogTrigger>
@@ -805,7 +902,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
               <AlertDialogFooter>
                 <AlertDialogCancel>Abbrechen</AlertDialogCancel>
                 <AlertDialogAction onClick={handleEndSession} disabled={isEndingSession}>
-                  {isEndingSession ? "Wird beendet..." : "Beenden"}
+                  {isEndingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Beenden"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -863,18 +960,18 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                   <div>
                     <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Input id="invitation-link" type="text" value={isLoadingSessionData ? "Wird geladen..." : displayedInvitationLink} readOnly className="bg-muted" />
-                      <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...")}>
+                      <Input id="invitation-link" type="text" value={isLoadingSessionData ? "Lade Sitzungsdaten..." : displayedInvitationLink} readOnly className="bg-muted" />
+                      <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...") || displayedInvitationLink.includes("Lade")}>
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...")}>
+                    <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...") || displayedInvitationLink.includes("Lade")}>
                         <QrCode className="mr-2 h-4 w-4" /> QR-Code anzeigen
                     </Button>
                     <Button variant="default" onClick={handleGenerateNewInvitationToken} disabled={isLoadingSessionData || isGeneratingLink || !sessionData}>
-                        <RefreshCw className="mr-2 h-4 w-4" /> {isGeneratingLink ? "Generiere..." : "Neuen Einladungslink generieren"}
+                        <RefreshCw className="mr-2 h-4 w-4" /> {isGeneratingLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Neuen Einladungslink generieren"}
                     </Button>
                   </div>
                 </CardContent>
@@ -886,7 +983,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                   <CardDescription>Beobachten Sie die laufende Diskussion (vereinfachte Ansicht).</CardDescription>
                 </CardHeader>
                 <CardContent className="h-96 bg-muted/30 rounded-md p-4 overflow-y-auto space-y-2">
-                  {isLoadingMessages && <p className="text-sm text-muted-foreground">Chat-Nachrichten werden geladen...</p>}
+                  {isLoadingMessages && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2"/> <p>Lade Chat...</p></div>}
                   {!isLoadingMessages && chatMessages.length === 0 && (
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                       <MessageCircleIcon className="w-12 h-12 mb-2 opacity-50" />
@@ -920,10 +1017,10 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <Button
                             onClick={handleStartRestartSession}
-                            disabled={isStartingOrRestartingSession || isResettingSession}
+                            disabled={isStartingOrRestartingSession || isResettingSession || isLoadingScenario || !currentScenario}
                             variant={(!sessionData || sessionData.status === 'ended' || sessionData.status === 'paused') ? "default" : "outline"}
                         >
-                            {(isStartingOrRestartingSession || isResettingSession) ? null : 
+                            {isStartingOrRestartingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
                                 ((!sessionData || sessionData.status === 'ended' || sessionData.status === 'paused') ?
                                 <Play className="mr-2 h-4 w-4" /> : <RefreshCw className="mr-2 h-4 w-4" />)
                             }
@@ -931,7 +1028,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                         </Button>
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="destructive" disabled={isStartingOrRestartingSession || isResettingSession || isLoadingSessionData} className="bg-red-700 hover:bg-red-800">
+                                <Button variant="destructive" disabled={isStartingOrRestartingSession || isResettingSession || isLoadingSessionData || isLoadingScenario || !currentScenario} className="bg-red-700 hover:bg-red-800">
                                     <RotateCcw className="mr-2 h-4 w-4" /> Sitzung zurücksetzen
                                 </Button>
                             </AlertDialogTrigger>
@@ -945,7 +1042,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                             <AlertDialogFooter>
                                 <AlertDialogCancel disabled={isResettingSession}>Abbrechen</AlertDialogCancel>
                                 <AlertDialogAction onClick={handleResetSession} disabled={isResettingSession} className="bg-destructive hover:bg-destructive/90">
-                                    {isResettingSession ? "Wird zurückgesetzt..." : "Ja, zurücksetzen"}
+                                    {isResettingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, zurücksetzen"}
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                             </AlertDialogContent>
@@ -960,14 +1057,19 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                             value={[paceValue]}
                             max={30} step={1}
                             id="pace-slider"
-                            onValueChange={(value) => setPaceValue(value[0])} // Optimistic UI update
-                            onValueCommit={handlePaceChange} // Update Firestore on commit
+                            onValueChange={(value) => setPaceValue(value[0])} 
+                            onValueCommit={handlePaceChange} 
                             disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession}
                         />
                     </div>
                     <div className="flex items-center justify-between">
                         <Label htmlFor="simulation-active" className="text-base">
-                            Simulation Aktiv <Badge variant={sessionData?.status === 'active' ? "default" : (sessionData?.status === "paused" ? "secondary" : "destructive")}>{sessionData?.status || "Laden..."}</Badge>
+                            Simulation Aktiv <Badge variant={sessionData?.status === 'active' ? 'default' : (sessionData?.status === "paused" ? "secondary" : "destructive")} 
+                                                className={sessionData?.status === 'active' ? 'bg-green-500 hover:bg-green-600' : (sessionData?.status === "paused" ? 'bg-amber-500 hover:bg-amber-600' : 'bg-red-500 hover:bg-red-600')}
+                                            >
+                                            {sessionData?.status === 'active' ? <Play className="mr-1.5 h-3.5 w-3.5"/> : (sessionData?.status === "paused" ? <Pause className="mr-1.5 h-3.5 w-3.5"/> : <Power className="mr-1.5 h-3.5 w-3.5"/>)}
+                                            {sessionData?.status || (isLoadingSessionData ? "Laden..." : "Unbekannt")}
+                                        </Badge>
                         </Label>
                         <Switch
                             id="simulation-active"
@@ -996,7 +1098,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                                 <AlertDialogFooter>
                                     <AlertDialogCancel disabled={isRemovingAllParticipants}>Abbrechen</AlertDialogCancel>
                                     <AlertDialogAction onClick={handleRemoveAllParticipants} disabled={isRemovingAllParticipants} className="bg-destructive hover:bg-destructive/90">
-                                        {isRemovingAllParticipants ? "Entferne..." : "Ja, alle entfernen"}
+                                        {isRemovingAllParticipants ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, alle entfernen"}
                                     </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
@@ -1015,7 +1117,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="max-h-96 overflow-y-auto space-y-3">
-                  {isLoadingParticipants && <p className="text-sm text-muted-foreground">Lade Teilnehmer...</p>}
+                  {isLoadingParticipants && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2"/> <p>Lade Teilnehmer...</p></div>}
                   {!isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).map(p => (
                     <div key={p.id || p.userId} className="flex items-center justify-between p-2 bg-muted/20 rounded-md">
                       <div>
@@ -1043,7 +1145,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                             <AlertDialogTrigger asChild>
                                 <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8" 
                                  disabled={!isSessionInteractable || isRemovingParticipant === p.id || isStartingOrRestartingSession || isResettingSession}>
-                                    {isRemovingParticipant === p.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                    {isRemovingParticipant === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -1056,7 +1158,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                                 <AlertDialogFooter>
                                     <AlertDialogCancel disabled={isRemovingParticipant === p.id}>Abbrechen</AlertDialogCancel>
                                     <AlertDialogAction onClick={() => handleRemoveParticipant(p.id)} disabled={isRemovingParticipant === p.id} className="bg-destructive hover:bg-destructive/90">
-                                        {isRemovingParticipant === p.id ? "Entferne..." : "Ja, entfernen"}
+                                        {isRemovingParticipant === p.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, entfernen"}
                                     </AlertDialogAction>
                                 </AlertDialogFooter>
                             </AlertDialogContent>
@@ -1079,21 +1181,21 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                   <CardTitle className="flex items-center"><Bot className="mr-2 h-5 w-5 text-primary" /> Bot-Steuerung ({sessionParticipants.filter(p=>p.isBot).length} / {currentScenario?.defaultBotsConfig?.length || 0})</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {isLoadingParticipants && <p className="text-sm text-muted-foreground">Lade Bot-Konfigurationen...</p>}
+                  {isLoadingParticipants && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2"/> <p>Lade Bots...</p></div>}
                   {!isLoadingParticipants && sessionParticipants.filter(p => p.isBot).map((botParticipant) => {
                      const botConfig = botParticipant.botConfig;
-                     if (!botConfig) return null;
+                     if (!botConfig) return <p key={botParticipant.id} className="text-xs text-red-500">Bot-Konfiguration für {botParticipant.name} fehlt!</p>;
 
                      const botName = botParticipant.name;
                      const botIsActive = botConfig.isActive ?? true;
                      const botEscalation = botConfig.currentEscalation ?? 0;
                      const botAutoTimer = botConfig.autoTimerEnabled ?? false;
-                     const currentBotMission = botMissions[botParticipant.id] || botConfig.currentMission || '';
+                     const currentBotMission = botMissions[botParticipant.id] || botConfig.currentMission || "";
 
                     return (
                       <div key={botParticipant.id} className="p-3 border rounded-lg space-y-3">
                         <div className="flex items-center justify-between">
-                          <p className="font-semibold">{botName} <Badge variant={botIsActive ? "default" : "outline"}>{botIsActive ? "Aktiv" : "Inaktiv"}</Badge> <span className="text-xs text-muted-foreground">(ID: {botParticipant.botScenarioId || 'N/A'})</span></p>
+                          <p className="font-semibold">{botName} <Badge variant={botIsActive ? "default" : "outline"} className={botIsActive ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-400 hover:bg-gray-500'}>{botIsActive ? "Aktiv" : "Inaktiv"}</Badge> <span className="text-xs text-muted-foreground">(ID: {botParticipant.botScenarioId || 'N/A'})</span></p>
                           <Switch
                             checked={botIsActive}
                             onCheckedChange={() => handleToggleBotActive(botParticipant.id, botIsActive)}
@@ -1114,7 +1216,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                             onClick={() => handlePostForBot(botParticipant)}
                             disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession || isPostingForBot === botParticipant.id || !botIsActive}
                           >
-                            {isPostingForBot === botParticipant.id ? "Postet..." : <><Brain className="mr-2 h-4 w-4" /> Posten</>}
+                            {isPostingForBot === botParticipant.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <><Brain className="mr-2 h-4 w-4" /> Posten</>}
                           </Button>
                         </div>
                         <div>
@@ -1124,6 +1226,7 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
                             type="text"
                             value={currentBotMission}
                             onChange={(e) => handleBotMissionChange(botParticipant.id, e.target.value)}
+                            onBlur={() => handleUpdateBotMissionInFirestore(botParticipant.id, currentBotMission)} 
                             placeholder="z.B. Frage nach Quellen..."
                             className="mt-1 text-xs h-8"
                             disabled={!isSessionInteractable || isStartingOrRestartingSession || isResettingSession || !botIsActive}
@@ -1162,6 +1265,5 @@ export default function AdminSessionDashboardPage({ params: { sessionId } }: Adm
     </div>
   );
 }
-
 
     
