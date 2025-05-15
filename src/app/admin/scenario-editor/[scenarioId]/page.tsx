@@ -10,16 +10,19 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft, MessageSquareText, Image as ImageLucideIcon } from 'lucide-react';
-import type { Scenario, BotConfig, HumanRoleConfig, BotTemplate, RoleTemplate, InitialPostConfig } from '@/lib/types';
-import React, { useEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
+import type { Scenario, BotConfig, HumanRoleConfig, InitialPostConfig, BotTemplate, RoleTemplate } from '@/lib/types';
+import React, { useEffect, useState, type FormEvent, type KeyboardEvent, type ChangeEvent } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { tagTaxonomy, type TagCategory, type Tag as TaxonomyTag } from '@/lib/tag-taxonomy';
+import { tagTaxonomy, type TagCategory as TaxonomyCategoryType, type Tag as TaxonomyTagType } from '@/lib/tag-taxonomy';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp, Timestamp, onSnapshot, query, orderBy, updateDoc } from 'firebase/firestore';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import Image from 'next/image';
+
 
 const availableIcons = [
     { value: 'ShieldAlert', label: '🛡️ ShieldAlert' },
@@ -49,7 +52,7 @@ const createDefaultScenario = (): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt
   kurzbeschreibung: '',
   langbeschreibung: '',
   lernziele: [],
-  iconName: availableIcons[availableIcons.length - 1].value,
+  iconName: availableIcons[availableIcons.length - 1].value, // Default Icon
   tags: [],
   previewImageUrl: '',
   status: 'draft',
@@ -57,7 +60,7 @@ const createDefaultScenario = (): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt
   humanRolesConfig: [],
   initialPost: {
     authorName: 'System',
-    authorAvatarFallback: 'SYS',
+    authorAvatarFallback: 'SY',
     content: '',
     imageUrl: '',
     platform: 'Generic',
@@ -79,7 +82,12 @@ export default function EditScenarioPage() {
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
   const [lernzieleInput, setLernzieleInput] = useState('');
+  
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
+  const [previewImageFile, setPreviewImageFile] = useState<File | null>(null);
+  const [isUploadingPreviewImage, setIsUploadingPreviewImage] = useState(false);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
+
   const [iconNameInput, setIconNameInput] = useState<string>(availableIcons[availableIcons.length - 1].value);
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
   
@@ -93,7 +101,7 @@ export default function EditScenarioPage() {
 
   const [editableInitialPost, setEditableInitialPost] = useState<InitialPostConfig>({
     authorName: 'System',
-    authorAvatarFallback: 'SYS',
+    authorAvatarFallback: 'SY',
     content: '',
     imageUrl: '',
     platform: 'Generic',
@@ -155,6 +163,7 @@ export default function EditScenarioPage() {
         setLangbeschreibung(newScenarioData.langbeschreibung);
         setLernzieleInput((newScenarioData.lernziele || []).join('\n'));
         setPreviewImageUrlInput(newScenarioData.previewImageUrl || '');
+        setLocalPreviewUrl(newScenarioData.previewImageUrl || null);
         setIconNameInput(newScenarioData.iconName || availableIcons[availableIcons.length - 1].value);
         setStatus(newScenarioData.status || 'draft');
         setSelectedTags(newScenarioData.tags || []);
@@ -182,19 +191,18 @@ export default function EditScenarioPage() {
           setLangbeschreibung(foundScenario.langbeschreibung || '');
           setLernzieleInput(foundScenario.lernziele?.join('\n') || '');
           setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
+          setLocalPreviewUrl(foundScenario.previewImageUrl || null);
           setIconNameInput(foundScenario.iconName || availableIcons[availableIcons.length -1].value);
           setStatus(foundScenario.status || 'draft');
           setSelectedTags(foundScenario.tags || []);
           setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
           setEditableHumanRoles(JSON.parse(JSON.stringify(foundScenario.humanRolesConfig || [])));
           
-          // Ensure initialPost is always a valid object
           const defaultInitialPost = createDefaultScenario().initialPost;
           setEditableInitialPost(JSON.parse(JSON.stringify({
-            ...defaultInitialPost, // Start with defaults
-            ...(foundScenario.initialPost || {}), // Override with found data if it exists
+            ...defaultInitialPost, 
+            ...(foundScenario.initialPost || {}), 
           })));
-
 
           const initialBotFlags: Record<string, boolean> = {};
           (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false);
@@ -221,8 +229,44 @@ export default function EditScenarioPage() {
         setIsLoading(false);
       }
     };
-     loadScenario();
-  }, [currentScenarioId, isNewScenario, toast, router]);
+     if (!isLoadingTemplates) { // Wait for templates to load before loading scenario
+      loadScenario();
+    }
+  }, [currentScenarioId, isNewScenario, toast, router, isLoadingTemplates]);
+
+
+  const handlePreviewImageFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      if (file.size > 5 * 1024 * 1024) { // 5MB Limit
+        toast({ variant: "destructive", title: "Datei zu groß", description: "Bild darf maximal 5MB groß sein." });
+        setPreviewImageFile(null);
+        setLocalPreviewUrl(previewImageUrlInput || null); // Reset to original URL if file is too big
+        if (e.target) e.target.value = ""; // Clear file input
+        return;
+      }
+      setPreviewImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLocalPreviewUrl(reader.result as string);
+        setPreviewImageUrlInput(reader.result as string); // Update input to show local preview as temp URL
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setPreviewImageFile(null);
+      setLocalPreviewUrl(null);
+      // Potentially reset previewImageUrlInput to an empty string or the last known good URL if desired
+      // For now, if no file is selected, localPreviewUrl is cleared.
+    }
+  };
+
+  const handlePreviewImageUrlInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setPreviewImageUrlInput(e.target.value);
+    setLocalPreviewUrl(e.target.value); // Sync local preview with URL input
+    if (previewImageFile) { // If user types a URL, clear the selected file
+      setPreviewImageFile(null);
+    }
+  };
 
 
   const handleBotConfigChange = (index: number, field: keyof BotConfig, value: any) => {
@@ -391,7 +435,28 @@ export default function EditScenarioPage() {
     setIsSaving(true);
     setError(null);
 
-    // Sanitize data before saving to prevent 'undefined' values in Firestore
+    let finalPreviewImageUrl = previewImageUrlInput || '';
+
+    if (previewImageFile) {
+      setIsUploadingPreviewImage(true);
+      const imageFileNameForPath = `preview_${currentScenarioId || 'new'}_${Date.now()}_${previewImageFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const imagePath = `scenario_previews/${imageFileNameForPath}`;
+      const sRef = storageRef(storage, imagePath);
+      try {
+        const uploadTask = await uploadBytesResumable(sRef, previewImageFile);
+        finalPreviewImageUrl = await getDownloadURL(uploadTask.ref);
+        toast({ title: "Vorschaubild hochgeladen", description: "Das neue Vorschaubild wurde gespeichert." });
+      } catch (uploadError: any) {
+        console.error("Error uploading preview image:", uploadError);
+        toast({ variant: "destructive", title: "Uploadfehler Vorschaubild", description: uploadError.message || "Vorschaubild konnte nicht hochgeladen werden." });
+        setIsUploadingPreviewImage(false);
+        setIsSaving(false);
+        return; // Stop submission if image upload fails
+      }
+      setIsUploadingPreviewImage(false);
+    }
+
+
     const sanitizedInitialPost: InitialPostConfig = {
         authorName: editableInitialPost.authorName || 'System',
         authorAvatarFallback: editableInitialPost.authorAvatarFallback || (editableInitialPost.authorName || 'SYS').substring(0,2).toUpperCase() || 'SY',
@@ -424,7 +489,7 @@ export default function EditScenarioPage() {
       kurzbeschreibung: kurzbeschreibung || '',
       langbeschreibung: langbeschreibung || '',
       lernziele: lernzieleInput ? lernzieleInput.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel) : [],
-      previewImageUrl: previewImageUrlInput || '',
+      previewImageUrl: finalPreviewImageUrl,
       iconName: iconNameInput || availableIcons[availableIcons.length - 1].value,
       status: status || 'draft',
       tags: selectedTags.map(t => t.toLowerCase()) || [],
@@ -436,7 +501,7 @@ export default function EditScenarioPage() {
     
 
     try {
-      for (const bot of editableBotsConfig) { // Use original editableBotsConfig for flags
+      for (const bot of editableBotsConfig) { 
         if (botSaveAsTemplateFlags[bot.id]) {
           const newBotTemplateData: Omit<BotTemplate, 'templateId' | 'createdAt'> = {
             name: bot.name || 'Unbenannter Bot',
@@ -450,7 +515,7 @@ export default function EditScenarioPage() {
         }
       }
 
-      for (const role of editableHumanRoles) { // Use original editableHumanRoles for flags
+      for (const role of editableHumanRoles) { 
         if (roleSaveAsTemplateFlags[role.id]) {
           const newRoleTemplateData: Omit<RoleTemplate, 'templateId' | 'createdAt'> = {
             name: role.name || 'Unbenannte Rolle',
@@ -477,6 +542,16 @@ export default function EditScenarioPage() {
           title: "Szenario gespeichert",
           description: `Änderungen für "${scenarioDataToSave.title}" wurden erfolgreich gespeichert.`,
         });
+        // After saving an existing scenario, reload it to get the latest data (like updatedAt)
+        const updatedSnap = await getDoc(scenarioDocRef);
+         if (updatedSnap.exists()) {
+            const updatedScenario = { id: updatedSnap.id, ...updatedSnap.data() } as Scenario;
+            setOriginalScenarioData(JSON.parse(JSON.stringify(updatedScenario)));
+            setPreviewImageUrlInput(updatedScenario.previewImageUrl || ''); // update this specifically as it might have changed
+            setLocalPreviewUrl(updatedScenario.previewImageUrl || null);
+            setPreviewImageFile(null); // Clear selected file after successful upload
+        }
+
       } else {
         throw new Error("Keine Szenario-ID zum Speichern vorhanden.");
       }
@@ -553,9 +628,9 @@ export default function EditScenarioPage() {
             <X className="mr-2 h-4 w-4" />
             Abbrechen
           </Button>
-          <Button type="submit" disabled={isSaving || (isLoading && !isNewScenario)} className="min-w-[150px]">
-            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            {isSaving ? "Speichert..." : (isNewScenario ? "Szenario erstellen" : "Änderungen speichern")}
+          <Button type="submit" disabled={isSaving || (isLoading && !isNewScenario) || isUploadingPreviewImage} className="min-w-[150px]">
+            {isSaving || isUploadingPreviewImage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            {isUploadingPreviewImage ? "Bild lädt hoch..." : (isSaving ? "Speichert..." : (isNewScenario ? "Szenario erstellen" : "Änderungen speichern"))}
           </Button>
         </div>
       </div>
@@ -675,7 +750,7 @@ export default function EditScenarioPage() {
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="initialPostImageUpload">Oder Bild für Post hochladen (optional)</Label>
-                            <Input id="initialPostImageUpload" type="file" disabled={isSaving} className="w-full mt-1"/>
+                            <Input id="initialPostImageUpload" type="file" accept="image/*" onChange={(e) => { /* Logic for handling file upload to initialPost.imageUrl needs to be implemented */}} disabled={isSaving} className="w-full mt-1"/>
                             <p className="text-xs text-muted-foreground mt-1">Funktion zum Hochladen von Bildern für den Post wird später implementiert.</p>
                         </div>
                     </CardContent>
@@ -849,13 +924,32 @@ export default function EditScenarioPage() {
                         <CardContent className="space-y-4 p-4 pt-2">
                             <div className="space-y-1.5">
                                 <Label htmlFor="previewImageUrlInput">Vorschaubild URL</Label>
-                                <Input id="previewImageUrlInput" value={previewImageUrlInput} onChange={(e) => setPreviewImageUrlInput(e.target.value)} placeholder="https://beispiel.com/bild.png" disabled={isSaving} className="w-full mt-1"/>
-                                <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild, das in der Szenario-Übersicht angezeigt wird.</p>
+                                <Input 
+                                  id="previewImageUrlInput" 
+                                  value={previewImageUrlInput} 
+                                  onChange={handlePreviewImageUrlInputChange}
+                                  placeholder="https://beispiel.com/bild.png oder leer lassen" 
+                                  disabled={isSaving || isUploadingPreviewImage} 
+                                  className="w-full mt-1"
+                                />
+                                {localPreviewUrl && (
+                                  <div className="mt-2 relative w-full max-w-xs h-auto aspect-video rounded-md overflow-hidden border">
+                                    <Image src={localPreviewUrl} alt="Vorschaubild Vorschau" layout="fill" objectFit="cover" data-ai-hint="preview image"/>
+                                  </div>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild oder Bild unten hochladen.</p>
                             </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="previewImageUpload">Oder Vorschaubild hochladen</Label>
-                                <Input id="previewImageUpload" type="file" disabled={isSaving} className="w-full mt-1"/>
-                                <p className="text-xs text-muted-foreground mt-1">Funktion zum Hochladen von Vorschaubildern wird später implementiert.</p>
+                                <Input 
+                                  id="previewImageUpload" 
+                                  type="file" 
+                                  accept="image/*" 
+                                  onChange={handlePreviewImageFileChange} 
+                                  disabled={isSaving || isUploadingPreviewImage} 
+                                  className="w-full mt-1"
+                                />
+                                {isUploadingPreviewImage && <p className="text-xs text-primary mt-1">Bild wird hochgeladen...</p>}
                             </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="iconNameInput">Icon Name (aus Lucide-React)</Label>
@@ -921,7 +1015,7 @@ export default function EditScenarioPage() {
                                 )}
                             </div>
                             <Separator className="my-4" />
-                            <Label>Verfügbare Tags (Klicken zum Hinzufügen):</Label>
+                            <Label>Verfügbare Tags (Klicken zum Hinzufügen/Entfernen):</Label>
                              <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
                                 <Accordion type="multiple" className="w-full px-2" defaultValue={[]}>
                                     {tagTaxonomy.map((category, catIndex) => (
@@ -980,7 +1074,7 @@ export default function EditScenarioPage() {
                     <CardDescription>Nur zur Referenz während der Entwicklung: So ist das Szenario aktuell in der Datenbank gespeichert.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-4 pt-2">
-                    <ScrollArea className="w-[200px] h-[200px] max-w-full" orientation="both">
+                    <ScrollArea className="w-[200px] h-[200px]" orientation="both">
                         <pre className="mt-2 p-3 bg-muted/50 rounded-md text-xs">
                         {isLoading ? "Lade Originaldaten..." : JSON.stringify(originalScenarioData, null, 2)}
                         </pre>
@@ -996,3 +1090,6 @@ export default function EditScenarioPage() {
     </form>
   );
 }
+
+
+    
