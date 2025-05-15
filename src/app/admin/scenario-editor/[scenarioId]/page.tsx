@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft, MessageSquareText, Image as ImageLucideIcon, Users, BotMessageSquare, Film, Lock, ShoppingBag, Zap, Code2, ShieldAlert, ListChecks, MessageCircle } from 'lucide-react';
+import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft, MessageSquareText, Image as ImageIconLucide, Users, BotMessageSquare, Film, Lock, ShoppingBag, Zap, Code2, ShieldAlert, ListChecks, MessageCircle } from 'lucide-react';
 import type { Scenario, BotConfig, HumanRoleConfig, InitialPostConfig, BotTemplate, RoleTemplate } from '@/lib/types';
 import React, { useEffect, useState, type FormEvent, type KeyboardEvent, type ChangeEvent, type ReactNode } from 'react';
 import { useToast } from '@/hooks/use-toast';
@@ -25,12 +25,12 @@ import Image from 'next/image';
 
 // Define an array of available icons with their names and components
 const lucideIconMap: Record<string, React.ElementType> = {
-  ShieldAlert, Code2, Users, MessageSquare, Zap, Film, ShoppingBag, Lock, BotMessageSquare, ImageIcon,
+  ShieldAlert, Code2, Users, MessageSquare, Zap, Film, ShoppingBag, Lock, BotMessageSquare, ImageIconLucide,
   NotebookPen, ListChecks, FileText, BotIconLucide, UsersIconLucide, SettingsIcon, Database, MessageSquareText, MessageCircle
 };
 
 const availableIcons: { value: string; label: string; icon?: React.ElementType }[] = [
-  { value: 'ImageIcon', label: '🖼️ Standard Bild', icon: ImageIconLucide },
+  { value: 'ImageIconLucide', label: '🖼️ Standard Bild', icon: ImageIconLucide },
   { value: 'ShieldAlert', label: '🛡️ Warnschild', icon: ShieldAlert },
   { value: 'MessageSquare', label: '💬 Sprechblase', icon: MessageSquare },
   { value: 'Users', label: '👥 Benutzergruppe', icon: Users },
@@ -44,7 +44,7 @@ const availableIcons: { value: string; label: string; icon?: React.ElementType }
   { value: 'Lock', label: '🔒 Schloss', icon: Lock },
   { value: 'ListChecks', label: '📋 Checkliste', icon: ListChecks },
   { value: 'MessageCircle', label: '🗨️ Chat Kreis', icon: MessageCircle },
-  { value: 'Settings', label: '⚙️ Einstellungen', icon: SettingsIcon },
+  { value: 'SettingsIcon', label: '⚙️ Einstellungen', icon: SettingsIcon },
   { value: 'Database', label: '🗃️ Datenbank', icon: Database },
 ];
 
@@ -157,9 +157,7 @@ export default function EditScenarioPage() {
       toast({ variant: "destructive", title: "Fehler", description: "Rollen-Vorlagen konnten nicht geladen werden."});
     });
 
-    // Ensure loading state is set to false after a short delay or when both listeners have fired once.
-    // This is a simplified approach. For robust handling, consider Promise.all or a counter.
-    const timer = setTimeout(() => setIsLoadingTemplates(false), 1000); // Increased timeout
+    const timer = setTimeout(() => setIsLoadingTemplates(false), 1000); 
 
     return () => {
       unsubscribeBots();
@@ -243,7 +241,6 @@ export default function EditScenarioPage() {
         setIsLoading(false);
       }
     };
-    // Only load scenario if templates are also done loading (or not loading anymore)
     if (!isLoadingTemplates) { 
       loadScenario();
     }
@@ -256,7 +253,7 @@ export default function EditScenarioPage() {
       if (file.size > 5 * 1024 * 1024) { // 5MB Limit
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bild darf maximal 5MB groß sein." });
         setPreviewImageFile(null);
-        setLocalPreviewUrl(originalScenarioData?.previewImageUrl || null); // Reset to original or last saved
+        setLocalPreviewUrl(originalScenarioData?.previewImageUrl || null); 
         if (e.target) e.target.value = ""; 
         return;
       }
@@ -269,8 +266,6 @@ export default function EditScenarioPage() {
       reader.readAsDataURL(file);
     } else {
       setPreviewImageFile(null);
-      // If no file is selected, reset to the URL that was previously in the input
-      // or if that's empty, to the original scenario URL.
       setLocalPreviewUrl(previewImageUrlInput || originalScenarioData?.previewImageUrl || null);
     }
   };
@@ -280,7 +275,7 @@ export default function EditScenarioPage() {
     setLocalPreviewUrl(e.target.value); 
     if (previewImageFile) { 
       setPreviewImageFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = ""; // Clear the file input visually
+      if (fileInputRef.current) fileInputRef.current.value = ""; 
     }
   };
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -327,10 +322,10 @@ export default function EditScenarioPage() {
         personality: template.personality,
         avatarFallback: template.avatarFallback || (template.name || "BT").substring(0,2).toUpperCase() || "BT",
         initialMission: template.initialMission || "",
-        isActive: true, // Default to active
-        autoTimerEnabled: false, // Default
-        currentEscalation: 0, // Default
-        templateOriginId: template.templateId, // Store origin
+        isActive: true, 
+        autoTimerEnabled: false, 
+        currentEscalation: 0, 
+        templateOriginId: template.templateId, 
       };
       setEditableBotsConfig([...editableBotsConfig, newBotFromTemplate]);
       setBotSaveAsTemplateFlags(prev => ({ ...prev, [newBotId]: false }));
@@ -383,7 +378,7 @@ export default function EditScenarioPage() {
         id: newRoleId,
         name: template.name || "Rolle aus Vorlage",
         description: template.description || "",
-        templateOriginId: template.templateId, // Store origin
+        templateOriginId: template.templateId, 
       };
       setEditableHumanRoles([...editableHumanRoles, newRoleFromTemplate]);
       setRoleSaveAsTemplateFlags(prev => ({ ...prev, [newRoleId]: false }));
@@ -461,7 +456,6 @@ export default function EditScenarioPage() {
 
     if (previewImageFile) {
       setIsUploadingPreviewImage(true);
-      // Ensure a scenario ID exists for the path, generate if new and not yet saved.
       const idForPath = currentScenarioId || `new-${Date.now()}`;
       const imageFileNameForPath = `preview_${idForPath}_${Date.now()}_${previewImageFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
       const imagePath = `scenario_previews/${imageFileNameForPath}`;
@@ -480,18 +474,17 @@ export default function EditScenarioPage() {
       setIsUploadingPreviewImage(false);
     }
 
-
     const scenarioDataToSave: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> & { updatedAt: Timestamp; createdAt?: Timestamp } = {
       title: title || 'Unbenanntes Szenario',
       kurzbeschreibung: kurzbeschreibung || '',
       langbeschreibung: langbeschreibung || '',
       lernziele: lernzieleInput ? lernzieleInput.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel) : [],
-      previewImageUrl: finalPreviewImageUrl || '', // Ensure it's never undefined
+      previewImageUrl: finalPreviewImageUrl || '',
       iconName: iconNameInput || availableIcons[0].value,
       status: status || 'draft',
       tags: (selectedTags || []).map(t => t.toLowerCase()),
       defaultBotsConfig: editableBotsConfig.map(b => ({
-          id: b.id || `bot-${Date.now()}-${Math.random().toString(36).substring(2,5)}`, // Ensure ID
+          id: b.id || `bot-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
           name: b.name || 'Bot',
           personality: b.personality || 'standard',
           avatarFallback: b.avatarFallback || (b.name || 'B').substring(0,2).toUpperCase() || 'BT',
@@ -502,7 +495,7 @@ export default function EditScenarioPage() {
           templateOriginId: b.templateOriginId || '',
       })),
       humanRolesConfig: editableHumanRoles.map(r => ({
-          id: r.id || `role-${Date.now()}-${Math.random().toString(36).substring(2,5)}`, // Ensure ID
+          id: r.id || `role-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
           name: r.name || 'Rolle',
           description: r.description || '',
           templateOriginId: r.templateOriginId || '',
@@ -515,11 +508,9 @@ export default function EditScenarioPage() {
         platform: editableInitialPost.platform || 'Generic',
       },
       updatedAt: Timestamp.now(),
-    };
-    
+    };    
 
     try {
-      // Save templates before saving scenario
       for (const bot of editableBotsConfig) { 
         if (botSaveAsTemplateFlags[bot.id]) {
           const newBotTemplateData: Omit<BotTemplate, 'templateId' | 'createdAt'> = {
@@ -528,12 +519,8 @@ export default function EditScenarioPage() {
             avatarFallback: bot.avatarFallback || (bot.name || 'BT').substring(0,2).toUpperCase() || 'BT',
             initialMission: bot.initialMission || '',
           };
-          // Firestore will auto-generate ID for the template
           const docRef = await addDoc(collection(db, "botTemplates"), {...newBotTemplateData, createdAt: serverTimestamp()});
           toast({ title: "Bot-Vorlage gespeichert", description: `Bot "${newBotTemplateData.name}" wurde als neue Vorlage (ID: ${docRef.id}) gesichert.` });
-          
-          // Update the bot in editableBotsConfig to reference the new templateId (optional)
-          // And reset the flag
           handleBotConfigChange(editableBotsConfig.findIndex(b => b.id === bot.id), 'templateOriginId', docRef.id);
           setBotSaveAsTemplateFlags(prev => ({ ...prev, [bot.id]: false })); 
         }
@@ -547,7 +534,6 @@ export default function EditScenarioPage() {
           };
           const docRef = await addDoc(collection(db, "roleTemplates"), {...newRoleTemplateData, createdAt: serverTimestamp()});
           toast({ title: "Rollen-Vorlage gespeichert", description: `Rolle "${newRoleTemplateData.name}" wurde als neue Vorlage (ID: ${docRef.id}) gesichert.` });
-
           handleHumanRoleChange(editableHumanRoles.findIndex(r => r.id === role.id), 'templateOriginId', docRef.id);
           setRoleSaveAsTemplateFlags(prev => ({ ...prev, [role.id]: false })); 
         }
@@ -577,7 +563,6 @@ export default function EditScenarioPage() {
             setPreviewImageFile(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
-
       } else {
         throw new Error("Keine Szenario-ID zum Speichern vorhanden.");
       }
@@ -623,7 +608,7 @@ export default function EditScenarioPage() {
   const displayedTitle = isNewScenario ? (title || "Neues Szenario erstellen") : (title || "Szenario laden...");
   const currentIdForDisplay = isNewScenario ? "Wird nach erstem Speichern generiert" : currentScenarioId;
 
-  const defaultAccordionValues = editorSections.map(s => s.id); // Open all by default
+  const defaultAccordionValues = editorSections.map(s => s.id); 
 
 
   const renderIcon = (iconName: string | undefined): ReactNode => {
@@ -635,8 +620,7 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      {/* Sticky Header */}
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2"> 
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
             {renderIcon(iconNameInput)}
@@ -670,8 +654,7 @@ export default function EditScenarioPage() {
         </div>
       </div>
 
-       {/* Sticky Shortcut Navigation */}
-      <div className="sticky top-[var(--header-height,65px)] z-10 bg-background/90 backdrop-blur-sm border-b mb-1">
+      <div className="sticky top-[var(--header-height,73px)] z-10 bg-background/90 backdrop-blur-sm border-b mb-1"> {/* Adjusted top based on new header height */}
         <ScrollArea orientation="horizontal" className="max-w-full">
             <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2">
             {editorSections.map(section => (
@@ -696,19 +679,17 @@ export default function EditScenarioPage() {
 
       <style jsx global>{`
         :root {
-          --header-height: 65px; /* Adjust if your header height is different */
+          --header-height: 73px; 
         }
         html {
-          scroll-behavior: smooth; /* For smooth anchor link scrolling */
+          scroll-behavior: smooth; 
         }
       `}</style>
 
-      {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8 pt-3">
         <div className="max-w-[1000px] mx-auto"> 
             <Accordion type="multiple" defaultValue={defaultAccordionValues} className="w-full space-y-4">
 
-                {/* Basisinformationen */}
                 <AccordionItem value="basisinfo" id="basisinfo" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline text-left border-b">
@@ -744,7 +725,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Ausgangsposting */}
                 <AccordionItem value="initialpost" id="initialpost" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -802,7 +782,6 @@ export default function EditScenarioPage() {
                 </AccordionItem>
 
 
-                {/* Bot-Konfiguration */}
                 <AccordionItem value="botconfig" id="botconfig" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -895,7 +874,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Menschliche Rollen */}
                 <AccordionItem value="humanroles" id="humanroles" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -958,7 +936,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Szenario-Metadaten */}
                 <AccordionItem value="metadaten" id="metadaten" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -981,7 +958,7 @@ export default function EditScenarioPage() {
                                 />
                                 {localPreviewUrl && (
                                   <div className="mt-2 relative w-full max-w-xs h-auto aspect-video rounded-md overflow-hidden border">
-                                    <Image src={localPreviewUrl} alt="Vorschaubild Vorschau" layout="fill" objectFit="cover" data-ai-hint="preview image" priority={false}/>
+                                    <Image src={localPreviewUrl} alt="Vorschaubild Vorschau" fill style={{objectFit:"cover"}} data-ai-hint="preview image" priority={false}/>
                                   </div>
                                 )}
                                 <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild oder Bild unten hochladen.</p>
@@ -1028,7 +1005,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Themen-Tags */}
                 <AccordionItem value="tags" id="tags" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -1088,10 +1064,9 @@ export default function EditScenarioPage() {
                                             <AccordionContent className="pt-1 pb-2 pl-2">
                                                 <div className="flex flex-wrap gap-2">
                                                     {category.tags.map(tag => (
-                                                        <>
+                                                        <React.Fragment key={tag.name}>
                                                             <Badge
-                                                                key={tag.name}
-                                                                variant={(selectedTags || []).map(st=>st.toLowerCase()).includes(tag.name.toLowerCase()) ? "default" : "outline"}
+                                                                variant={selectedTags.map(st=>st.toLowerCase()).includes(tag.name.toLowerCase()) ? "default" : "outline"}
                                                                 className="cursor-pointer hover:bg-primary/80 text-xs"
                                                                 onClick={() => handleTagToggle(tag.name)}
                                                             >
@@ -1101,7 +1076,7 @@ export default function EditScenarioPage() {
                                                             {tag.subTags && tag.subTags.map(subTag => (
                                                                 <Badge
                                                                     key={subTag.name}
-                                                                    variant={(selectedTags || []).map(st=>st.toLowerCase()).includes(subTag.name.toLowerCase()) ? "default" : "outline"}
+                                                                    variant={selectedTags.map(st=>st.toLowerCase()).includes(subTag.name.toLowerCase()) ? "default" : "outline"}
                                                                     className="cursor-pointer hover:bg-primary/80 ml-1 text-xs bg-muted/50"
                                                                     onClick={() => handleTagToggle(subTag.name)}
                                                                 >
@@ -1109,7 +1084,7 @@ export default function EditScenarioPage() {
                                                                     {subTag.name}
                                                                 </Badge>
                                                             ))}
-                                                        </>
+                                                        </React.Fragment>
                                                     ))}
                                                 </div>
                                             </AccordionContent>
@@ -1123,14 +1098,13 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-            {/* Originaldaten (nur wenn nicht neues Szenario) */}
             {(!isNewScenario && currentScenarioId && originalScenarioData) && (
                 <AccordionItem value="originaldaten" id="originaldaten" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                     <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus Datenbank)</CardTitle>
                 </AccordionTrigger>
-                <AccordionContent className="pt-4 pb-2"> {/* Added pt-4 for consistency */}
+                <AccordionContent className="pt-4 pb-2"> 
                     <CardHeader className="p-4 pb-2">
                     <CardDescription>Nur zur Referenz: So ist das Szenario aktuell in der Datenbank gespeichert.</CardDescription>
                     </CardHeader>
@@ -1151,5 +1125,3 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-
-    
