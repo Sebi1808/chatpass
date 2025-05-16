@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle, CheckCircle, Users2, LogIn, PlayCircle as PlayCircleIcon, Clock, Lock, Unlock, UserPlus, Check, ArrowRightLeft, History } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle, CheckCircle, Users2, LogIn, PlayCircle as PlayCircleIcon, Clock, Lock, Unlock, UserPlus, Check, ArrowRightLeft, History, Info } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData, ScenarioEvent, HumanRoleConfig } from "@/lib/types";
@@ -30,8 +30,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ChatPageContent } from "@/app/chat/[sessionId]/page";
 import { generateBotMessage } from "@/ai/flows/bot-message-generator";
-import NextImage from 'next/image';
-import { useRouter } from 'next/navigation';
+import NextImage from 'next/image'; // Renamed to avoid conflict
+import { useRouter, useParams } from 'next/navigation'; // Added useParams
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,14 +47,16 @@ interface AdminDashboardMessage extends MessageType {
 }
 
 const DEFAULT_COOLDOWN = 0; 
-const SIMULATION_START_COUNTDOWN_SECONDS_FOR_PARTICIPANTS = 10;
-const ADMIN_UI_LOCAL_COUNTDOWN_SECONDS_FOR_START = 5; 
+const SIMULATION_START_COUNTDOWN_SECONDS_FOR_PARTICIPANTS = 10; // For participants' view
+const ADMIN_UI_LOCAL_COUNTDOWN_SECONDS_FOR_START = 5; // For admin's UI before setting status to 'active'
+
 
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
-  const sessionIdFromUrl = props.params.sessionId;
+  const params = useParams(); // Use hook to get params
+  const sessionIdFromUrl = params.sessionId as string; // Extract sessionId
   const { toast } = useToast();
   const router = useRouter();
 
@@ -70,7 +72,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   
   const [pageError, setPageError] = useState<string | null>(null);
   
-  const isLoadingPage = isLoadingScenario || isLoadingSessionData;
+  const isLoadingPage = isLoadingScenario || isLoadingSessionData; // Combined initial loading state
 
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isProcessingSessionAction, setIsProcessingSessionAction] = useState(false);
@@ -88,7 +90,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
   const adminChatPreviewEndRef = useRef<null | HTMLDivElement>(null);
 
-  // Load Scenario Details
+  // Effect 1: Load Scenario Details
   useEffect(() => {
     if (!sessionIdFromUrl) {
       setPageError("Keine Szenario-ID für das Dashboard vorhanden.");
@@ -104,10 +106,10 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       if (docSnap.exists()) {
         console.log(`AdminDashboard: Scenario ${sessionIdFromUrl} found.`);
         setCurrentScenario({ id: docSnap.id, ...docSnap.data() } as Scenario);
-        setPageError(null); // Clear previous error if scenario is found
+        setPageError(null);
       } else {
         console.error(`AdminDashboard: Scenario with ID ${sessionIdFromUrl} not found.`);
-        setPageError(`Szenario mit ID ${sessionIdFromUrl} nicht gefunden. Stellen Sie sicher, dass es in der Datenbank existiert.`);
+        setPageError(`Szenario mit ID ${sessionIdFromUrl} nicht gefunden. Bitte im Editor prüfen.`);
         setCurrentScenario(null);
       }
       setIsLoadingScenario(false);
@@ -121,7 +123,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     return () => unsubscribeScenario();
   }, [sessionIdFromUrl]);
 
-  // Ensure Session Document and Load Session Data
+  // Effect 2: Ensure Session Document and Load Session Data (depends on sessionIdFromUrl)
    useEffect(() => {
     if (!sessionIdFromUrl) {
       setIsLoadingSessionData(false);
@@ -195,10 +197,15 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         console.log(`AdminDashboard: onSnapshot for session ${sessionIdFromUrl} received data:`, data);
         setSessionData(data);
         setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
+         // Clear page error if session data is successfully loaded after a previous error
+        if (pageError && pageError.includes("Sitzungsdokument konnte nicht initialisiert")) {
+            setPageError(null);
+        }
       } else {
-         console.warn(`AdminDashboard: onSnapshot - Session document ${sessionIdFromUrl} does not exist.`);
-         setSessionData(null); 
-         setPageError(prev => prev || "Sitzungsdokument konnte nicht gefunden werden. Versuchen Sie die Seite neu zu laden oder die Sitzung über das Szenario-Menü neu zu starten.");
+         console.warn(`AdminDashboard: onSnapshot - Session document ${sessionIdFromUrl} does not exist (might be created shortly or there's an issue).`);
+         // Don't set sessionData to null immediately, wait for ensureSessionDocument
+         // setSessionData(null); 
+         setPageError(prev => prev || "Sitzungsdokument konnte nicht gefunden werden. Versuchen Sie die Seite neu zu laden.");
       }
       setIsLoadingSessionData(false);
     }, (error: any) => {
@@ -212,7 +219,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       console.log(`AdminDashboard: Unsubscribing from session data for ${sessionIdFromUrl}`);
       unsubscribeSession();
     };
-  }, [sessionIdFromUrl]);
+  }, [sessionIdFromUrl, pageError]); // Added pageError to dependencies to potentially clear it
 
 
   const displayedInvitationLink = useMemo(() => {
@@ -277,9 +284,10 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             
             const participantDataForBot: Omit<Participant, 'id' | 'joinedAt'> & { id?: string, joinedAt?: Timestamp, updatedAt?: Timestamp} = { 
                 userId: `bot-${botScenarioId}`, 
-                realName: botDisplayName,
-                displayName: botDisplayName,
+                realName: botDisplayName, // Klarname ist Bot-Name
+                displayName: botDisplayName, // Nickname ist Bot-Name
                 role: `Bot (${botConfig.personality || 'standard'})`,
+                roleId: `bot-role-${botConfig.personality || 'standard'}`, // Eindeutige Role-ID für Bots
                 avatarFallback: botConfig.avatarFallback || (botConfig.name || botConfig.personality.substring(0,1) + (botConfig.id || 'X').substring(0,1)).substring(0, 2).toUpperCase() || "BT",
                 isBot: true,
                 status: "Aktiv", 
@@ -291,7 +299,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                     currentEscalation: existingBotDetails?.data.botConfig?.currentEscalation ?? botConfig.currentEscalation ?? 0,
                     autoTimerEnabled: existingBotDetails?.data.botConfig?.autoTimerEnabled ?? botConfig.autoTimerEnabled ?? false,
                     initialMission: botConfig.initialMission || "",
-                    // Preserve currentMission from Firestore if it exists and is not the initial one, otherwise use initial
                     currentMission: botMissions[existingBotDetails?.docId || `bot-${botScenarioId}`] || 
                                     (existingBotDetails?.data.botConfig?.currentMission && existingBotDetails.data.botConfig.currentMission !== botConfig.initialMission 
                                         ? existingBotDetails.data.botConfig.currentMission 
@@ -299,14 +306,15 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 },
             };
 
-            const botDocRef = doc(participantsColRef, `bot-${botScenarioId}`); // Use stable doc ID
+            const botDocRef = doc(participantsColRef, `bot-${botScenarioId}`); 
             
             if (!existingBotDetails) {
                 console.log(`AdminDashboard: Creating new bot ${botDocRef.id} with data:`, participantDataForBot);
                 batch.set(botDocRef, { ...participantDataForBot, id: botDocRef.id, joinedAt: serverTimestamp() as Timestamp });
             } else {
-                const updateData = { ...participantDataForBot, updatedAt: serverTimestamp() as Timestamp };
-                if (updateData.id) delete updateData.id; 
+                const updateData: Partial<Participant> = { ...participantDataForBot, updatedAt: serverTimestamp() as Timestamp };
+                delete updateData.id; 
+                delete updateData.joinedAt;
                 console.log(`AdminDashboard: Updating existing bot ${botDocRef.id} with data:`, updateData);
                 batch.update(botDocRef, updateData);
             }
@@ -327,11 +335,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   }, [sessionIdFromUrl, currentScenario, sessionData, getBotDisplayName, toast, botMissions]);
 
-  // Load Participants
+  // Effect 3: Load Participants (depends on sessionData)
   useEffect(() => {
     if (!sessionIdFromUrl || !sessionData) {
       setIsLoadingParticipants(false);
-      setSessionParticipants([]); // Clear participants if no session
+      setSessionParticipants([]);
       return;
     }
     setIsLoadingParticipants(true);
@@ -339,21 +347,22 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     // Sort only by joinedAt for Firestore, secondary sort (bots first) will be client-side
     const q_participants = query(participantsColRef, orderBy("joinedAt", "asc"));
     
+    console.log(`AdminDashboard: Setting up participants listener for session ${sessionIdFromUrl}`);
     const unsubscribeParticipants = onSnapshot(q_participants, (querySnapshot) => {
+      console.log(`AdminDashboard: Participants snapshot received. Count: ${querySnapshot.docs.length}`);
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
       
-      // Client-side sort: Bots first, then humans, then by joinedAt (already sorted by Firestore)
       fetchedParticipants.sort((a, b) => {
         if (a.isBot && !b.isBot) return -1;
         if (!a.isBot && b.isBot) return 1;
-        // joinedAt is already handled by Firestore query
         return 0; 
       });
       
       setSessionParticipants(fetchedParticipants);
+      console.log("AdminDashboard: Updated sessionParticipants state:", fetchedParticipants.map(p => ({id: p.id, name: p.displayName, isBot: p.isBot})));
       
       const newBotMissionsState: Record<string, string> = {};
       fetchedParticipants.filter(p => p.isBot && p.botConfig).forEach(bot => {
@@ -362,7 +371,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setBotMissions(prevMissions => {
         const updatedMissions = {...prevMissions};
         for (const botId in newBotMissionsState) {
-            // Only update from Firestore if local mission is empty or still the initial one
             if (!updatedMissions[botId] || updatedMissions[botId] === (fetchedParticipants.find(p=>p.id===botId)?.botConfig?.initialMission || "")) {
                  updatedMissions[botId] = newBotMissionsState[botId];
             }
@@ -378,7 +386,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       if (error.message.includes("firestore/permission-denied") || error.message.includes("Missing or insufficient permissions")) {
         setPageError(prevError => prevError || `Fehlende Berechtigung zum Laden der Teilnehmer. Bitte Firestore-Regeln prüfen.`);
       } else if (error.message.includes("query requires an index")) {
-         setPageError(prevError => prevError || `Firestore-Index für Teilnehmerabfrage fehlt. Details: ${error.message}`);
+         // This should be handled by client-side sort, but if it still occurs, it's a Firestore config issue.
+         setPageError(prevError => prevError || `Firestore-Index für Teilnehmerabfrage fehlt (sollte client-seitig sortiert sein). Details: ${error.message}`);
       }
       else {
         setPageError(prevError => prevError || `Teilnehmer konnten nicht geladen werden: ${error.message}`);
@@ -387,7 +396,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     return () => unsubscribeParticipants();
   }, [sessionIdFromUrl, sessionData]);
 
-  // Load Chat Messages
+  // Effect 4: Load Chat Messages (depends on sessionData)
   useEffect(() => {
     if (!sessionIdFromUrl || showParticipantMirrorView || !sessionData ) { 
       setIsLoadingMessages(false);
@@ -419,12 +428,15 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     return () => unsubscribeMessages();
   }, [sessionIdFromUrl, showParticipantMirrorView, sessionData]); 
 
-  useEffect(() => {
-    // No auto-scroll for admin preview by default
-    // if (!showParticipantMirrorView && adminChatPreviewEndRef.current) {
-    // adminChatPreviewEndRef.current.scrollIntoView({ behavior: "auto" });
-    // }
-  }, [chatMessages, showParticipantMirrorView]);
+  // Effect 5: Cleanup for admin countdown interval
+  useEffect(() => { 
+    return () => {
+      if (adminCountdownIntervalRef.current) {
+        clearInterval(adminCountdownIntervalRef.current);
+      }
+    };
+  }, []);
+
 
   const copyToClipboard = useCallback(() => {
     if (displayedInvitationLink && !displayedInvitationLink.includes("Wird generiert...")) {
@@ -453,6 +465,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       setIsGeneratingLink(false);
     }
   }, [sessionIdFromUrl, sessionData, toast]);
+
 
   const handleOpenSessionForJoining = useCallback(async () => {
     if (!sessionIdFromUrl || !currentScenario || !sessionData) {
@@ -492,15 +505,22 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     
     try {
         const sessionDocRef = doc(db, "sessions", sessionIdFromUrl);
-        const targetTime = new Date(Date.now() + SIMULATION_START_COUNTDOWN_SECONDS_FOR_PARTICIPANTS * 1000);
-        const countdownEndTimeForFirestore = Timestamp.fromDate(targetTime);
-
+        // Set roleSelectionLocked immediately when starting the countdown process
         await updateDoc(sessionDocRef, { 
-            roleSelectionLocked: true, 
+            roleSelectionLocked: true,
+            updatedAt: serverTimestamp() 
+        });
+        
+        const targetTimeForParticipants = new Date(Date.now() + SIMULATION_START_COUNTDOWN_SECONDS_FOR_PARTICIPANTS * 1000);
+        const countdownEndTimeForFirestore = Timestamp.fromDate(targetTimeForParticipants);
+
+        // Set the countdown end time for participants
+        await updateDoc(sessionDocRef, { 
             simulationStartCountdownEndTime: countdownEndTimeForFirestore,
             updatedAt: serverTimestamp() 
         });
         
+        // Admin UI Countdown (shorter, just for admin's feedback before setting status to 'active')
         setAdminUiCountdown(ADMIN_UI_LOCAL_COUNTDOWN_SECONDS_FOR_START); 
         if (adminCountdownIntervalRef.current) clearInterval(adminCountdownIntervalRef.current);
 
@@ -508,6 +528,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             setAdminUiCountdown(prev => {
                 if (prev === null || prev <= 1) { 
                     clearInterval(adminCountdownIntervalRef.current!);
+                    // Only after admin's local countdown, set the session to active
                     updateDoc(sessionDocRef, { status: "active", updatedAt: serverTimestamp() })
                         .then(() => toast({ title: "Chat-Simulation gestartet!", description: "Der Chat ist jetzt aktiv." }))
                         .catch(err => {
@@ -525,17 +546,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         console.error(`AdminDashboard: Error initiating chat simulation start for session ${sessionIdFromUrl}:`, error);
         toast({ variant: "destructive", title: "Fehler", description: `Simulationsstart konnte nicht initiiert werden: ${error.message}` });
         setIsProcessingSessionAction(false);
+        if (adminCountdownIntervalRef.current) clearInterval(adminCountdownIntervalRef.current); // Clear interval on error
+        setAdminUiCountdown(null); // Reset countdown display on error
     }
   }, [sessionIdFromUrl, sessionData, toast]);
 
-
-  useEffect(() => { 
-    return () => {
-      if (adminCountdownIntervalRef.current) {
-        clearInterval(adminCountdownIntervalRef.current);
-      }
-    };
-  }, []);
 
   const handleResetSession = useCallback(async () => {
     if (!sessionIdFromUrl || !currentScenario) {
@@ -559,15 +574,16 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       if (typeof window !== "undefined") {
         baseLink = `${window.location.origin}/join/${sessionIdFromUrl}`;
       } else {
-        baseLink = `/join/${sessionIdFromUrl}`; // Fallback for server-side or if window is not defined
+        baseLink = `/join/${sessionIdFromUrl}`;
       }
       const newSessionToken = generateToken();
       const newSessionDataToSet: Partial<SessionData> = { 
         scenarioId: currentScenario.id,
+        // createdAt should not be reset usually, but for a full reset:
         createdAt: serverTimestamp() as Timestamp,
         invitationLink: baseLink,
         invitationToken: newSessionToken,
-        status: "pending", 
+        status: "pending", // Reset to pending
         messageCooldownSeconds: DEFAULT_COOLDOWN,
         updatedAt: serverTimestamp() as Timestamp,
         roleSelectionLocked: false,
@@ -618,7 +634,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     try {
       await updateDoc(sessionDocRef, { 
           status: newStatus, 
-          simulationStartCountdownEndTime: null, 
+          simulationStartCountdownEndTime: null, // Pausing should clear countdown
           updatedAt: serverTimestamp() 
       });
       toast({ title: "Simulationsstatus geändert", description: `Simulation ist jetzt ${newStatus === 'active' ? 'aktiv' : 'pausiert'}.` });
@@ -921,7 +937,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     });
 
     // Placeholder for more complex event actions
-    if (event.id === "placeholder-bot-post-event") { // Example check
+    if (event.id === "placeholder-bot-post-event") { 
         const firstActiveBot = sessionParticipants.find(p => p.isBot && p.botConfig?.isActive);
         if (firstActiveBot) {
             const messagesColRef = collection(db, "sessions", sessionIdFromUrl, "messages");
@@ -938,7 +954,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             toast({variant: "destructive", title: "Ereignis-Fehler", description: "Kein aktiver Bot für dieses Ereignis gefunden."});
         }
     }
-    // Future: Extend with Genkit calls or other specific actions based on event.action details.
   }, [toast, sessionParticipants, currentScenario, sessionIdFromUrl]);
 
   const handleToggleRoleLock = useCallback(async () => {
@@ -976,7 +991,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         return;
     }
      if (targetParticipant.roleId === newRoleId) {
-        // toast({ title: "Information", description: "Teilnehmer ist bereits in dieser Rolle." });
         return; 
     }
 
@@ -1007,8 +1021,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const isSessionOpenForJoin = sessionData?.status === "open";
   const isChatActive = sessionData?.status === "active";
   
+  const combinedLoadingState = isLoadingScenario || isLoadingSessionData;
 
-  if (isLoadingPage) {
+  if (combinedLoadingState) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6">
         <Card className="w-full max-w-md">
@@ -1035,7 +1050,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             </CardHeader>
           <CardContent className="flex flex-col items-center gap-4">
              <p className="text-sm text-muted-foreground text-center">
-                Stellen Sie sicher, dass die Szenario-ID gültig ist, das Szenario in der Datenbank existiert und die Firestore-Regeln korrekt sind.
+                Stellen Sie sicher, dass die Szenario-ID gültig ist und die Firestore-Regeln korrekt sind.
              </p>
             <Link href="/admin" passHref legacyBehavior>
               <Button variant="outline" size="sm">
@@ -1053,7 +1068,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         <Card className="w-full max-w-md">
           <CardHeader className="items-center">
             <CardTitle className="text-destructive flex items-center"><AlertTriangle className="mr-2 h-6 w-6"/> Szenario nicht geladen</CardTitle>
-            <CardDescription className="text-center">Das zugehörige Szenario konnte nicht geladen werden. Bitte überprüfen Sie die Szenario-ID oder wählen Sie ein anderes Szenario.</CardDescription>
+            <CardDescription className="text-center">Das zugehörige Szenario konnte nicht geladen werden. Bitte überprüfen Sie die Szenario-ID.</CardDescription>
             </CardHeader>
           <CardContent className="flex justify-center">
             <Link href="/admin" passHref legacyBehavior>
@@ -1066,13 +1081,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       </div>
     );
   }
-
-  const sortedParticipantsForRoleDisplay = [...sessionParticipants].sort((a, b) => {
-    if (a.isBot && !b.isBot) return -1; 
-    if (!a.isBot && b.isBot) return 1;
-    return (a.displayName || a.id).localeCompare(b.displayName || b.id);
-  });
-
 
   return (
     <div className="space-y-6 p-1 md:p-2 lg:p-4">
@@ -1120,8 +1128,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           </AlertDialog>
         </div>
       </div>
-      
-      <div className="grid grid-cols-1 gap-6 mb-6 lg:grid-cols-2"> {/* Top row for control cards */}
+
+      {/* Top row for control cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card className="w-full shadow-lg"> {/* Sitzungs-Steuerung Card */}
             <CardHeader>
                 <CardTitle className="flex items-center"><Settings className="mr-2 h-5 w-5 text-primary" /> Sitzungs-Steuerung</CardTitle>
@@ -1154,7 +1163,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             </CardHeader>
             <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-stretch">
-                    <Button
+                     <Button
                         onClick={handleOpenSessionForJoining}
                         disabled={isProcessingSessionAction || !isSessionPending || isLoadingPage || !currentScenario}
                         variant="default"
@@ -1164,7 +1173,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                         {isProcessingSessionAction && sessionData?.status === "pending" ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserPlus className="mr-2 h-4 w-4" />}
                         Simulation öffnen
                     </Button>
-                    
                     <Button
                         onClick={startChatSimulation}
                         disabled={isProcessingSessionAction || !isSessionOpenForJoin || isLoadingPage || !currentScenario || adminUiCountdown !== null}
@@ -1173,7 +1181,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                         title="Startet den Chat für alle Teilnehmer im Wartebereich."
                     >
                         {isProcessingSessionAction && adminUiCountdown === null && sessionData?.status === "open" ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlayCircleIcon className="mr-2 h-4 w-4" />}
-                        {adminUiCountdown !== null ? `Chat startet in ${adminUiCountdown}s...` : "Chat wirklich starten"}
+                        {adminUiCountdown !== null ? `Chat startet in ${adminUiCountdown}s...` : "Chat starten"}
                     </Button>
                 </div>
                 <div className="flex items-center justify-start gap-3">
@@ -1197,7 +1205,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                         <AlertDialogHeader>
                             <AlertDialogTitle>Sitzung wirklich komplett zurücksetzen?</AlertDialogTitle>
                             <AlertDialogDescription>
-                            Alle Teilnehmer und Nachrichten dieser Sitzung werden dauerhaft gelöscht. Die Sitzung wird in den 'pending'-Status zurückgesetzt (inkl. neuem Einladungslink-Token). Diese Aktion kann nicht rückgängig gemacht werden.
+                            Alle Teilnehmer und Nachrichten dieser Sitzung werden dauerhaft gelöscht. Die Sitzung wird in den 'pending'-Status zurückgesetzt.
                             </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
@@ -1279,7 +1287,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 <ScrollArea className="max-h-96 border rounded-md p-1 md:p-2">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                     {currentScenario.humanRolesConfig.map(roleConfig => {
-                        const assignedParticipantsToThisRole = sortedParticipantsForRoleDisplay.filter(p => !p.isBot && p.roleId === roleConfig.id);
+                        const assignedParticipantsToThisRole = sessionParticipants.filter(p => !p.isBot && p.roleId === roleConfig.id);
                         return (
                             <Card key={roleConfig.id} className="flex flex-col bg-muted/30">
                                 <CardHeader className="pb-2 pt-3 px-3 md:px-4">
@@ -1327,14 +1335,14 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         </CardContent>
       </Card>
         
-      {/* Bottom Row: Other Controls - Flexible Grid */}
+      {/* Bottom Row: Chat Preview, Participant Actions, Bot Control, etc. - Flexible Grid */}
       <div className={cn("grid grid-cols-1 gap-6 w-full", showParticipantMirrorView ? "hidden" : "lg:grid-cols-3")}>
          <Card className="lg:col-span-2 xl:col-span-2"> {/* Chat-Verlauf (Admin-Vorschau) - Nimmt mehr Platz */}
               <CardHeader>
               <CardTitle className="flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary" /> Chat-Verlauf (Admin-Vorschau)</CardTitle>
               <CardDescription>Beobachten Sie die laufende Diskussion.</CardDescription>
               </CardHeader>
-              <CardContent className="h-96 bg-muted/30 rounded-md p-2 md:p-4 space-y-2 overflow-y-auto">
+              <CardContent className="h-96 bg-muted/30 rounded-md p-2 md:p-4 space-y-2 overflow-y-auto" ref={adminChatPreviewEndRef}>
               {isLoadingMessages && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2"/> <p>Lade Chat...</p></div>}
               {!isLoadingMessages && chatMessages.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -1356,7 +1364,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                   <span className="text-xs text-muted-foreground/70 float-right pt-1">{msg.timestampDisplay}</span>
                   </div>
               ))}
-              <div ref={adminChatPreviewEndRef} />
+              {/* <div ref={adminChatPreviewEndRef} /> Removed as per request to stop auto-scroll */}
               </CardContent>
           </Card>
 
@@ -1453,7 +1461,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
               </CardContent>
           </Card>
           
-          {/* Remaining cards for Bots, Events, Export can go here, potentially in a new grid row or dynamically adjusting */}
           <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-1 xl:col-span-1"> {/* Bot-Steuerung */}
                 <CardHeader>
@@ -1542,7 +1549,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 <CardContent className="space-y-3 max-h-96 overflow-y-auto">
                     {isLoadingScenario || !currentScenario?.events || currentScenario.events.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
-                            {isLoadingScenario ? "Lade Szenario-Ereignisse..." : "Keine manuellen Ereignisse für dieses Szenario definiert. Sie können diese im Szenario-Editor anlegen."}
+                            {isLoadingScenario ? "Lade Szenario-Ereignisse..." : "Keine manuellen Ereignisse für dieses Szenario definiert."}
                         </p>
                     ) : (
                         currentScenario.events.filter(event => event.triggerType === 'manual').map(event => (
@@ -1597,7 +1604,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                 initialUserRole="Moderator" 
                 initialUserId="ADMIN_USER_ID_FIXED" 
                 initialUserAvatarFallback="AD"
-                initialUserRealName="Administrator"
+                initialUserRealName="Administrator" // Klarname für Admin
                 isAdminView={true}
               />
             )}
@@ -1607,3 +1614,4 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     </div>
   );
 }
+
