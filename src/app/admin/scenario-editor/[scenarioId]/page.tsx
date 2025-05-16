@@ -32,8 +32,7 @@ const editorSections = [
   { id: "events", label: "Events", icon: <Sparkles className="mr-2 h-4 w-4" /> },
   { id: "metadaten", label: "Meta", icon: <ImageIconReal className="mr-2 h-4 w-4" /> },
   { id: "tags", label: "Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
-  // { id: "farbschema", label: "Farbschema (Zukunft)", icon: <Palette className="mr-2 h-4 w-4" /> },
-  // { id: "originaldaten", label: "DB-Daten (Debug)", icon: <DatabaseIcon className="mr-2 h-4 w-4" /> },
+  // { id: "originaldaten", label: "DB-Daten", icon: <DatabaseIcon className="mr-2 h-4 w-4" /> },
 ];
 
 
@@ -42,7 +41,7 @@ export function createDefaultScenario(): Omit<Scenario, 'id' | 'createdAt' | 'up
     title: 'Neues Szenario',
     kurzbeschreibung: '',
     langbeschreibung: '',
-    lernziele: '', // Changed from array to string
+    lernziele: '',
     iconName: availableIcons[0]?.value || 'ImageIconReal',
     tags: [],
     previewImageUrl: '',
@@ -101,99 +100,55 @@ export default function EditScenarioPage() {
   const [dbRoleTemplates, setDbRoleTemplates] = useState<RoleTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
 
-  const [isLoading, setIsLoading] = useState(true); // Start with true for initial load
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [originalScenarioData, setOriginalScenarioData] = useState<Scenario | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Helper function to ensure all fields have defaults before saving to Firestore
-  const ensureDefaults = (data: Partial<Scenario>): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> => {
-    return {
-      title: data.title || 'Unbenanntes Szenario',
-      kurzbeschreibung: data.kurzbeschreibung || '',
-      langbeschreibung: data.langbeschreibung || '',
-      lernziele: data.lernziele || '',
-      previewImageUrl: data.previewImageUrl || '',
-      iconName: data.iconName || availableIcons[0]?.value || 'ImageIconReal',
-      status: data.status || 'draft',
-      tags: Array.isArray(data.tags) ? data.tags.map(t => String(t || '').toLowerCase()) : [],
-      defaultBotsConfig: Array.isArray(data.defaultBotsConfig) ? data.defaultBotsConfig.map(b => ({
-        id: b?.id || `bot-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
-        name: b?.name || 'Bot',
-        personality: b?.personality || 'standard',
-        avatarFallback: b?.avatarFallback || (b?.name || 'B').substring(0,2).toUpperCase() || 'BT',
-        initialMission: b?.initialMission || '',
-        isActive: b?.isActive ?? true,
-        autoTimerEnabled: b?.autoTimerEnabled ?? false,
-        currentEscalation: b?.currentEscalation ?? 0,
-        templateOriginId: b?.templateOriginId || '',
-      })) : [],
-      humanRolesConfig: Array.isArray(data.humanRolesConfig) ? data.humanRolesConfig.map(r => ({
-        id: r?.id || `role-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
-        name: r?.name || 'Rolle',
-        description: r?.description || '',
-        templateOriginId: r?.templateOriginId || '',
-      })) : [],
-      initialPost: {
-        authorName: data.initialPost?.authorName || 'System',
-        authorAvatarFallback: data.initialPost?.authorAvatarFallback || (data.initialPost?.authorName || 'SYS').substring(0,2).toUpperCase() || 'SY',
-        content: data.initialPost?.content || '',
-        imageUrl: data.initialPost?.imageUrl || '',
-        platform: data.initialPost?.platform || 'Generic',
-      },
-      events: Array.isArray(data.events) ? data.events.map(e => ({
-        id: e?.id || `event-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
-        name: e?.name || 'Unbenanntes Ereignis',
-        description: e?.description || '',
-        triggerType: e?.triggerType || 'manual',
-      })) : [],
-    };
-  };
-
   const loadScenario = useCallback(async () => {
+    console.log("loadScenario called. isNewScenario:", isNewScenario, "currentScenarioId:", currentScenarioId);
     setIsLoading(true);
     setError(null);
-    console.log("loadScenario called. isNewScenario:", isNewScenario, "currentScenarioId:", currentScenarioId);
-
+  
     if (isNewScenario || !currentScenarioId || currentScenarioId === 'new') {
       console.log("Setting up for new scenario.");
       const newScenarioData = createDefaultScenario();
       setTitle(newScenarioData.title);
       setKurzbeschreibung(newScenarioData.kurzbeschreibung);
       setLangbeschreibung(newScenarioData.langbeschreibung);
-      setLernzieleContent(newScenarioData.lernziele);
+      setLernzieleContent(newScenarioData.lernziele || '');
       setPreviewImageUrlInput(newScenarioData.previewImageUrl || '');
       setLocalPreviewUrl(newScenarioData.previewImageUrl || null);
-      setIconNameInput(newScenarioData.iconName);
-      setStatus(newScenarioData.status);
-      setSelectedTags(newScenarioData.tags);
+      setIconNameInput(newScenarioData.iconName || availableIcons[0]?.value || 'ImageIconReal');
+      setStatus(newScenarioData.status || 'draft');
+      setSelectedTags(newScenarioData.tags || []);
       setEditableBotsConfig(JSON.parse(JSON.stringify(newScenarioData.defaultBotsConfig || [])));
       setEditableHumanRoles(JSON.parse(JSON.stringify(newScenarioData.humanRolesConfig || [])));
       setEditableInitialPost(JSON.parse(JSON.stringify(newScenarioData.initialPost || createDefaultScenario().initialPost!)));
       setEditableEvents(JSON.parse(JSON.stringify(newScenarioData.events || [])));
-      setOriginalScenarioData(null); 
+      setOriginalScenarioData(null);
       setBotSaveAsTemplateFlags({});
       setRoleSaveAsTemplateFlags({});
       setIsLoading(false);
       return;
     }
-
+  
     console.log(`Attempting to load scenario with ID: ${currentScenarioId}`);
     try {
       const scenarioDocRef = doc(db, "scenarios", currentScenarioId);
       const scenarioSnap = await getDoc(scenarioDocRef);
-
+  
       if (scenarioSnap.exists()) {
         console.log("Scenario found in Firestore:", scenarioSnap.data());
         const foundScenario = { id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario;
-        setOriginalScenarioData(JSON.parse(JSON.stringify(foundScenario))); 
+        setOriginalScenarioData(JSON.parse(JSON.stringify(foundScenario)));
         setTitle(foundScenario.title || '');
         setKurzbeschreibung(foundScenario.kurzbeschreibung || '');
         setLangbeschreibung(foundScenario.langbeschreibung || '');
         setLernzieleContent(foundScenario.lernziele || '');
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
-        setLocalPreviewUrl(foundScenario.previewImageUrl || null); 
+        setLocalPreviewUrl(foundScenario.previewImageUrl || null);
         setIconNameInput(foundScenario.iconName || (availableIcons[0]?.value || 'ImageIconReal'));
         setStatus(foundScenario.status || 'draft');
         setSelectedTags(foundScenario.tags || []);
@@ -206,17 +161,17 @@ export default function EditScenarioPage() {
           ...(foundScenario.initialPost || {}), 
         })));
         setEditableEvents(JSON.parse(JSON.stringify(foundScenario.events || [])));
-
+  
         const initialBotFlags: Record<string, boolean> = {};
         (foundScenario.defaultBotsConfig || []).forEach(bot => {
             if (bot && bot.id) initialBotFlags[bot.id] = false;
-        }); 
+        });
         setBotSaveAsTemplateFlags(initialBotFlags);
-
+  
         const initialRoleFlags: Record<string, boolean> = {};
         (foundScenario.humanRolesConfig || []).forEach(role => {
              if (role && role.id) initialRoleFlags[role.id] = false;
-        }); 
+        });
         setRoleSaveAsTemplateFlags(initialRoleFlags);
       } else {
         console.error(`Scenario with ID "${currentScenarioId}" not found in Firestore.`);
@@ -236,25 +191,16 @@ export default function EditScenarioPage() {
       console.log("loadScenario finished. Setting isLoading to false.");
       setIsLoading(false);
     }
-  }, [
-    currentScenarioId, isNewScenario, toast, router, 
-    // Add all state setters used within loadScenario to ensure useCallback memoizes correctly
-    setTitle, setKurzbeschreibung, setLangbeschreibung, setLernzieleContent, 
-    setPreviewImageUrlInput, setLocalPreviewUrl, setIconNameInput, setStatus, 
-    setSelectedTags, setEditableBotsConfig, setEditableHumanRoles, 
-    setEditableInitialPost, setEditableEvents, setOriginalScenarioData, 
-    setBotSaveAsTemplateFlags, setRoleSaveAsTemplateFlags, setError
-  ]);
+  }, [currentScenarioId, isNewScenario, router, toast]);
 
   useEffect(() => {
-    // This effect loads the scenario data
-    // It should run if currentScenarioId is present (and not 'new') or if isNewScenario is true.
-    if (currentScenarioId || isNewScenario) {
+    // Load scenario data if currentScenarioId is set and not 'new'
+    // or if it's a new scenario (isNewScenario is true)
+    if ((currentScenarioId && currentScenarioId !== 'new') || isNewScenario) {
       loadScenario();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, [currentScenarioId, isNewScenario]); // loadScenario is memoized, so it's okay here if its own deps are correct.
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentScenarioId, isNewScenario]); // loadScenario is memoized
 
   useEffect(() => {
     setIsLoadingTemplates(true);
@@ -271,8 +217,8 @@ export default function EditScenarioPage() {
     const qBot = query(botTemplatesColRef, orderBy("name", "asc"));
     const unsubscribeBots = onSnapshot(qBot, (querySnapshot) => {
       const fetchedBotTemplates: BotTemplate[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedBotTemplates.push({ templateId: doc.id, ...doc.data() } as BotTemplate);
+      querySnapshot.forEach((docSnap) => {
+        fetchedBotTemplates.push({ templateId: docSnap.id, ...docSnap.data() } as BotTemplate);
       });
       setDbBotTemplates(fetchedBotTemplates);
       botTemplatesLoaded = true;
@@ -288,8 +234,8 @@ export default function EditScenarioPage() {
     const qRole = query(roleTemplatesColRef, orderBy("name", "asc"));
     const unsubscribeRoles = onSnapshot(qRole, (querySnapshot) => {
       const fetchedRoleTemplates: RoleTemplate[] = [];
-      querySnapshot.forEach((doc) => {
-        fetchedRoleTemplates.push({ templateId: doc.id, ...doc.data() } as RoleTemplate);
+      querySnapshot.forEach((docSnap) => {
+        fetchedRoleTemplates.push({ templateId: docSnap.id, ...docSnap.data() } as RoleTemplate);
       });
       setDbRoleTemplates(fetchedRoleTemplates);
       roleTemplatesLoaded = true;
@@ -307,26 +253,27 @@ export default function EditScenarioPage() {
     };
   }, [toast]); 
 
-
   const handlePreviewImageFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       if (file.size > 5 * 1024 * 1024) { // 5MB limit
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bild darf maximal 5MB groß sein." });
         setPreviewImageFile(null);
-        setLocalPreviewUrl(originalScenarioData?.previewImageUrl || previewImageUrlInput || null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        setLocalPreviewUrl(originalScenarioData?.previewImageUrl || previewImageUrlInput || null); // Revert to old or input URL
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Clear file input
         return;
       }
       setPreviewImageFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setLocalPreviewUrl(reader.result as string);
-        setPreviewImageUrlInput(''); 
+        setPreviewImageUrlInput(''); // Clear URL input if file is selected
       };
       reader.readAsDataURL(file);
     } else {
+      // No file selected or selection cleared
       setPreviewImageFile(null);
+      // Revert local preview based on whether a URL was input or existed
       setLocalPreviewUrl(previewImageUrlInput || originalScenarioData?.previewImageUrl || null);
     }
   };
@@ -335,24 +282,32 @@ export default function EditScenarioPage() {
     const url = e.target.value;
     setPreviewImageUrlInput(url);
     if (url) {
-        setLocalPreviewUrl(url); 
-        if (previewImageFile) { 
+        setLocalPreviewUrl(url); // Show preview from URL
+        if (previewImageFile) { // If a file was selected, clear it
             setPreviewImageFile(null);
-            if (fileInputRef.current) fileInputRef.current.value = ""; 
+            if (fileInputRef.current) fileInputRef.current.value = ""; // Clear file input
         }
     } else {
-       if (!previewImageFile) { 
+       // URL input cleared
+       if (!previewImageFile) { // If no file is selected either, revert to original or show nothing
          setLocalPreviewUrl(originalScenarioData?.previewImageUrl || null);
        }
+       // If a file IS selected, its local preview (already set) should remain.
     }
   };
 
-
-  const handleBotConfigChange = (index: number, field: keyof Omit<BotConfig, 'id'>, value: any) => {
+  const handleBotConfigChange = (index: number, field: keyof Omit<BotConfig, 'id' | 'templateOriginId'>, value: any) => {
     const updatedBots = [...editableBotsConfig];
     if (updatedBots[index]) {
       const botToUpdate = { ...updatedBots[index] };
       (botToUpdate as any)[field] = value;
+      // Ensure avatarFallback is max 2 chars or defaults
+      if (field === 'name' && !botToUpdate.avatarFallback?.trim()) {
+          botToUpdate.avatarFallback = (value || 'BT').substring(0,2).toUpperCase();
+      }
+      if (field === 'avatarFallback') {
+          botToUpdate.avatarFallback = value.substring(0,2).toUpperCase();
+      }
       updatedBots[index] = botToUpdate;
       setEditableBotsConfig(updatedBots);
     }
@@ -369,6 +324,7 @@ export default function EditScenarioPage() {
         isActive: true,
         autoTimerEnabled: false,
         initialMission: "",
+        templateOriginId: '', // Manually added bots don't have a template origin
     }]);
     setBotSaveAsTemplateFlags(prev => ({ ...prev, [newBotId]: false }));
   };
@@ -425,7 +381,7 @@ export default function EditScenarioPage() {
   };
 
 
-  const handleHumanRoleChange = (index: number, field: keyof Omit<HumanRoleConfig, 'id'>, value: string) => {
+  const handleHumanRoleChange = (index: number, field: keyof Omit<HumanRoleConfig, 'id' | 'templateOriginId'>, value: string) => {
     const updatedRoles = [...editableHumanRoles];
     if (updatedRoles[index]) {
         const roleToUpdate = { ...updatedRoles[index] };
@@ -440,7 +396,8 @@ export default function EditScenarioPage() {
     setEditableHumanRoles([...editableHumanRoles, {
         id: newRoleId, 
         name: "Neue Rolle",
-        description: "Beschreibung der neuen Rolle..."
+        description: "Beschreibung der neuen Rolle...",
+        templateOriginId: '', // Manually added roles don't have a template origin
     }]);
     setRoleSaveAsTemplateFlags(prev => ({ ...prev, [newRoleId]: false }));
   };
@@ -517,7 +474,6 @@ export default function EditScenarioPage() {
     setEditableEvents(prev => prev.filter(event => event.id !== eventId));
   };
 
-
   const handleTagToggle = (tagName: string) => {
     const lowerTagName = tagName.toLowerCase();
     setSelectedTags(prevTags =>
@@ -563,20 +519,28 @@ export default function EditScenarioPage() {
     const lowerSearchTerm = tagSearchTerm.toLowerCase();
     return tagTaxonomy
       .map(category => {
-        const categoryMatches = category.categoryName.toLowerCase().includes(lowerSearchTerm);
+        const categoryMatches = category.categoryName.toLowerCase().includes(lowerSearchTerm) || 
+                                (category.emoji && category.emoji.includes(tagSearchTerm)); // Check emoji
         const filteredTags = category.tags.filter(tag =>
           tag.name.toLowerCase().includes(lowerSearchTerm) ||
-          (tag.subTags && tag.subTags.some(subTag => subTag.name.toLowerCase().includes(lowerSearchTerm)))
+          (tag.emoji && tag.emoji.includes(tagSearchTerm)) || // Check tag emoji
+          (tag.subTags && tag.subTags.some(subTag => 
+            subTag.name.toLowerCase().includes(lowerSearchTerm) || 
+            (subTag.emoji && subTag.emoji.includes(tagSearchTerm)) // Check subTag emoji
+          ))
         );
         
         if (categoryMatches || filteredTags.length > 0) {
           return { 
             ...category, 
             tags: categoryMatches 
-              ? category.tags 
-              : filteredTags.map(tag => ({
+              ? category.tags // If category matches, show all its tags
+              : filteredTags.map(tag => ({ // Else, show only filtered tags and their relevant subTags
                   ...tag,
-                  subTags: tag.subTags?.filter(subTag => subTag.name.toLowerCase().includes(lowerSearchTerm))
+                  subTags: tag.subTags?.filter(subTag => 
+                      subTag.name.toLowerCase().includes(lowerSearchTerm) ||
+                      (subTag.emoji && subTag.emoji.includes(tagSearchTerm))
+                    )
                 }))
           };
         }
@@ -584,7 +548,6 @@ export default function EditScenarioPage() {
       })
       .filter(category => category !== null) as TaxonomyCategoryType[];
   }, [tagSearchTerm]);
-
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -613,20 +576,39 @@ export default function EditScenarioPage() {
       setIsUploadingPreviewImage(false);
     }
     
-    const scenarioDataToSave = ensureDefaults({
-      title,
-      kurzbeschreibung,
-      langbeschreibung,
-      lernziele: lernzieleContent,
+    const scenarioDataToSave: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> = {
+      title: title || 'Unbenanntes Szenario',
+      kurzbeschreibung: kurzbeschreibung || '',
+      langbeschreibung: langbeschreibung || '',
+      lernziele: lernzieleContent || '',
       previewImageUrl: finalPreviewImageUrl,
-      iconName: iconNameInput,
-      status,
-      tags: selectedTags.map(t => t.toLowerCase()),
-      defaultBotsConfig: editableBotsConfig.map(b => ({ ...b, id: b.id || `bot-${Date.now()}-${Math.random().toString(36).substring(2,5)}` })),
-      humanRolesConfig: editableHumanRoles.map(r => ({ ...r, id: r.id || `role-${Date.now()}-${Math.random().toString(36).substring(2,5)}` })),
-      initialPost: editableInitialPost,
-      events: editableEvents.map(e => ({ ...e, id: e.id || `event-${Date.now()}-${Math.random().toString(36).substring(2,5)}`})),
-    });
+      iconName: iconNameInput || (availableIcons[0]?.value || 'ImageIconReal'),
+      status: status || 'draft',
+      tags: (selectedTags || []).map(t => String(t || '').toLowerCase()),
+      defaultBotsConfig: (editableBotsConfig || []).map(b => ({ 
+        ...b, 
+        id: b.id || `bot-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
+        avatarFallback: b.avatarFallback?.substring(0,2).toUpperCase() || (b.name || "B").substring(0,2).toUpperCase() || "BT",
+        currentEscalation: b.currentEscalation ?? 0,
+        isActive: b.isActive ?? true,
+        autoTimerEnabled: b.autoTimerEnabled ?? false,
+      })),
+      humanRolesConfig: (editableHumanRoles || []).map(r => ({ 
+        ...r, 
+        id: r.id || `role-${Date.now()}-${Math.random().toString(36).substring(2,5)}` 
+      })),
+      initialPost: {
+        authorName: editableInitialPost?.authorName || 'System',
+        authorAvatarFallback: editableInitialPost?.authorAvatarFallback?.substring(0,2).toUpperCase() || (editableInitialPost?.authorName || 'SYS').substring(0,2).toUpperCase() || 'SY',
+        content: editableInitialPost?.content || '',
+        imageUrl: editableInitialPost?.imageUrl || '',
+        platform: editableInitialPost?.platform || 'Generic',
+      },
+      events: (editableEvents || []).map(e => ({ 
+        ...e, 
+        id: e.id || `event-${Date.now()}-${Math.random().toString(36).substring(2,5)}`
+      })),
+    };
     
     const dataForFirestore: Partial<Scenario> & {updatedAt: Timestamp; createdAt?: Timestamp} = {
       ...scenarioDataToSave,
@@ -692,7 +674,7 @@ export default function EditScenarioPage() {
         router.replace(`/admin/scenario-editor/${docRef.id}`, { scroll: false }); 
       } else if (currentScenarioId) {
         const scenarioDocRef = doc(db, "scenarios", currentScenarioId);
-        await setDoc(scenarioDocRef, dataForFirestore, { merge: true }); // Ensure merge:true to avoid overwriting createdAt
+        await setDoc(scenarioDocRef, dataForFirestore, { merge: true }); 
         toast({
           title: "Szenario gespeichert",
           description: `Änderungen für "${dataForFirestore.title}" wurden erfolgreich gespeichert.`,
@@ -700,11 +682,11 @@ export default function EditScenarioPage() {
         const updatedSnap = await getDoc(scenarioDocRef);
          if (updatedSnap.exists()) {
             const updatedScenario = { id: updatedSnap.id, ...updatedSnap.data() } as Scenario;
-            setOriginalScenarioData(JSON.parse(JSON.stringify(updatedScenario)));
+            setOriginalScenarioData(JSON.parse(JSON.stringify(updatedScenario))); // Update original data
             if (previewImageFile && finalPreviewImageUrl && finalPreviewImageUrl !== (originalScenarioData?.previewImageUrl || previewImageUrlInput)) {
-                 setPreviewImageUrlInput(finalPreviewImageUrl);
-                 setLocalPreviewUrl(finalPreviewImageUrl);
-                 setPreviewImageFile(null);
+                 setPreviewImageUrlInput(finalPreviewImageUrl); // Update input to reflect the uploaded URL
+                 setLocalPreviewUrl(finalPreviewImageUrl); // Update local preview to uploaded image
+                 setPreviewImageFile(null); // Clear the file buffer
                  if (fileInputRef.current) fileInputRef.current.value = "";
             } else if (!finalPreviewImageUrl && !previewImageUrlInput && (!originalScenarioData || !originalScenarioData.previewImageUrl)) { 
                  setLocalPreviewUrl(null);
@@ -766,15 +748,14 @@ export default function EditScenarioPage() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
       {/* Combined Sticky Header */}
-      <div className="sticky top-16 bg-background z-20 border-b"> {/* Adjust top based on main admin header height */}
-        {/* Main Action Bar (Save/Cancel) */}
+      <div className="sticky top-16 bg-background z-20 border-b"> 
         <div className="px-4 py-3 sm:px-6 flex items-center justify-between">
           <div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
               {renderIcon(iconNameInput)}
               Editor: <span className="text-foreground ml-2">{displayedTitle}</span>
             </h1>
-            <p className="text-xs text-muted-foreground mt-0.5 ml-8"> {/* Adjusted margin to align with title if icon is present */}
+            <p className="text-xs text-muted-foreground mt-0.5 ml-8">
               ID: {currentIdForDisplay}
             </p>
           </div>
@@ -802,8 +783,7 @@ export default function EditScenarioPage() {
           </div>
         </div>
 
-        {/* Shortcut Navigation Bar */}
-        <ScrollArea className="max-w-full border-t bg-background/90 backdrop-blur-sm">
+        <ScrollArea orientation="horizontal" className="max-w-full border-t bg-background/90 backdrop-blur-sm">
            <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2">
             {editorSections.map(section => (
               <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
@@ -825,14 +805,11 @@ export default function EditScenarioPage() {
         </ScrollArea>
       </div>
 
-
-      {/* Main Scrollable Content - Added padding top to account for combined sticky header height */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8 pt-3"> {/* Adjust pt-3 or higher if needed */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8 pt-3"> 
         <div className="max-w-[1000px] mx-auto"> 
             <Accordion type="multiple" defaultValue={defaultAccordionValues} className="w-full space-y-4">
 
-                {/* Basisinformationen */}
-                <AccordionItem value="basisinfo" id="basisinfo" className="border-none scroll-mt-32"> {/* Increased scroll-mt for sticky header */}
+                <AccordionItem value="basisinfo" id="basisinfo" className="border-none scroll-mt-32"> 
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline text-left border-b">
                     <CardTitle className="text-lg flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Basisinformationen</CardTitle>
@@ -867,7 +844,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Ausgangsposting */}
                 <AccordionItem value="initialpost" id="initialpost" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -924,7 +900,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Bot-Konfiguration */}
                 <AccordionItem value="botconfig" id="botconfig" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -999,7 +974,7 @@ export default function EditScenarioPage() {
                                 </div>
                                 <div className="space-y-1.5">
                                 <Label htmlFor={`bot-avatar-${index}`}>Avatar Kürzel (max. 2 Zeichen)</Label>
-                                <Input id={`bot-avatar-${index}`} value={bot.avatarFallback || ''} onChange={(e) => handleBotConfigChange(index, 'avatarFallback', e.target.value.substring(0,2))} placeholder="BK" maxLength={2} disabled={isSaving} className="w-full"/>
+                                <Input id={`bot-avatar-${index}`} value={bot.avatarFallback || ''} onChange={(e) => handleBotConfigChange(index, 'avatarFallback', e.target.value)} placeholder="BK" maxLength={2} disabled={isSaving} className="w-full"/>
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label htmlFor={`bot-escalation-${index}`}>Initiale Eskalation (0-3)</Label>
@@ -1028,7 +1003,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Menschliche Teilnehmerrollen */}
                 <AccordionItem value="humanroles" id="humanroles" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -1102,8 +1076,7 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                 {/* Szenario-Ereignisse */}
-                <AccordionItem value="events" id="events" className="border-none scroll-mt-32">
+                 <AccordionItem value="events" id="events" className="border-none scroll-mt-32">
                   <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                       <CardTitle className="text-lg flex items-center"><Sparkles className="mr-2 h-5 w-5 text-primary"/>Szenario-Ereignisse ({editableEvents.length})</CardTitle>
@@ -1152,7 +1125,6 @@ export default function EditScenarioPage() {
                   </Card>
                 </AccordionItem>
                 
-                {/* Szenario-Metadaten & Bild */}
                 <AccordionItem value="metadaten" id="metadaten" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -1222,7 +1194,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                {/* Themen-Tags */}
                 <AccordionItem value="tags" id="tags" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -1244,18 +1215,19 @@ export default function EditScenarioPage() {
                                         onChange={handleManualTagInputChange}
                                         onKeyDown={handleManualTagInputKeyDown}
                                         onBlur={processManualTagInput} 
-                                        disabled={isSaving}
+                                        disabled={isSaving || true} // Temporarily disable manual input until logic is complete
                                     />
-                                    <Button type="button" size="sm" variant="outline" onClick={processManualTagInput} disabled={isSaving || !manualTagInput.trim()}>
+                                    <Button type="button" size="sm" variant="outline" onClick={processManualTagInput} disabled={isSaving || !manualTagInput.trim() || true}>
                                         <PlusCircle className="mr-2 h-4 w-4" /> Hinzufügen
                                     </Button>
                                 </div>
+                                 <p className="text-xs text-muted-foreground mt-1">Hinweis: Die manuelle Tag-Eingabe und die Suchfunktion werden bald überarbeitet.</p>
                             </div>
                             <div className="mb-4">
                                 <Label htmlFor="filterTagTaxonomyInput">Tag-Taxonomie filtern/suchen:</Label>
                                 <Input 
                                     id="filterTagTaxonomyInput"
-                                    placeholder="Taxonomie durchsuchen..."
+                                    placeholder="Taxonomie durchsuchen (Kategorie, Tag, Emoji)..."
                                     value={tagSearchTerm}
                                     onChange={(e) => setTagSearchTerm(e.target.value)}
                                     className="mt-1 text-sm w-full"
@@ -1307,7 +1279,7 @@ export default function EditScenarioPage() {
                                                                 {tag.emoji && <span className="mr-1.5">{tag.emoji}</span>}
                                                                 {tag.name}
                                                             </Badge>
-                                                            {tag.subTags && tag.subTags.filter(subTag => !tagSearchTerm.trim() || subTag.name.toLowerCase().includes(tagSearchTerm.toLowerCase())).map(subTag => ( 
+                                                            {tag.subTags && tag.subTags.filter(subTag => !tagSearchTerm.trim() || subTag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) || (subTag.emoji && subTag.emoji.includes(tagSearchTerm))).map(subTag => ( 
                                                                 <Badge
                                                                     key={subTag.name}
                                                                     variant={(selectedTags || []).map(st=>st.toLowerCase()).includes(subTag.name.toLowerCase()) ? "default" : "outline"}
@@ -1360,3 +1332,6 @@ export default function EditScenarioPage() {
     </form>
   );
 }
+
+
+    
