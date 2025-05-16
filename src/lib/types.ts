@@ -29,7 +29,7 @@ export interface Scenario {
   title: string;
   kurzbeschreibung: string;
   langbeschreibung: string;
-  lernziele: string;
+  lernziele: string; // Was a string[], now a string for potential HTML from WYSIWYG
   iconName: string;
   tags: string[];
   previewImageUrl?: string;
@@ -77,7 +77,7 @@ export interface SessionData {
   updatedAt?: Timestamp | Date | any;
   invitationLink: string;
   invitationToken?: string;
-  status: "active" | "paused" | "ended";
+  status: "pending" | "open" | "active" | "paused" | "ended"; // Added "pending" and "open"
   messageCooldownSeconds: number;
 }
 

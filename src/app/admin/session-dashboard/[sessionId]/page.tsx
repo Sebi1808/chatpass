@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle, CheckCircle, Users2, LogIn, PlayCircle } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData, ScenarioEvent } from "@/lib/types";
@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ChatPageContent } from "@/app/chat/[sessionId]/page";
 import { generateBotMessage } from "@/ai/flows/bot-message-generator";
-import NextImage from 'next/image';
+import Image from 'next/image'; // Corrected import
 import { useRouter } from 'next/navigation';
 
 
@@ -49,7 +49,7 @@ const generateToken = () => Math.random().toString(36).substring(2, 10);
 
 
 export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
-  const sessionId = props.params.sessionId;
+  const { sessionId } = props.params;
   const { toast } = useToast();
   const router = useRouter();
 
@@ -65,18 +65,18 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   
   const [pageError, setPageError] = useState<string | null>(null);
   
-  const isLoadingPage = isLoadingScenario || isLoadingSessionData; // Participants and messages load after these
-
+  const isLoadingPage = isLoadingScenario || isLoadingSessionData;
 
   const [isEndingSession, setIsEndingSession] = useState(false);
-  const [isStartingOrRestartingSession, setIsStartingOrRestartingSession] = useState(false);
-  const [isResettingSession, setIsResettingSession] = useState(false);
+  const [isProcessingSessionAction, setIsProcessingSessionAction] = useState(false); // General action state
   const [isGeneratingLink, setIsGeneratingLink] = useState(false);
   const [showParticipantMirrorView, setShowParticipantMirrorView] = useState(false);
   const [isPostingForBot, setIsPostingForBot] = useState<string | null>(null);
   const [botMissions, setBotMissions] = useState<Record<string, string>>({});
   const [isRemovingParticipant, setIsRemovingParticipant] = useState<string | null>(null);
   const [isRemovingAllParticipants, setIsRemovingAllParticipants] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
   const adminChatPreviewEndRef = useRef<null | HTMLDivElement>(null);
@@ -85,7 +85,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     ? `${sessionData.invitationLink}?token=${sessionData.invitationToken}`
     : "Wird generiert...";
 
-  // Effect for loading the scenario
+  // Load Scenario
   useEffect(() => {
     if (!sessionId) {
       setPageError("Keine Szenario-ID für das Dashboard vorhanden.");
@@ -94,136 +94,98 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
     setIsLoadingScenario(true);
     setPageError(null);
+    console.log(`AdminDashboard: Attempting to load scenario with ID: ${sessionId}`);
     const scenarioDocRef = doc(db, "scenarios", sessionId);
 
-    console.log(`AdminDashboard: Attempting to load scenario with ID: ${sessionId}`);
     getDoc(scenarioDocRef).then(docSnap => {
       if (docSnap.exists()) {
         console.log("AdminDashboard: Scenario found:", docSnap.data());
         setCurrentScenario({ id: docSnap.id, ...docSnap.data() } as Scenario);
-        setPageError(null);
       } else {
         console.error(`AdminDashboard: Scenario with ID ${sessionId} not found.`);
-        setPageError(`Szenario mit ID ${sessionId} nicht gefunden. Wurde es gelöscht oder ist die ID falsch?`);
+        setPageError(`Szenario mit ID ${sessionId} nicht gefunden. Bitte überprüfen Sie die ID oder erstellen Sie das Szenario.`);
         setCurrentScenario(null);
-        toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} konnte nicht geladen werden.` });
       }
     }).catch(error => {
       console.error(`AdminDashboard: Error fetching scenario ${sessionId}:`, error);
       setPageError("Szenario konnte nicht geladen werden. Fehler: " + error.message);
       setCurrentScenario(null);
-      toast({ variant: "destructive", title: "Ladefehler", description: "Szenario konnte nicht geladen werden." });
     }).finally(() => {
       setIsLoadingScenario(false);
     });
-  }, [sessionId, toast]);
+  }, [sessionId]);
 
-
-  // Effect for ensuring session document exists and listening to it
+  // Ensure and Listen to Session Document
   useEffect(() => {
-    if (!sessionId) {
-        setIsLoadingSessionData(false);
-        return;
-    }
-    // Only proceed if scenario loading is done (either successfully or with an error handled by pageError)
-    if (isLoadingScenario) {
-        return; 
-    }
-    // If scenario loading failed, don't try to manage session doc for it
-    if (!currentScenario && pageError) {
-        setIsLoadingSessionData(false);
-        return;
-    }
-    // If scenario is definitively not found (and no other pageError already set this)
-    if (!currentScenario && !pageError) {
-        setPageError(prev => prev || "Szenariodaten fehlen, Sitzung kann nicht initialisiert werden.");
-        setIsLoadingSessionData(false);
-        return;
-    }
+    if (!sessionId || isLoadingScenario) return;
 
     setIsLoadingSessionData(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
 
-    const ensureAndListenSessionDocument = async () => {
+    const ensureSessionDocument = async () => {
       try {
-        let baseLink = "";
-        if (typeof window !== "undefined") {
-          baseLink = `${window.location.origin}/join/${sessionId}`;
-        }
-
         const docSnap = await getDoc(sessionDocRef);
         if (!docSnap.exists()) {
-          console.log(`AdminDashboard: Session document for ${sessionId} does not exist. Creating new one.`);
+          console.log(`AdminDashboard: Session document for ${sessionId} does not exist. Creating new one with status 'pending'.`);
           const newSessionToken = generateToken();
+          let baseLink = "";
+          if (typeof window !== "undefined") {
+            baseLink = `${window.location.origin}/join/${sessionId}`;
+          }
           const newSessionData: SessionData = {
-            scenarioId: currentScenario!.id, 
+            scenarioId: sessionId, // Use the current scenario ID
             createdAt: serverTimestamp(),
             invitationLink: baseLink,
             invitationToken: newSessionToken,
-            status: "active", 
+            status: "pending", // Initial status
             messageCooldownSeconds: DEFAULT_COOLDOWN,
             updatedAt: serverTimestamp(),
           };
           await setDoc(sessionDocRef, newSessionData);
           console.log(`AdminDashboard: New session document created for ${sessionId}.`);
-        } else {
-          const existingData = docSnap.data() as SessionData;
-          const updates: Partial<SessionData> = {updatedAt: serverTimestamp()};
-          if (existingData.invitationLink !== baseLink && baseLink) updates.invitationLink = baseLink;
-          if (!existingData.invitationToken) updates.invitationToken = generateToken();
-          if (existingData.scenarioId !== currentScenario!.id) updates.scenarioId = currentScenario!.id;
-          if (typeof existingData.messageCooldownSeconds === 'undefined') updates.messageCooldownSeconds = DEFAULT_COOLDOWN;
-          
-          if (Object.keys(updates).length > 1) {
-            await updateDoc(sessionDocRef, updates);
-            console.log(`AdminDashboard: Session document for ${sessionId} updated.`);
-          }
         }
       } catch (error: any) {
         console.error(`AdminDashboard: Error managing session document for ${sessionId}:`, error);
-        setPageError(prev => prev || `Sitzungsdokument konnte nicht initialisiert/aktualisiert werden: ${error.message}`);
+        setPageError(prev => prev || `Sitzungsdokument konnte nicht initialisiert werden: ${error.message}`);
         toast({variant: "destructive", title: "Sitzungsfehler", description: `Sitzungsdokument konnte nicht erstellt/aktualisiert werden.`});
       }
+    };
 
-      const unsubscribe = onSnapshot(sessionDocRef, (docSn) => {
-        if (docSn.exists()) {
-          const data = docSn.data() as SessionData;
-          setSessionData(data);
-          setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
-        } else {
-          setSessionData(null); 
+    ensureSessionDocument(); // Ensure doc exists before listening
+
+    const unsubscribe = onSnapshot(sessionDocRef, (docSn) => {
+      if (docSn.exists()) {
+        const data = docSn.data() as SessionData;
+        setSessionData(data);
+        setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
+        if (data.scenarioId !== sessionId && !pageError) { // Check if scenarioId in session matches current sessionId
+             console.warn(`AdminDashboard: Mismatch! Session doc scenarioId (${data.scenarioId}) vs URL sessionId (${sessionId}).`);
+             // Potentially set an error or redirect if this is critical
         }
-        setIsLoadingSessionData(false);
-      }, (error: any) => {
-        console.error(`AdminDashboard: Error listening to session data for ${sessionId}:`, error);
-        setPageError(prev => prev || `Sitzungsstatus konnte nicht geladen werden: ${error.message}`);
-        setIsLoadingSessionData(false);
-      });
-      return unsubscribe; // Return an unsubscribe function to be called on cleanup
-    };
-    
-    let unsubscribeSession: (() => void) | undefined;
-    if (currentScenario) {
-      ensureAndListenSessionDocument().then(unsub => {
-        unsubscribeSession = unsub;
-      });
-    } else {
-        setIsLoadingSessionData(false);
-    }
-    
-    return () => {
-      if (unsubscribeSession) {
-        unsubscribeSession();
+      } else {
+        setSessionData(null); 
+        // If session doc doesn't exist after ensureSessionDocument attempted to create it, it's an issue
+        if (!isLoadingSessionData) { // Avoid setting error during initial ensureDoc phase
+            console.warn(`AdminDashboard: Session document ${sessionId} still does not exist after attempt to create.`);
+           // setPageError(prev => prev || `Sitzungsdokument für ${sessionId} konnte nicht gefunden oder erstellt werden.`);
+        }
       }
-    };
+      setIsLoadingSessionData(false);
+    }, (error: any) => {
+      console.error(`AdminDashboard: Error listening to session data for ${sessionId}:`, error);
+      setPageError(prev => prev || `Sitzungsstatus konnte nicht geladen werden: ${error.message}`);
+      setIsLoadingSessionData(false);
+    });
+    
+    return () => unsubscribe();
+  }, [sessionId, isLoadingScenario, pageError]); // Removed currentScenario from deps, as it was causing re-runs
 
-  }, [sessionId, currentScenario, isLoadingScenario, pageError, toast]);
-
-
+  // Initialize/Sync Bots
   const getBotDisplayName = useCallback((botConfig: BotConfig, scenarioBotsCount: number, index: number): string => {
     if (botConfig.name) return botConfig.name;
     const nameSuffix = scenarioBotsCount > 1 ? ` ${index + 1}` : "";
     const personality = botConfig.personality || 'standard';
+    // ... (rest of the function remains the same)
     switch (personality) {
       case 'provokateur': return `Bot Provokateur${nameSuffix}`;
       case 'verteidiger': return `Bot Verteidiger${nameSuffix}`;
@@ -234,7 +196,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
   const initializeBotsForSession = useCallback(async (scenarioToInit: Scenario, sId: string) => {
     if (!scenarioToInit || !scenarioToInit.defaultBotsConfig) {
-      console.warn(`AdminDashboard: initializeBotsForSession: Scenario data or bot config missing for scenario ID: ${sId}. Scenario:`, scenarioToInit);
+      console.warn(`AdminDashboard: initializeBotsForSession: Scenario data or bot config missing for scenario ID: ${sId}.`);
       return;
     }
     console.log(`AdminDashboard: Initializing/syncing bots for scenario: ${scenarioToInit.title} (ID: ${sId})`);
@@ -248,10 +210,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const firestoreBotsMap = new Map(existingBotsSnap.docs.map(d => [d.data().botScenarioId, {docId: d.id, data: d.data() as Participant}]));
     const configBotScenarioIds = new Set(scenarioBotsConfig.map(bc => bc.id));
 
-    // Delete bots from Firestore that are no longer in the scenario config
     firestoreBotsMap.forEach((botDetails, botScenarioIdInDb) => {
       if (!configBotScenarioIds.has(botScenarioIdInDb)) {
-        console.log(`AdminDashboard: Deleting bot ${botDetails.data.name} (docId: ${botDetails.docId}, botScenarioId: ${botScenarioIdInDb}) as it's no longer in scenario config.`);
         batch.delete(doc(participantsColRef, botDetails.docId));
         operationsInBatch++;
       }
@@ -268,14 +228,14 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       const botDataForFirestore: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any, botConfig: BotConfig } = {
         userId: `bot-${botScenarioId}`,
         name: botDisplayName,
-        nickname: botDisplayName, // Bots use their name as nickname
+        nickname: botDisplayName,
         role: `Bot (${botConfig.personality || 'standard'})`,
         avatarFallback: botConfig.avatarFallback || (botConfig.name || botConfig.personality.substring(0,1) + (botConfig.id || 'X').substring(0,1)).substring(0, 2).toUpperCase() || "BT",
         isBot: true,
         status: "Aktiv", 
         botConfig: { 
           ...botConfig, 
-          isActive: botConfig.isActive ?? true,
+          isActive: botConfig.isActive ?? true, // Bots are active by default in the session
           currentEscalation: botConfig.currentEscalation ?? 0,
           autoTimerEnabled: botConfig.autoTimerEnabled ?? false,
           initialMission: botConfig.initialMission || "",
@@ -287,7 +247,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
       const existingBotDetails = firestoreBotsMap.get(botScenarioId);
       if (!existingBotDetails) {
-        console.log(`AdminDashboard: Adding new bot ${botDisplayName} (botScenarioId: ${botScenarioId}) to Firestore.`);
         const newBotDocRef = doc(collection(db, "sessions", sId, "participants")); 
         batch.set(newBotDocRef, { ...botDataForFirestore, id: newBotDocRef.id, joinedAt: serverTimestamp() });
         operationsInBatch++;
@@ -305,17 +264,14 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             currentMission: existingBotData?.botConfig?.currentMission || botConfig.initialMission || "", 
             id: botScenarioId, 
         };
-
-        const updateData: Partial<Participant> & { [key: string]: any } = {
-            name: botDisplayName,
-            nickname: botDisplayName,
-            role: `Bot (${botConfig.personality || 'standard'})`,
-            avatarFallback: botDataForFirestore.avatarFallback,
+        batch.update(botDocRef, { 
+            name: botDisplayName, 
+            nickname: botDisplayName, 
+            role: `Bot (${botConfig.personality || 'standard'})`, 
+            avatarFallback: botDataForFirestore.avatarFallback, 
             botConfig: updatedBotConfig,
-            botScenarioId: botScenarioId, 
-        };
-        console.log(`AdminDashboard: Updating existing bot ${botDisplayName} (docId: ${existingBotDetails.docId}, botScenarioId: ${botScenarioId}) in Firestore.`);
-        batch.update(botDocRef, updateData);
+            botScenarioId: botScenarioId
+        });
         operationsInBatch++;
       }
     }
@@ -330,32 +286,22 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   }, [getBotDisplayName, toast]);
 
-  // Effect to initialize bots when scenario is loaded and session is active/paused
+  // Load Participants
   useEffect(() => {
-    if (currentScenario && sessionData && (sessionData.status === 'active' || sessionData.status === 'paused') && !isLoadingScenario && !isLoadingSessionData) {
-      initializeBotsForSession(currentScenario, sessionId);
-    }
-  }, [currentScenario, sessionData, sessionId, isLoadingScenario, isLoadingSessionData, initializeBotsForSession]);
-
-
-  // Effect for loading participants
-  useEffect(() => {
-    if (!sessionId || pageError || isLoadingPage) { // Also wait for page to be generally ready
+    if (!sessionId || pageError || isLoadingPage) {
       setIsLoadingParticipants(false);
       return;
     }
     setIsLoadingParticipants(true);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    // Sort by joinedAt for Firestore query to avoid complex index requirement
-    const participantsQuery = query(participantsColRef, orderBy("joinedAt", "asc")); 
+    const q = query(participantsColRef, orderBy("joinedAt", "asc"));
     
-    const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
+    const unsubscribeParticipants = onSnapshot(q, (querySnapshot) => {
       let fetchedParticipants: Participant[] = [];
       querySnapshot.forEach((docSn) => {
         fetchedParticipants.push({ id: docSn.id, ...docSn.data() } as Participant);
       });
 
-      // Client-side sort: bots first, then humans
       fetchedParticipants.sort((a, b) => {
         if (a.isBot && !b.isBot) return -1;
         if (!a.isBot && b.isBot) return 1;
@@ -370,21 +316,18 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       fetchedParticipants.filter(p => p.isBot && p.botConfig).forEach(bot => {
         newBotMissionsState[bot.id] = bot.botConfig!.currentMission || bot.botConfig!.initialMission || "";
       });
-      setBotMissions(prevMissions => ({...prevMissions, ...newBotMissionsState})); // Merge to keep inputs
+      setBotMissions(prevMissions => ({...prevMissions, ...newBotMissionsState}));
 
       setIsLoadingParticipants(false);
     }, (error) => {
       console.error(`Error fetching participants for session ${sessionId}:`, error);
       setIsLoadingParticipants(false);
       setPageError(prevError => prevError || `Teilnehmer konnten nicht geladen werden: ${error.message}`);
-      toast({ variant: "destructive", title: "Fehler Teilnehmerliste", description: `Teilnehmer konnten nicht geladen werden: ${error.message}` });
     });
-    return () => {
-      unsubscribeParticipants();
-    };
-  }, [sessionId, toast, pageError, isLoadingPage]); // Added isLoadingPage dependency
+    return () => unsubscribeParticipants();
+  }, [sessionId, toast, pageError, isLoadingPage]);
 
-  // Effect for loading messages
+  // Load Messages
   useEffect(() => {
     if (!sessionId || showParticipantMirrorView || pageError || isLoadingPage) { 
       setIsLoadingMessages(false);
@@ -410,10 +353,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       console.error(`Error fetching messages for session ${sessionId}:`, error);
       setIsLoadingMessages(false);
       setPageError(prevError => prevError || "Nachrichten konnten nicht geladen werden.");
-      toast({ variant: "destructive", title: "Fehler Chatverlauf", description: "Nachrichten konnten nicht geladen werden." });
     });
     return () => unsubscribeMessages();
-  }, [sessionId, showParticipantMirrorView, toast, pageError, isLoadingPage]); // Added isLoadingPage
+  }, [sessionId, showParticipantMirrorView, toast, pageError, isLoadingPage]); 
 
   useEffect(() => {
     if (!showParticipantMirrorView && adminChatPreviewEndRef.current) {
@@ -421,8 +363,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   }, [chatMessages, showParticipantMirrorView]);
 
-
   const copyToClipboard = useCallback(() => {
+    // ... (remains the same)
     if (displayedInvitationLink && !displayedInvitationLink.includes("Wird generiert...")) {
       navigator.clipboard.writeText(displayedInvitationLink).then(() => {
         toast({ title: "Link kopiert!", description: "Der Einladungslink wurde in die Zwischenablage kopiert." });
@@ -435,6 +377,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [displayedInvitationLink, toast]);
 
   const handleGenerateNewInvitationToken = useCallback(async () => {
+    // ... (remains the same)
     if (!sessionId || !sessionData) {
        return;
     }
@@ -452,61 +395,84 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   }, [sessionId, sessionData, toast]);
 
-  const handleStartRestartSession = useCallback(async () => {
-    if (!sessionId) {
-        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Sitzungs-ID fehlt."});
+  const handleOpenSessionForJoining = useCallback(async () => {
+    if (!sessionId || !currentScenario) {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Sitzungs- oder Szenariodaten fehlen."});
         return;
     }
-    if (!currentScenario) {
-        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen oder fehlen."});
-        setIsStartingOrRestartingSession(false);
-        return;
-    }
-    setIsStartingOrRestartingSession(true);
+    setIsProcessingSessionAction(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
-    let baseLink = "";
-     if (typeof window !== "undefined") {
-        baseLink = `${window.location.origin}/join/${sessionId}`;
-    }
-    const newSessionToken = generateToken();
-
-    const sessionUpdateData: Partial<SessionData> = {
-        status: "active",
-        messageCooldownSeconds: sessionData?.messageCooldownSeconds ?? DEFAULT_COOLDOWN,
-        scenarioId: currentScenario.id, 
-        invitationLink: baseLink,
-        invitationToken: newSessionToken,
-        updatedAt: serverTimestamp(),
-    };
-    
-    if (!sessionData || sessionData.status === "ended") { 
-        sessionUpdateData.createdAt = serverTimestamp(); 
-        sessionUpdateData.messageCooldownSeconds = DEFAULT_COOLDOWN;
-    }
-
     try {
-        await setDoc(sessionDocRef, sessionUpdateData, { merge: true });
+        await updateDoc(sessionDocRef, { status: "open", updatedAt: serverTimestamp() });
         await initializeBotsForSession(currentScenario, sessionId); 
-        toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv." });
-    } catch (error: any) {
-        console.error(`Error starting/restarting session ${sessionId}:`, error);
-        toast({ variant: "destructive", title: "Fehler", description: `Sitzung konnte nicht gestartet/aktualisiert werden: ${error.message}` });
+        toast({ title: "Sitzung geöffnet", description: "Teilnehmer können jetzt dem Wartebereich beitreten." });
+    } catch (error: any)
+ {
+        console.error(`Error opening session ${sessionId} for joining:`, error);
+        toast({ variant: "destructive", title: "Fehler", description: `Sitzung konnte nicht geöffnet werden: ${error.message}` });
     } finally {
-        setIsStartingOrRestartingSession(false);
+        setIsProcessingSessionAction(false);
     }
-  }, [sessionId, currentScenario, sessionData, toast, initializeBotsForSession]);
+  }, [sessionId, currentScenario, initializeBotsForSession, toast]);
+
+  const startCountdownAndSession = useCallback(async () => {
+    if (!sessionId || !sessionData || sessionData.status !== "open") {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Sitzung ist nicht bereit zum Starten."});
+        return;
+    }
+    setIsProcessingSessionAction(true);
+    setCountdown(5); // Start 5-second countdown
+
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
+
+    countdownIntervalRef.current = setInterval(() => {
+      setCountdown(prevCountdown => {
+        if (prevCountdown === null) {
+          if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+          return null;
+        }
+        if (prevCountdown <= 1) {
+          if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+          // Countdown finished, now start the session
+          const sessionDocRef = doc(db, "sessions", sessionId);
+          updateDoc(sessionDocRef, { status: "active", updatedAt: serverTimestamp() })
+            .then(() => {
+              toast({ title: "Chat-Simulation gestartet!", description: "Der Chat ist jetzt aktiv." });
+              setSessionData(prev => prev ? {...prev, status: "active"} : null); // Optimistic update
+            })
+            .catch(error => {
+              console.error(`Error starting chat simulation ${sessionId}:`, error);
+              toast({ variant: "destructive", title: "Fehler", description: `Chat-Simulation konnte nicht gestartet werden: ${error.message}` });
+            })
+            .finally(() => {
+              setIsProcessingSessionAction(false);
+              setCountdown(null); 
+            });
+          return 0; // Or null to clear
+        }
+        return prevCountdown - 1;
+      });
+    }, 1000);
+
+  }, [sessionId, sessionData, toast]);
+
+  useEffect(() => { // Cleanup interval on unmount
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, []);
+
 
   const handleResetSession = useCallback(async () => {
-    if (!sessionId) {
-        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Sitzungs-ID fehlt."});
+    if (!sessionId || !currentScenario) {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Sitzungs- oder Szenariodaten fehlen."});
         return;
     }
-    if (!currentScenario) {
-        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen oder fehlen."});
-        setIsResettingSession(false);
-        return;
-    }
-    setIsResettingSession(true);
+    setIsProcessingSessionAction(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
@@ -524,29 +490,29 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         baseLink = `${window.location.origin}/join/${sessionId}`;
       }
       const newSessionToken = generateToken();
-      const newSessionDataToSet: SessionData = { // Ensure all SessionData fields are present
+      const newSessionDataToSet: SessionData = {
         scenarioId: currentScenario.id,
         createdAt: serverTimestamp(),
         invitationLink: baseLink,
         invitationToken: newSessionToken,
-        status: "active",
+        status: "pending", // Reset to pending
         messageCooldownSeconds: DEFAULT_COOLDOWN,
         updatedAt: serverTimestamp(),
       };
       await setDoc(sessionDocRef, newSessionDataToSet); 
-      await initializeBotsForSession(currentScenario, sessionId); 
-
-      toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Sitzung neu gestartet." });
+      // Bots will be re-initialized by the openSessionForJoining or similar flow
+      toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Sitzung ist im 'pending'-Status." });
     } catch (error: any) {
       console.error(`Error resetting session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: `Sitzung konnte nicht zurückgesetzt werden: ${error.message}` });
     } finally {
-      setIsResettingSession(false);
+      setIsProcessingSessionAction(false);
     }
-  }, [sessionId, currentScenario, toast, initializeBotsForSession]);
+  }, [sessionId, currentScenario, toast]);
 
 
   const handleEndSession = useCallback(async () => {
+    // ... (remains the same)
     if (!sessionId) return;
     setIsEndingSession(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
@@ -562,8 +528,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId, toast]);
 
   const handleToggleSimulationActive = useCallback(async (isActive: boolean) => {
-    if (!sessionId || !sessionData || sessionData.status === "ended") return;
+    if (!sessionId || !sessionData || sessionData.status === "ended" || sessionData.status === "pending") return;
     const newStatus = isActive ? "active" : "paused";
+    if (sessionData.status === newStatus) return; 
+
+    setIsProcessingSessionAction(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { status: newStatus, updatedAt: serverTimestamp() });
@@ -571,10 +540,13 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     } catch (error: any) {
       console.error(`Error toggling simulation active for session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: `Simulationsstatus konnte nicht geändert werden: ${error.message}` });
+    } finally {
+      setIsProcessingSessionAction(false);
     }
   }, [sessionId, sessionData, toast]);
 
   const handlePaceChangeCommit = useCallback(async (newPaceValues: number[]) => {
+    // ... (remains the same)
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const newCooldown = newPaceValues[0];
     setPaceValue(newCooldown); 
@@ -589,6 +561,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
 
   const handleMuteAllUsers = useCallback(async () => {
+    // ... (remains the same)
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
     const q = query(participantsColRef, where("isBot", "==", false));
@@ -611,6 +584,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId, sessionData, toast]);
 
   const handleToggleMuteParticipant = useCallback(async (participantId: string, currentMuteStatus: boolean | undefined) => {
+    // ... (remains the same)
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const participantDocRef = doc(db, "sessions", sessionId, "participants", participantId);
     try {
@@ -623,6 +597,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId, sessionData, toast]);
 
   const handleToggleBotActive = useCallback(async (botParticipantId: string, currentActiveStatus: boolean | undefined) => {
+    // ... (remains the same)
     if (!sessionId || !sessionData || sessionData.status === "ended" || typeof currentActiveStatus === 'undefined') return;
     const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipantId);
     try {
@@ -635,6 +610,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   },[sessionId, sessionData, toast]);
 
   const handleBotEscalationChange = useCallback(async (botParticipantId: string, change: "increase" | "decrease") => {
+    // ... (remains the same)
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipantId);
     const botParticipant = sessionParticipants.find(p => p.id === botParticipantId);
@@ -653,6 +629,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId, sessionData, sessionParticipants, toast]);
 
   const handleBotAutoTimerToggle = useCallback(async (botParticipantId: string, currentAutoTimerStatus: boolean | undefined) => {
+    // ... (remains the same)
      if (!sessionId || !sessionData || sessionData.status === "ended" || typeof currentAutoTimerStatus === 'undefined') return;
     const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipantId);
     try {
@@ -665,10 +642,12 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId, sessionData, toast]);
 
   const handleBotMissionChange = useCallback((botParticipantId: string, mission: string) => {
+    // ... (remains the same)
     setBotMissions(prev => ({ ...prev, [botParticipantId]: mission }));
   }, []);
 
   const handleUpdateBotMissionInFirestore = useCallback(async (botParticipantId: string) => {
+    // ... (remains the same)
     if (!sessionId) return;
     const missionToSave = botMissions[botParticipantId];
     if (typeof missionToSave === 'undefined') {
@@ -693,6 +672,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
 
   const handlePostForBot = useCallback(async (botParticipant: Participant) => {
+    // ... (remains the same)
     if (!sessionId || !currentScenario || !botParticipant.botConfig || !sessionData) {
         toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Notwendige Daten für Bot-Post fehlen."});
         return;
@@ -745,10 +725,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     } finally {
       setIsPostingForBot(null);
     }
-  }, [sessionId, currentScenario, sessionData, chatMessages, toast ]); // Removed botMissions from dependency
+  }, [sessionId, currentScenario, sessionData, chatMessages, toast ]);
 
 
   const handleRemoveParticipant = useCallback(async (participantId: string) => {
+    // ... (remains the same)
     if (!sessionId) return;
     setIsRemovingParticipant(participantId);
     try {
@@ -764,6 +745,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [sessionId, toast]);
 
   const handleRemoveAllParticipants = useCallback(async () => {
+    // ... (remains the same)
     if (!sessionId) return;
     setIsRemovingAllParticipants(true);
     try {
@@ -791,6 +773,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
 
   const handleDownloadCsv = useCallback(() => {
+    // ... (remains the same)
     if (!chatMessages.length) {
       toast({ title: "Keine Daten", description: "Es gibt keine Nachrichten zum Exportieren." });
       return;
@@ -862,6 +845,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }, [chatMessages, sessionParticipants, sessionId, toast]);
 
   const handleTriggerScenarioEvent = useCallback(async (event: ScenarioEvent) => {
+    // ... (remains the same)
     console.log("AdminDashboard: Triggering event:", event);
     toast({
       title: `Ereignis "${event.name}" ausgelöst (Platzhalter)`,
@@ -875,14 +859,12 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
   const displayParticipantsList: Participant[] = [...sessionParticipants];
   
-  const isSessionEnded = sessionData?.status === "ended";
-  const getStartRestartButtonText = () => {
-    if (isStartingOrRestartingSession) return "Wird ausgeführt...";
-    if (!sessionData || sessionData.status === 'ended') return "Sitzung starten";
-    if (sessionData.status === 'paused') return "Fortsetzen & Initialisieren";
-    return "Neu initialisieren";
-  };
-
+  const isSessionEffectivelyEnded = sessionData?.status === "ended";
+  const isSessionActiveForControls = sessionData?.status === "active" || sessionData?.status === "open";
+  const isSessionPending = sessionData?.status === "pending";
+  const isSessionOpenForJoin = sessionData?.status === "open";
+  const isChatActive = sessionData?.status === "active";
+  
 
   if (isLoadingPage) {
     return (
@@ -893,6 +875,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           </CardHeader>
           <CardContent className="text-center">
             <p className="text-muted-foreground">Szenario- und Sitzungsdaten werden abgerufen...</p>
+            {isLoadingScenario && <p className="text-xs mt-1">Lade Szenario...</p>}
+            {isLoadingSessionData && <p className="text-xs mt-1">Lade Sitzungsstatus...</p>}
           </CardContent>
         </Card>
       </div>
@@ -963,7 +947,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isEndingSession || (!sessionData?.status || sessionData.status === 'ended')}>
+              <Button variant="destructive" disabled={isEndingSession || isSessionEffectivelyEnded}>
                 <Power className="mr-2 h-4 w-4" /> Sitzung beenden
               </Button>
             </AlertDialogTrigger>
@@ -986,7 +970,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       </div>
       <Separator />
 
-      {isSessionEnded && (
+      {isSessionEffectivelyEnded && (
         <Card className="border-destructive bg-destructive/10">
           <CardHeader>
             <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Sitzung Beendet</CardTitle>
@@ -1005,7 +989,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             {sessionId && (
               <ChatPageContent
                 sessionId={sessionId}
-                initialUserName="Admin" // Nickname for admin
+                initialUserName="Admin" 
                 initialUserRole="Moderator"
                 initialUserId="ADMIN_USER_ID_FIXED" 
                 initialUserAvatarFallback="AD"
@@ -1026,6 +1010,34 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                   <CardTitle className="flex items-center"><LayoutDashboard className="mr-2 h-5 w-5 text-primary" /> Sitzungseinstellungen & Einladung</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                   <div>
+                    <Label className="font-semibold">Aktueller Sitzungsstatus:</Label>
+                    <p className="text-sm">
+                      <Badge 
+                        variant={
+                            sessionData?.status === 'active' ? 'default' :
+                            sessionData?.status === 'open' ? 'secondary' :
+                            sessionData?.status === 'pending' ? 'outline' :
+                            sessionData?.status === 'paused' ? 'destructive' : // Consider a warning color
+                            sessionData?.status === 'ended' ? 'destructive' : 'outline'
+                        }
+                        className={
+                            sessionData?.status === 'active' ? 'bg-green-500 hover:bg-green-600 text-white' :
+                            sessionData?.status === 'open' ? 'bg-blue-500 hover:bg-blue-600 text-white' :
+                            sessionData?.status === 'pending' ? 'bg-yellow-500 hover:bg-yellow-600 text-black' :
+                            sessionData?.status === 'paused' ? 'bg-orange-500 hover:bg-orange-600 text-white' :
+                            sessionData?.status === 'ended' ? 'bg-red-600 hover:bg-red-700 text-white' : ''
+                        }
+                      >
+                        {sessionData?.status === 'pending' && <LogIn className="mr-1.5 h-3.5 w-3.5"/>}
+                        {sessionData?.status === 'open' && <Users2 className="mr-1.5 h-3.5 w-3.5"/>}
+                        {sessionData?.status === 'active' && <PlayCircle className="mr-1.5 h-3.5 w-3.5"/>}
+                        {sessionData?.status === 'paused' && <Pause className="mr-1.5 h-3.5 w-3.5"/>}
+                        {sessionData?.status === 'ended' && <Power className="mr-1.5 h-3.5 w-3.5"/>}
+                        {sessionData?.status || "Unbekannt"}
+                      </Badge>
+                    </p>
+                  </div>
                   <div>
                     <Label className="font-semibold">Definierte menschliche Rollen im Szenario:</Label>
                     <p className="text-sm text-muted-foreground">
@@ -1067,9 +1079,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                     <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                       <MessageCircleIcon className="w-12 h-12 mb-2 opacity-50" />
                       <p>Noch keine Nachrichten in dieser Sitzung.</p>
-                      {isSessionEnded && <p className="mt-1 text-xs">Die Sitzung ist beendet.</p>}
-                      {currentScenario?.initialPost?.content && !isSessionEnded && (
-                         <p className="mt-2 text-xs italic">Der Ausgangspost wird im Chat der Teilnehmer angezeigt.</p>
+                      {isSessionEffectivelyEnded && <p className="mt-1 text-xs">Die Sitzung ist beendet.</p>}
+                      {currentScenario?.initialPost?.content && !isSessionEffectivelyEnded && (
+                         <p className="mt-2 text-xs italic">Der Ausgangspost wird im Chat der Teilnehmer angezeigt, sobald die Simulation aktiv ist.</p>
                       )}
                     </div>
                   )}
@@ -1081,7 +1093,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                       <span className="ml-1">{msg.content}</span>
                       {msg.imageUrl &&
                         <div className="mt-1">
-                            <NextImage src={msg.imageUrl} alt="Bild im Chat" width={200} height={150} className="rounded max-w-xs max-h-32 object-contain" data-ai-hint="chat image"/>
+                            <Image src={msg.imageUrl} alt="Bild im Chat" width={200} height={150} className="rounded max-w-xs max-h-32 object-contain" data-ai-hint="chat image"/>
                         </div>
                       }
                       <span className="text-xs text-muted-foreground/70 float-right pt-1">{msg.timestampDisplay}</span>
@@ -1112,7 +1124,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                         size="sm" 
                                         variant="outline"
                                         onClick={() => handleTriggerScenarioEvent(event)}
-                                        disabled={isSessionEnded || !sessionData || sessionData.status !== 'active'}
+                                        disabled={isSessionEffectivelyEnded || !isChatActive}
                                     >
                                         <Wand2 className="mr-2 h-4 w-4"/> Auslösen
                                     </Button>
@@ -1125,25 +1137,34 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
 
               <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center"><Settings className="mr-2 h-5 w-5 text-primary" /> Pace & Allgemeine Steuerung</CardTitle>
+                    <CardTitle className="flex items-center"><Settings className="mr-2 h-5 w-5 text-primary" /> Sitzungs-Steuerung</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Button
-                            onClick={handleStartRestartSession}
-                            disabled={isStartingOrRestartingSession || isResettingSession || isLoadingScenario || !currentScenario}
-                            variant={(!sessionData || sessionData.status === 'ended' || sessionData.status === 'paused') ? "default" : "outline"}
+                         <Button
+                            onClick={handleOpenSessionForJoining}
+                            disabled={isProcessingSessionAction || !isSessionPending || isLoadingScenario || !currentScenario}
+                            variant="default"
+                            className="bg-blue-600 hover:bg-blue-700"
                         >
-                            {isStartingOrRestartingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> :
-                                ((!sessionData || sessionData.status === 'ended' || sessionData.status === 'paused') ?
-                                <Play className="mr-2 h-4 w-4" /> : <RefreshCw className="mr-2 h-4 w-4" />)
-                            }
-                            {getStartRestartButtonText()}
+                            {isProcessingSessionAction ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Users2 className="mr-2 h-4 w-4" />}
+                            Sitzung für Beitritt öffnen
                         </Button>
+                        <Button
+                            onClick={startCountdownAndSession}
+                            disabled={isProcessingSessionAction || !isSessionOpenForJoin || isLoadingScenario || !currentScenario || countdown !== null}
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700"
+                        >
+                            {isProcessingSessionAction && countdown === null ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <PlayCircle className="mr-2 h-4 w-4" />}
+                            {countdown !== null ? `Start in ${countdown}s...` : "Chat-Simulation starten"}
+                        </Button>
+                    </div>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="destructive" disabled={isStartingOrRestartingSession || isResettingSession || isLoadingSessionData || isLoadingScenario || !currentScenario} className="bg-red-700 hover:bg-red-800">
-                                    {isResettingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4" />}
+                                <Button variant="destructive" disabled={isProcessingSessionAction || isLoadingSessionData || isLoadingScenario || !currentScenario} className="bg-red-700 hover:bg-red-800">
+                                    {isProcessingSessionAction ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4" />}
                                      Sitzung zurücksetzen
                                 </Button>
                             </AlertDialogTrigger>
@@ -1151,13 +1172,13 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                             <AlertDialogHeader>
                                 <AlertDialogTitle>Sitzung wirklich komplett zurücksetzen?</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                Alle Teilnehmer und Nachrichten dieser Sitzung werden dauerhaft gelöscht. Die Sitzung wird mit Standardeinstellungen neu gestartet (inkl. neuem Einladungslink-Token). Diese Aktion kann nicht rückgängig gemacht werden.
+                                Alle Teilnehmer und Nachrichten dieser Sitzung werden dauerhaft gelöscht. Die Sitzung wird in den 'pending'-Status zurückgesetzt (inkl. neuem Einladungslink-Token). Diese Aktion kann nicht rückgängig gemacht werden.
                                 </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                                <AlertDialogCancel disabled={isResettingSession}>Abbrechen</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleResetSession} disabled={isResettingSession} className="bg-destructive hover:bg-destructive/90">
-                                    {isResettingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, zurücksetzen"}
+                                <AlertDialogCancel disabled={isProcessingSessionAction}>Abbrechen</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleResetSession} disabled={isProcessingSessionAction} className="bg-destructive hover:bg-destructive/90">
+                                    {isProcessingSessionAction ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, zurücksetzen"}
                                 </AlertDialogAction>
                             </AlertDialogFooter>
                             </AlertDialogContent>
@@ -1174,32 +1195,27 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                             id="pace-slider"
                             onValueChange={(value) => setPaceValue(value[0])} 
                             onValueCommit={handlePaceChangeCommit} 
-                            disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !sessionData || sessionData.status !== 'active'}
+                            disabled={isSessionEffectivelyEnded || isProcessingSessionAction || !isSessionActiveForControls}
                         />
                     </div>
                     <div className="flex items-center justify-between">
                         <Label htmlFor="simulation-active" className="text-base">
-                            Simulation Aktiv <Badge variant={sessionData?.status === 'active' ? 'default' : (sessionData?.status === "paused" ? "secondary" : "destructive")}
-                                                className={sessionData?.status === 'active' ? 'bg-green-500 hover:bg-green-600' : (sessionData?.status === "paused" ? 'bg-amber-500 hover:bg-amber-600' : 'bg-red-500 hover:bg-red-500')}
-                                            >
-                                            {sessionData?.status === 'active' ? <Play className="mr-1.5 h-3.5 w-3.5"/> : (sessionData?.status === "paused" ? <Pause className="mr-1.5 h-3.5 w-3.5"/> : <Power className="mr-1.5 h-3.5 w-3.5"/>)}
-                                            {sessionData?.status || (isLoadingSessionData ? "Laden..." : "Unbekannt")}
-                                        </Badge>
+                            Simulation Aktiv (Pausieren/Fortsetzen)
                         </Label>
                         <Switch
                             id="simulation-active"
-                            checked={sessionData?.status === "active"}
+                            checked={isChatActive} // Checked if status is 'active'
                             onCheckedChange={handleToggleSimulationActive}
-                            disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !sessionData}
+                            disabled={isSessionEffectivelyEnded || isProcessingSessionAction || isSessionPending || isSessionOpenForJoin}
                         />
                     </div>
                      <div className="flex items-center space-x-2">
-                        <Button variant="outline" onClick={handleMuteAllUsers} disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !sessionData || sessionData.status !== 'active'}>
+                        <Button variant="outline" onClick={handleMuteAllUsers} disabled={isSessionEffectivelyEnded || isProcessingSessionAction || !isSessionActiveForControls}>
                             <VolumeX className="mr-2 h-4 w-4" /> Alle Stummschalten
                         </Button>
                          <AlertDialog>
                             <AlertDialogTrigger asChild>
-                                <Button variant="destructive" className="bg-orange-600 hover:bg-orange-700" disabled={isSessionEnded || isRemovingAllParticipants || isLoadingParticipants || !sessionData || sessionData.status !== 'active'}>
+                                <Button variant="destructive" className="bg-orange-600 hover:bg-orange-700" disabled={isSessionEffectivelyEnded || isRemovingAllParticipants || isLoadingParticipants || isProcessingSessionAction || !isSessionActiveForControls}>
                                     {isRemovingAllParticipants ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserX className="mr-2 h-4 w-4" />} Alle Teilnehmer entfernen
                                 </Button>
                             </AlertDialogTrigger>
@@ -1250,7 +1266,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                             variant={p.isMuted ? "secondary" : "outline"}
                             size="sm"
                             onClick={() => handleToggleMuteParticipant(p.id, p.isMuted)}
-                            disabled={isSessionEnded || p.id.startsWith("student-placeholder") || isStartingOrRestartingSession || isResettingSession || !sessionData || sessionData.status !== 'active'}
+                            disabled={isSessionEffectivelyEnded || p.id.startsWith("student-placeholder") || isProcessingSessionAction || !isSessionActiveForControls}
                         >
                             {p.isMuted ? <Volume2 className="mr-1 h-4 w-4" /> : <VolumeX className="mr-1 h-4 w-4" />}
                             {p.isMuted ? "Frei" : "Stumm"}
@@ -1259,7 +1275,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8"
-                                 disabled={isSessionEnded || isRemovingParticipant === p.id || isStartingOrRestartingSession || isResettingSession || !sessionData || sessionData.status !== 'active'}>
+                                 disabled={isSessionEffectivelyEnded || isRemovingParticipant === p.id || isProcessingSessionAction || !isSessionActiveForControls}>
                                     {isRemovingParticipant === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                 </Button>
                             </AlertDialogTrigger>
@@ -1311,7 +1327,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                           <Switch
                             checked={botIsActive}
                             onCheckedChange={() => handleToggleBotActive(botParticipant.id, botIsActive)}
-                            disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !sessionData || sessionData.status !== 'active'}
+                            disabled={isSessionEffectivelyEnded || isProcessingSessionAction || !isSessionActiveForControls}
                           />
                         </div>
                         <div className="space-y-1">
@@ -1319,14 +1335,14 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                           <Progress value={botEscalation * 33.33} className="h-2" />
                         </div>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => handleBotEscalationChange(botParticipant.id, "increase")} disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || botEscalation >= 3 || !botIsActive || !sessionData || sessionData.status !== 'active'}><ChevronUp className="h-4 w-4" /></Button>
-                          <Button variant="outline" size="sm" onClick={() => handleBotEscalationChange(botParticipant.id, "decrease")} disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || botEscalation <= 0 || !botIsActive || !sessionData || sessionData.status !== 'active'}><ChevronDown className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="sm" onClick={() => handleBotEscalationChange(botParticipant.id, "increase")} disabled={isSessionEffectivelyEnded || isProcessingSessionAction || botEscalation >= 3 || !botIsActive || !isSessionActiveForControls}><ChevronUp className="h-4 w-4" /></Button>
+                          <Button variant="outline" size="sm" onClick={() => handleBotEscalationChange(botParticipant.id, "decrease")} disabled={isSessionEffectivelyEnded || isProcessingSessionAction || botEscalation <= 0 || !botIsActive || !isSessionActiveForControls}><ChevronDown className="h-4 w-4" /></Button>
                           <Button
                             variant="secondary"
                             size="sm"
                             className="flex-1"
                             onClick={() => handlePostForBot(botParticipant)}
-                            disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || isPostingForBot === botParticipant.id || !botIsActive || !sessionData || sessionData.status !== 'active'}
+                            disabled={isSessionEffectivelyEnded || isProcessingSessionAction || isPostingForBot === botParticipant.id || !botIsActive || !isSessionActiveForControls}
                           >
                             {isPostingForBot === botParticipant.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <><Brain className="mr-2 h-4 w-4" /> Posten</>}
                           </Button>
@@ -1341,7 +1357,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                             onBlur={() => handleUpdateBotMissionInFirestore(botParticipant.id)}
                             placeholder="z.B. Frage nach Quellen..."
                             className="mt-1 text-xs h-8"
-                            disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !botIsActive || !sessionData || sessionData.status !== 'active'}
+                            disabled={isSessionEffectivelyEnded || isProcessingSessionAction || !botIsActive || !isSessionActiveForControls}
                           />
                         </div>
                         <div className="flex items-center space-x-2 pt-1">
@@ -1349,7 +1365,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                           <Switch 
                             id={`autotimer-bot-${botParticipant.id}`} 
                             checked={botAutoTimer} 
-                            disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !botIsActive || !sessionData || sessionData.status !== 'active'} 
+                            disabled={isSessionEffectivelyEnded || isProcessingSessionAction || !botIsActive || !isSessionActiveForControls} 
                             onCheckedChange={() => handleBotAutoTimerToggle(botParticipant.id, botAutoTimer)}
                           />
                         </div>
