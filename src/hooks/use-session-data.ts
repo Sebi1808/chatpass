@@ -54,7 +54,9 @@ export function useSessionData(sessionId: string | null) {
         }
 
         let countdownEndTime: Timestamp | null = null;
-        if (data.simulationStartCountdownEndTime === null) {
+        if (typeof data.simulationStartCountdownEndTime === 'undefined') { // Default to null if undefined
+            countdownEndTime = null;
+        } else if (data.simulationStartCountdownEndTime === null) {
             countdownEndTime = null;
         } else if (data.simulationStartCountdownEndTime instanceof Timestamp) {
             countdownEndTime = data.simulationStartCountdownEndTime;
@@ -71,7 +73,7 @@ export function useSessionData(sessionId: string | null) {
             updatedAt: updatedAtTimestamp,
             status: data.status || "pending",
             invitationLink: data.invitationLink || "",
-            invitationToken: data.invitationToken,
+            invitationToken: data.invitationToken || "",
             messageCooldownSeconds: data.messageCooldownSeconds ?? 0,
             roleSelectionLocked: data.roleSelectionLocked ?? false,
             simulationStartCountdownEndTime: countdownEndTime,
@@ -80,7 +82,7 @@ export function useSessionData(sessionId: string | null) {
       } else {
         // console.warn(`useSessionData: Session document ${sessionId} does not exist.`);
         setSessionData(null);
-        setError("Sitzungsdokument nicht gefunden. Der Admin muss die Sitzung möglicherweise erst im Dashboard öffnen.");
+        setError("Sitzungsdokument nicht gefunden. Der Admin muss die Sitzung möglicherweise erst im Dashboard öffnen oder neu erstellen.");
       }
       setIsLoading(false);
     }, (err) => {
