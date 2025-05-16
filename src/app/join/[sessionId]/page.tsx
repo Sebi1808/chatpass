@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Scenario, SessionData, Participant, HumanRoleConfig } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, LogIn, AlertTriangle, Loader2, UserCheck, Info } from "lucide-react";
+import { ArrowLeft, LogIn, AlertTriangle, Loader2, UserCheck, Info, Users } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, Timestamp, onSnapshot } from "firebase/firestore";
@@ -18,6 +18,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useSessionData } from "@/hooks/use-session-data";
+
 
 export default function JoinSessionPage() {
   const router = useRouter();
@@ -30,66 +32,60 @@ export default function JoinSessionPage() {
 
   const [name, setName] = useState(""); // Klarname
   const [nickname, setNickname] = useState(""); // Nickname
-  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null); // Store ID of the selected role
+  const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   
   const [currentScenario, setCurrentScenario] = useState<Scenario | null>(null);
-  const [sessionData, setSessionData] = useState<SessionData | null>(null);
-  const [allScenarioRoles, setAllScenarioRoles] = useState<HumanRoleConfig[]>([]);
-  
-  const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const { sessionData, isLoading: isLoadingSession, error: sessionError } = useSessionData(sessionId);
+  const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
+  const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
+
   const [isLoadingScenario, setIsLoadingScenario] = useState(true);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accessError, setAccessError] = useState<string | null>(null);
 
-  const isLoading = isLoadingSession || isLoadingScenario;
+  const isLoadingPage = isLoadingSession || isLoadingScenario || isLoadingParticipants;
+
+  useEffect(() => {
+    if (sessionError) {
+      setAccessError(sessionError);
+    }
+  }, [sessionError]);
 
   useEffect(() => {
     if (!sessionId) {
       setAccessError("Keine Sitzungs-ID im Link gefunden.");
-      setIsLoadingSession(false);
       setIsLoadingScenario(false);
       return;
     }
-    setIsLoadingSession(true);
-
-    const sessionDocRef = doc(db, "sessions", sessionId);
-    const unsubscribeSession = onSnapshot(sessionDocRef, (sessionSnap) => {
-      if (!sessionSnap.exists()) {
-        setAccessError("Sitzung nicht gefunden. Bitte überprüfen Sie den Link.");
-        setSessionData(null);
-      } else {
-        const fetchedSessionData = sessionSnap.data() as SessionData;
-        setSessionData(fetchedSessionData);
-
-        if (!urlToken || !fetchedSessionData.invitationToken || fetchedSessionData.invitationToken !== urlToken) {
-          setAccessError("Ungültiger oder abgelaufener Einladungslink. Bitte fordern Sie einen neuen Link an.");
-        } else if (fetchedSessionData.status === "ended") {
-          setAccessError("Diese Sitzung wurde bereits beendet. Ein Beitritt ist nicht mehr möglich.");
-        } else if (fetchedSessionData.status === "paused") {
-          setAccessError("Diese Sitzung ist aktuell pausiert. Ein Beitritt ist momentan nicht möglich.");
-        } else {
-          setAccessError(null); 
-        }
-      }
-      setIsLoadingSession(false);
-    }, (error) => {
-      console.error("Error fetching session data:", error);
-      setAccessError("Sitzungsdaten konnten nicht geladen werden.");
-      setIsLoadingSession(false);
-    });
-
-    return () => unsubscribeSession();
-  }, [sessionId, urlToken]);
-
-  useEffect(() => {
     if (!sessionData || accessError) {
       setIsLoadingScenario(false);
       setCurrentScenario(null);
+      if (sessionData && (sessionData.status === "ended" || sessionData.status === "paused")) {
+         // Set access error based on session status even if scenario doesn't load
+        if (sessionData.status === "ended") setAccessError("Diese Sitzung wurde bereits beendet.");
+        if (sessionData.status === "paused") setAccessError("Diese Sitzung ist aktuell pausiert.");
+      }
       return;
     }
+    if (!urlToken || !sessionData.invitationToken || sessionData.invitationToken !== urlToken) {
+      setAccessError("Ungültiger oder abgelaufener Einladungslink.");
+      setIsLoadingScenario(false);
+      return;
+    }
+     if (sessionData.status === "ended") {
+        setAccessError("Diese Sitzung wurde bereits beendet. Ein Beitritt ist nicht mehr möglich.");
+        setIsLoadingScenario(false);
+        return;
+    }
+    if (sessionData.status === "paused") {
+        setAccessError("Diese Sitzung ist aktuell pausiert. Ein Beitritt ist momentan nicht möglich.");
+        setIsLoadingScenario(false);
+        return;
+    }
+
     if (!sessionData.scenarioId) {
-      setAccessError(prevError => prevError || "Szenario-Referenz in Sitzungsdaten fehlt. Beitritt nicht möglich.");
+      setAccessError("Szenario-Referenz in Sitzungsdaten fehlt. Beitritt nicht möglich.");
       setCurrentScenario(null);
       setIsLoadingScenario(false);
       return;
@@ -97,28 +93,50 @@ export default function JoinSessionPage() {
 
     setIsLoadingScenario(true);
     const scenarioDocRef = doc(db, "scenarios", sessionData.scenarioId);
-
     getDoc(scenarioDocRef).then(scenarioSnap => {
       if (!scenarioSnap.exists()) {
-        setAccessError(prevError => prevError || "Szenariodetails nicht gefunden. Beitritt nicht möglich.");
+        setAccessError("Szenariodetails nicht gefunden. Beitritt nicht möglich.");
         setCurrentScenario(null);
       } else {
         const scenario = { id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario;
         setCurrentScenario(scenario);
-        setAllScenarioRoles(scenario.humanRolesConfig || []);
         if (!scenario.humanRolesConfig || scenario.humanRolesConfig.length === 0) {
-            setAccessError(prevError => prevError || "Für dieses Szenario sind keine Teilnehmerrollen definiert.");
+            setAccessError("Für dieses Szenario sind keine Teilnehmerrollen definiert.");
+        } else {
+            setAccessError(null); // Clear previous errors if scenario and roles are fine
         }
       }
       setIsLoadingScenario(false);
     }).catch(error => {
       console.error("Error fetching scenario details:", error);
-      setAccessError(prevError => prevError || "Szenariodetails konnten nicht geladen werden.");
+      setAccessError("Szenariodetails konnten nicht geladen werden.");
       setCurrentScenario(null);
       setIsLoadingScenario(false);
     });
+  }, [sessionId, sessionData, urlToken, accessError ]); // Removed accessError from dependencies to avoid loop
 
-  }, [sessionData, accessError]);
+  useEffect(() => {
+    if (!sessionId || accessError) {
+      setIsLoadingParticipants(false);
+      return;
+    }
+    setIsLoadingParticipants(true);
+    const participantsColRef = collection(db, "sessions", sessionId, "participants");
+    const q = query(participantsColRef, where("isBot", "==", false));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedParticipants: Participant[] = [];
+      snapshot.forEach(doc => fetchedParticipants.push({ id: doc.id, ...doc.data() } as Participant));
+      setSessionParticipants(fetchedParticipants);
+      setIsLoadingParticipants(false);
+    }, (error) => {
+      console.error("Error fetching session participants for join page:", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmerdaten konnten nicht geladen werden." });
+      setIsLoadingParticipants(false);
+    });
+    return () => unsubscribe();
+  }, [sessionId, toast, accessError]);
+
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -140,17 +158,19 @@ export default function JoinSessionPage() {
     }
      if (sessionData.status === "ended") {
         toast({ variant: "destructive", title: "Sitzung beendet", description: "Beitritt nicht möglich, die Sitzung ist beendet." });
+        setAccessError("Diese Sitzung wurde bereits beendet.");
         return;
     }
     if (sessionData.status === "paused") {
-        toast({ variant: "destructive", title: "Sitzung pausiert", description: "Beitritt nicht möglich, die Sitzung ist pausiert. Bitte warten Sie." });
+        toast({ variant: "destructive", title: "Sitzung pausiert", description: "Beitritt nicht möglich, die Sitzung ist pausiert." });
+        setAccessError("Diese Sitzung ist aktuell pausiert.");
         return;
     }
 
     setIsSubmitting(true);
-    const userId = `user-${nickname.replace(/\s+/g, '-').toLowerCase().substring(0,10)}-${Date.now().toString().slice(-5)}`;
+    const userIdGenerated = `user-${nickname.replace(/\s+/g, '-').toLowerCase().substring(0,10)}-${Date.now().toString().slice(-5)}`;
     const avatarFallback = nickname.substring(0, 2).toUpperCase() || "XX";
-    const selectedRoleConfig = allScenarioRoles.find(role => role.id === selectedRoleId);
+    const selectedRoleConfig = currentScenario.humanRolesConfig?.find(role => role.id === selectedRoleId);
 
     if (!selectedRoleConfig) {
         toast({ variant: "destructive", title: "Fehler", description: "Ausgewählte Rolle nicht gefunden." });
@@ -161,10 +181,10 @@ export default function JoinSessionPage() {
     try {
       const participantsColRef = collection(db, "sessions", sessionId, "participants");
       const newParticipantData: Omit<Participant, 'id' | 'botConfig' | 'botScenarioId'> = {
-        name: name.trim(),
-        nickname: nickname.trim(),
-        role: selectedRoleConfig.name, // Use the name of the selected role
-        userId: userId,
+        name: name.trim(), // Klarname
+        nickname: nickname.trim(), // Nickname
+        role: selectedRoleConfig.name,
+        userId: userIdGenerated,
         avatarFallback: avatarFallback,
         isBot: false,
         isMuted: false, 
@@ -177,12 +197,12 @@ export default function JoinSessionPage() {
       localStorage.setItem(`chatUser_${sessionId}_name`, name.trim());
       localStorage.setItem(`chatUser_${sessionId}_nickname`, nickname.trim());
       localStorage.setItem(`chatUser_${sessionId}_role`, selectedRoleConfig.name);
-      localStorage.setItem(`chatUser_${sessionId}_userId`, userId);
+      localStorage.setItem(`chatUser_${sessionId}_userId`, userIdGenerated);
       localStorage.setItem(`chatUser_${sessionId}_avatarFallback`, avatarFallback);
 
       toast({
         title: "Beitritt erfolgreich",
-        description: `Sie treten der Simulation als ${nickname} (${selectedRoleConfig.name}) bei.`,
+        description: `Sie treten der Simulation als ${nickname.trim()} (${selectedRoleConfig.name}) bei.`,
       });
       router.push(`/chat/${sessionId}`);
     } catch (error) {
@@ -193,7 +213,19 @@ export default function JoinSessionPage() {
     }
   };
 
-  if (isLoading) {
+  const rolesWithParticipants = useMemo(() => {
+    if (!currentScenario?.humanRolesConfig) return [];
+    return currentScenario.humanRolesConfig.map(role => {
+      const participantsInRole = sessionParticipants.filter(p => p.role === role.name && p.nickname);
+      return {
+        ...role,
+        participants: participantsInRole,
+      };
+    });
+  }, [currentScenario?.humanRolesConfig, sessionParticipants]);
+
+
+  if (isLoadingPage) {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
             <Card className="w-full max-w-md">
@@ -209,7 +241,7 @@ export default function JoinSessionPage() {
     );
   }
   
-  const disableForm = isSubmitting || !!accessError || (allScenarioRoles.length === 0 && !isLoading);
+  const disableForm = isSubmitting || !!accessError || !currentScenario || !currentScenario.humanRolesConfig || currentScenario.humanRolesConfig.length === 0;
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
@@ -218,24 +250,24 @@ export default function JoinSessionPage() {
           <ArrowLeft className="h-6 w-6" />
         </Button>
       </Link>
-      <Card className="w-full max-w-2xl"> {/* Increased max-width for better role card display */}
+      <Card className="w-full max-w-2xl">
         <CardHeader>
-          <CardTitle className="text-2xl text-primary">Simulation beitreten: {currentScenario?.title || (isLoadingScenario ? "Lade Titel..." : "Szenario-Titel nicht verfügbar")}</CardTitle>
+          <CardTitle className="text-2xl text-primary">Simulation beitreten: {currentScenario?.title || "Szenario-Titel lädt..."}</CardTitle>
           <CardDescription>
             {currentScenario ? "Geben Sie Ihre Namen ein und wählen Sie eine Rolle, um an der Simulation teilzunehmen." : "Szenario-Informationen werden geladen oder sind nicht verfügbar."}
-            <br/>Sitzungs-ID: {sessionId}
+            <br/>Sitzungs-ID: <span className="font-mono text-xs">{sessionId}</span>
           </CardDescription>
         </CardHeader>
         {accessError && (
             <CardContent>
                 <Alert variant="destructive">
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>{disableForm && !(allScenarioRoles.length > 0) ? "Beitritt nicht möglich" : "Hinweis"}</AlertTitle>
+                    <AlertTitle>Beitritt nicht möglich</AlertTitle>
                     <AlertDescription>{accessError}</AlertDescription>
                 </Alert>
             </CardContent>
         )}
-        {!accessError && currentScenario && (
+        {!accessError && currentScenario && currentScenario.humanRolesConfig && currentScenario.humanRolesConfig.length > 0 && (
           <form onSubmit={handleSubmit}>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -267,16 +299,13 @@ export default function JoinSessionPage() {
 
               <div className="space-y-2">
                 <Label>Wählen Sie Ihre Rolle</Label>
-                {allScenarioRoles.length === 0 && !isLoadingScenario && (
-                  <p className="text-muted-foreground">Für dieses Szenario sind keine Rollen definiert.</p>
-                )}
                 <ScrollArea className="h-[300px] md:h-[350px] rounded-md border p-1">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-3">
-                        {allScenarioRoles.map((role) => (
+                        {rolesWithParticipants.map((role) => (
                         <Card
-                            key={role.id} // Use unique role.id as key
+                            key={role.id} 
                             className={cn(
-                            "cursor-pointer transition-all hover:shadow-lg",
+                            "cursor-pointer transition-all hover:shadow-lg flex flex-col",
                             selectedRoleId === role.id ? "ring-2 ring-primary shadow-primary/30" : "ring-1 ring-border"
                             )}
                             onClick={() => !disableForm && setSelectedRoleId(role.id)}
@@ -287,14 +316,24 @@ export default function JoinSessionPage() {
                                 {selectedRoleId === role.id && <UserCheck className="h-5 w-5 text-primary" />}
                             </CardTitle>
                             </CardHeader>
-                            <CardContent className="text-xs text-muted-foreground space-y-1">
+                            <CardContent className="text-xs text-muted-foreground space-y-1 flex-grow">
                                 <ScrollArea className="h-[60px] pr-2">
                                     <p>{role.description}</p>
                                 </ScrollArea>
-                                {selectedRoleId === role.id && nickname.trim() && (
-                                    <Badge variant="secondary" className="mt-2">
-                                        Zugewiesen an: {nickname.trim()}
-                                    </Badge>
+                                {role.participants && role.participants.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t">
+                                    <p className="text-xs font-medium text-foreground mb-1 flex items-center"><Users className="h-3 w-3 mr-1.5"/>Belegt durch:</p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {role.participants.map(p => <Badge key={p.userId} variant="secondary" className="text-xs">{p.nickname}</Badge>)}
+                                    </div>
+                                  </div>
+                                )}
+                                {selectedRoleId === role.id && nickname.trim() && !role.participants.find(p=>p.nickname === nickname.trim()) && (
+                                    <div className="mt-2 pt-2 border-t">
+                                        <Badge variant="default" className="text-xs bg-primary/20 text-primary border-primary/50">
+                                            Sie wählen: {nickname.trim()}
+                                        </Badge>
+                                    </div>
                                 )}
                             </CardContent>
                         </Card>
@@ -321,7 +360,7 @@ export default function JoinSessionPage() {
             </CardFooter>
           </form>
         )}
-         {!accessError && !currentScenario && !isLoading && ( 
+         {!accessError && !currentScenario && !isLoadingPage && ( 
              <CardContent>
                 <Alert variant="default">
                     <AlertTriangle className="h-4 w-4" />

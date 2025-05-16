@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { doc, onSnapshot, type Timestamp } from 'firebase/firestore';
+import { doc, onSnapshot, Timestamp } from 'firebase/firestore'; // Added Timestamp import
 import { db } from '@/lib/firebase';
 import type { SessionData } from '@/lib/types';
 
