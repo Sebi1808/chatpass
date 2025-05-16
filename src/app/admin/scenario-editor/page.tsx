@@ -9,11 +9,29 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Scenario } from '@/lib/types';
-import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks, NotebookPen, Trash2, Copy, Eye, ShieldCheck, Loader2, PlayCircle, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { 
+  FileEdit, 
+  PlusCircle, 
+  Search, 
+  Bot, 
+  Users, 
+  ListChecks, 
+  NotebookPen, 
+  Trash2, 
+  Copy, 
+  ShieldCheck, 
+  Loader2, 
+  PlayCircle, 
+  Filter, 
+  ArrowUpDown, 
+  ArrowUp, 
+  ArrowDown,
+  LayoutGrid // Added LayoutGrid import
+} from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy as firestoreOrderBy, Timestamp, deleteDoc, doc, addDoc, getDoc, serverTimestamp } from 'firebase/firestore'; // Renamed orderBy to firestoreOrderBy
+import { collection, onSnapshot, query, orderBy as firestoreOrderBy, Timestamp, deleteDoc, doc, addDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -26,10 +44,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { createDefaultScenario } from '@/app/admin/scenario-editor/[scenarioId]/page';
+import { createDefaultScenario } from '@/app/admin/scenario-editor/[scenarioId]/page'; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-type SortableScenarioKeys = keyof Pick<Scenario, 'id' | 'title' | 'status'>;
+type SortableScenarioKeys = keyof Pick<Scenario, 'id' | 'title' | 'status'> | 'updatedAt';
 
 export default function ScenarioEditorHubPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,20 +65,26 @@ export default function ScenarioEditorHubPage() {
   useEffect(() => {
     setIsLoading(true);
     const scenariosColRef = collection(db, "scenarios");
-    // Query only by title initially, status filter applied client-side
+    // No specific Firestore orderBy here for status, will be handled client-side with title/ID
+    // Default ordering by title can be a good start if many scenarios exist.
+    // For more complex default sorting (e.g. updatedAt desc), an index would be needed.
     const q = query(scenariosColRef, firestoreOrderBy("title", "asc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedScenarios: Scenario[] = [];
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        const scenarioData: Scenario = {
+        // Ensure Timestamps are handled correctly
+        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt : (data.createdAt?.toDate ? Timestamp.fromDate(data.createdAt.toDate()) : undefined);
+        const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt : (data.updatedAt?.toDate ? Timestamp.fromDate(data.updatedAt.toDate()) : undefined);
+
+        fetchedScenarios.push({
           id: docSnap.id,
           title: data.title || "Unbenanntes Szenario",
           kurzbeschreibung: data.kurzbeschreibung || "",
           langbeschreibung: data.langbeschreibung || "",
           lernziele: data.lernziele || "",
-          iconName: data.iconName || "ImageIconLucide",
+          iconName: data.iconName || "ImageIcon",
           tags: data.tags || [],
           previewImageUrl: data.previewImageUrl || "",
           status: data.status || "draft",
@@ -68,10 +92,9 @@ export default function ScenarioEditorHubPage() {
           humanRolesConfig: data.humanRolesConfig || [],
           initialPost: data.initialPost || createDefaultScenario().initialPost,
           events: data.events || [],
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-        };
-        fetchedScenarios.push(scenarioData);
+          createdAt: createdAt,
+          updatedAt: updatedAt,
+        } as Scenario);
       });
       setScenarios(fetchedScenarios);
       setIsLoading(false);
@@ -104,7 +127,9 @@ export default function ScenarioEditorHubPage() {
         const valB = b[sortConfig.key];
 
         let comparison = 0;
-        if (typeof valA === 'string' && typeof valB === 'string') {
+        if (valA instanceof Timestamp && valB instanceof Timestamp) {
+          comparison = valA.toMillis() - valB.toMillis();
+        } else if (typeof valA === 'string' && typeof valB === 'string') {
           comparison = valA.toLowerCase().localeCompare(valB.toLowerCase());
         } else if (typeof valA === 'number' && typeof valB === 'number') {
           comparison = valA - valB;
@@ -137,12 +162,12 @@ export default function ScenarioEditorHubPage() {
     setIsCreatingNew(true);
     try {
       const newScenarioData = createDefaultScenario();
-      const scenarioToSave = {
+      const scenarioToSave: Omit<Scenario, 'id'> & { createdAt: Timestamp, updatedAt: Timestamp } = {
         ...newScenarioData,
         title: "Neues Szenario (Entwurf)",
-        status: 'draft' as 'draft' | 'published',
-        createdAt: serverTimestamp() as Timestamp,
-        updatedAt: serverTimestamp() as Timestamp,
+        status: 'draft',
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
       };
       const docRef = await addDoc(collection(db, "scenarios"), scenarioToSave);
       toast({
@@ -185,13 +210,13 @@ export default function ScenarioEditorHubPage() {
       const scenarioSnap = await getDoc(scenarioToDuplicateRef);
 
       if (scenarioSnap.exists()) {
-        const originalScenarioData = scenarioSnap.data() as Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>;
+        const originalScenarioData = scenarioSnap.data() as Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>; // Type assertion
         const duplicatedScenarioData = {
           ...originalScenarioData,
           title: `Kopie von ${originalScenarioData.title || 'Unbenanntes Szenario'}`,
-          status: 'draft' as 'draft' | 'published',
-          createdAt: serverTimestamp() as Timestamp,
-          updatedAt: serverTimestamp() as Timestamp,
+          status: 'draft' as 'draft' | 'published', // Ensure status type
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
         };
         const newDocRef = await addDoc(collection(db, "scenarios"), duplicatedScenarioData);
         toast({
@@ -209,14 +234,13 @@ export default function ScenarioEditorHubPage() {
       setIsDuplicating(null);
     }
   };
-
+  
   const getSortIcon = (key: SortableScenarioKeys) => {
     if (!sortConfig || sortConfig.key !== key) {
-      return <ArrowUpDown className="inline-block ml-1 h-4 w-4 text-muted-foreground/70" />;
+      return <ArrowUpDown className="inline-block ml-1 h-3 w-3 text-muted-foreground/70" />;
     }
-    return sortConfig.direction === 'asc' ? <ArrowUp className="inline-block ml-1 h-4 w-4 text-primary" /> : <ArrowDown className="inline-block ml-1 h-4 w-4 text-primary" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="inline-block ml-1 h-3 w-3 text-primary" /> : <ArrowDown className="inline-block ml-1 h-3 w-3 text-primary" />;
   };
-
 
   return (
     <div className="space-y-6">
@@ -243,7 +267,7 @@ export default function ScenarioEditorHubPage() {
       </div>
 
       <Tabs defaultValue="scenarios" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
           <TabsTrigger value="scenarios" onClick={() => router.push('/admin/scenario-editor')}>
             <ListChecks className="mr-2 h-4 w-4" />Szenarien ({filteredAndSortedScenarios.length})
           </TabsTrigger>
@@ -310,7 +334,10 @@ export default function ScenarioEditorHubPage() {
                           Status {getSortIcon('status')}
                         </TableHead>
                         <TableHead>Tags</TableHead>
-                        <TableHead className="text-right w-[200px] sm:w-[250px]">Aktionen</TableHead>
+                         <TableHead className="w-[180px] cursor-pointer hover:text-primary" onClick={() => requestSort('updatedAt')}>
+                          Letzte Änderung {getSortIcon('updatedAt')}
+                        </TableHead>
+                        <TableHead className="text-right w-[200px] sm:w-auto">Aktionen</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -331,7 +358,7 @@ export default function ScenarioEditorHubPage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap gap-1 max-w-[200px] overflow-hidden">
                               {(scenario.tags || []).slice(0, 3).map((tag) => (
                                 <Badge key={tag} variant="outline" className="text-xs">
                                   {tag}
@@ -339,6 +366,9 @@ export default function ScenarioEditorHubPage() {
                               ))}
                               {(scenario.tags || []).length > 3 && <Badge variant="outline" className="text-xs">...</Badge>}
                             </div>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {scenario.updatedAt instanceof Timestamp ? scenario.updatedAt.toDate().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -405,5 +435,3 @@ export default function ScenarioEditorHubPage() {
     </div>
   );
 }
-
-    
