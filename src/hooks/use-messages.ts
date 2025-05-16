@@ -1,10 +1,10 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { Message, DisplayMessage, Scenario, SessionData } from '@/lib/types';
+import type { Message, DisplayMessage, Scenario, SessionData, InitialPostConfig } from '@/lib/types';
 
 export function useMessages(
   sessionId: string | null,
@@ -21,6 +21,8 @@ export function useMessages(
     if (!sessionId) {
       setMessages([]);
       setIsLoadingMessages(false);
+      setMessagesError(null);
+      console.log("useMessages: No session ID, clearing messages.");
       return;
     }
 
@@ -35,13 +37,12 @@ export function useMessages(
       console.log(`useMessages: Received message snapshot for session ${sessionId}. Document count: ${querySnapshot.size}`);
       let newMessagesData: DisplayMessage[] = [];
 
-      // Handle Initial Post
       if (currentScenario?.initialPost && sessionData?.createdAt) {
         const initialPostTimestamp = sessionData.createdAt instanceof Timestamp 
           ? sessionData.createdAt 
           : (sessionData.createdAt as any)?.seconds 
             ? new Timestamp((sessionData.createdAt as any).seconds, (sessionData.createdAt as any).nanoseconds)
-            : new Timestamp(0,0); // Fallback, should ideally be a valid Firestore Timestamp
+            : new Timestamp(Date.now() / 1000, 0); // Fallback to current time if invalid
 
         const initialPostMessage: DisplayMessage = {
           id: `initial-post-${sessionId}`,
@@ -58,6 +59,7 @@ export function useMessages(
           reactions: {},
         };
         newMessagesData.push(initialPostMessage);
+        console.log("useMessages: Added initial post message:", initialPostMessage);
       }
       
       querySnapshot.forEach((docSn) => {
@@ -71,18 +73,13 @@ export function useMessages(
         });
       });
       
-      // Sort messages if initial post was added (ensure it's first if timestamps are tricky)
-      // Or simply rely on Firestore's orderBy for all except the prepended initial post.
-      // If initialPost is always very first, its timestamp (sessionData.createdAt) should ensure this.
-      // For safety, explicitly sort if initial post is present and might not be strictly first.
-      if (currentScenario?.initialPost) {
-        newMessagesData.sort((a, b) => {
-          const tsA = a.timestamp instanceof Timestamp ? a.timestamp.toMillis() : 0;
-          const tsB = b.timestamp instanceof Timestamp ? b.timestamp.toMillis() : 0;
-          return tsA - tsB;
-        });
-      }
-
+      newMessagesData.sort((a, b) => {
+        const tsA = a.timestamp instanceof Timestamp ? a.timestamp.toMillis() : (a.timestamp ? (a.timestamp as any).seconds * 1000 : 0);
+        const tsB = b.timestamp instanceof Timestamp ? b.timestamp.toMillis() : (b.timestamp ? (b.timestamp as any).seconds * 1000 : 0);
+        return tsA - tsB;
+      });
+      
+      console.log("useMessages: Formatted and sorted messages:", newMessagesData.length);
       setMessages(newMessagesData);
       setIsLoadingMessages(false);
     }, (error) => {
