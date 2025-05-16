@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { db } from "@/lib/firebase";
 import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query, orderBy, Timestamp, updateDoc, writeBatch, getDocs, where, deleteDoc, addDoc } from "firebase/firestore";
+import Link from 'next/link'; // Added Link import
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { ChatPageContent } from "@/app/chat/[sessionId]/page";
 import { generateBotMessage } from "@/ai/flows/bot-message-generator";
-import Image from 'next/image'; 
+import NextImage from 'next/image'; // Renamed to NextImage to avoid conflict if any
 import { useRouter } from 'next/navigation';
 
 
@@ -47,8 +48,8 @@ const DEFAULT_COOLDOWN = 0;
 const generateToken = () => Math.random().toString(36).substring(2, 10);
 
 
-export default function AdminSessionDashboardPage({ params: routeParams }: AdminSessionDashboardPageProps) {
-  const { sessionId } = routeParams;
+export default function AdminSessionDashboardPage(props: AdminSessionDashboardPageProps) {
+  const sessionId = props.params.sessionId;
   const { toast } = useToast();
   const router = useRouter();
 
@@ -63,7 +64,10 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
   
   const [pageError, setPageError] = useState<string | null>(null);
-  const isLoadingPage = isLoadingScenario || isLoadingSessionData; // Participants and messages load after these
+  
+  // Combined loading state
+  const isLoadingPage = isLoadingScenario || isLoadingSessionData;
+
 
   const [isEndingSession, setIsEndingSession] = useState(false);
   const [isStartingOrRestartingSession, setIsStartingOrRestartingSession] = useState(false);
@@ -85,40 +89,52 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
   // Effect to load the scenario
   useEffect(() => {
     if (!sessionId) {
-      setPageError("Keine Szenario-ID vorhanden.");
+      console.error("AdminDashboard: No sessionId provided.");
+      setPageError("Keine Szenario-ID für das Dashboard vorhanden.");
       setIsLoadingScenario(false);
+      setIsLoadingSessionData(false); // Prevent further loading if no session ID
       return;
     }
+    console.log(`AdminDashboard: Attempting to load scenario with ID: ${sessionId}`);
     setIsLoadingScenario(true);
     setPageError(null);
     const scenarioDocRef = doc(db, "scenarios", sessionId);
 
     getDoc(scenarioDocRef).then(docSnap => {
       if (docSnap.exists()) {
+        console.log(`AdminDashboard: Scenario ${sessionId} found in Firestore.`);
         setCurrentScenario({ id: docSnap.id, ...docSnap.data() } as Scenario);
       } else {
+        console.error(`AdminDashboard: Scenario ${sessionId} NOT found in Firestore.`);
         setPageError(`Szenario mit ID ${sessionId} nicht gefunden.`);
         setCurrentScenario(null);
+        toast({ variant: "destructive", title: "Szenario Fehler", description: `Szenario mit ID ${sessionId} konnte nicht geladen werden.` });
       }
     }).catch(err => {
-      console.error(`Error fetching scenario ${sessionId}:`, err);
-      setPageError("Szenario konnte nicht geladen werden.");
+      console.error(`AdminDashboard: Error fetching scenario ${sessionId}:`, err);
+      setPageError("Szenario konnte nicht geladen werden. Fehler: " + err.message);
       setCurrentScenario(null);
+      toast({ variant: "destructive", title: "Ladefehler", description: "Szenario konnte nicht geladen werden." });
     }).finally(() => {
       setIsLoadingScenario(false);
     });
-  }, [sessionId]);
+  }, [sessionId, toast]);
+
 
   // Effect to ensure session document exists and to listen for its changes
   useEffect(() => {
     if (!sessionId) {
+      console.log("AdminDashboard: No sessionId, skipping session document management.");
       setIsLoadingSessionData(false);
       return;
     }
+
+    console.log(`AdminDashboard: Managing session document for ID: ${sessionId}`);
     setIsLoadingSessionData(true);
     const sessionDocRef = doc(db, "sessions", sessionId);
 
     const ensureAndListenSessionDocument = async () => {
+      let operationsDone = false;
       try {
         let baseLink = "";
         if (typeof window !== "undefined") {
@@ -127,71 +143,89 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
 
         const docSnap = await getDoc(sessionDocRef);
         if (!docSnap.exists()) {
-          console.log(`Session doc for ${sessionId} does not exist, creating... Current scenarioId: ${currentScenario?.id}`);
-          if (currentScenario) { // Only create if scenario is loaded
-            const newSessionToken = generateToken();
-            const newSessionData: SessionData = {
-              scenarioId: currentScenario.id, // Use the actual scenario ID
-              createdAt: serverTimestamp() as Timestamp,
-              invitationLink: baseLink,
-              invitationToken: newSessionToken,
-              status: "active",
-              messageCooldownSeconds: DEFAULT_COOLDOWN,
-            };
-            await setDoc(sessionDocRef, newSessionData);
-            console.log(`Session doc for ${sessionId} created.`);
-          } else {
-            console.warn("Cannot create session doc, currentScenario is not loaded yet.");
-            // No sessionData will be set, isLoadingSessionData remains true or will be set by listener later
-            // This will be re-attempted if currentScenario loads.
-             setIsLoadingSessionData(false); // Avoid infinite loading if scenario never loads
-            return; // Exit if no scenario to link to
+          console.log(`AdminDashboard: Session doc for ${sessionId} does not exist, creating...`);
+          // Scenario ID must be available to create a meaningful session
+          if (!currentScenario && !isLoadingScenario) { // If scenario loading is finished and it's null
+            console.warn(`AdminDashboard: Cannot create session for ${sessionId} as currentScenario is not loaded or does not exist.`);
+            setPageError(prevError => prevError || "Sitzungsdokument kann nicht erstellt werden, da Szenariodaten fehlen.");
+            setIsLoadingSessionData(false);
+            return; // Stop if no scenario to link to
+          } else if (isLoadingScenario) {
+            console.log(`AdminDashboard: Waiting for scenario to load before creating session for ${sessionId}.`);
+            // This effect will re-run when isLoadingScenario changes.
+            return;
           }
+          
+          const newSessionToken = generateToken();
+          const newSessionData: SessionData = {
+            scenarioId: currentScenario!.id, 
+            createdAt: serverTimestamp(),
+            invitationLink: baseLink,
+            invitationToken: newSessionToken,
+            status: "active", // Default to active when created
+            messageCooldownSeconds: DEFAULT_COOLDOWN,
+          };
+          await setDoc(sessionDocRef, newSessionData);
+          console.log(`AdminDashboard: Session doc for ${sessionId} created.`);
+          operationsDone = true;
         } else {
           const existingData = docSnap.data() as SessionData;
           const updates: Partial<SessionData> = {};
           if (existingData.invitationLink !== baseLink && baseLink) updates.invitationLink = baseLink;
           if (!existingData.invitationToken) updates.invitationToken = generateToken();
-          if (currentScenario && existingData.scenarioId !== currentScenario.id) updates.scenarioId = currentScenario.id;
+          // Ensure scenarioId is set if currentScenario is loaded and differs
+          if (currentScenario && existingData.scenarioId !== currentScenario.id) {
+            console.warn(`AdminDashboard: Session ${sessionId} has scenarioId ${existingData.scenarioId}, but currentScenario is ${currentScenario.id}. Updating.`);
+            updates.scenarioId = currentScenario.id;
+          } else if (!existingData.scenarioId && currentScenario) {
+             updates.scenarioId = currentScenario.id;
+          }
           if (typeof existingData.messageCooldownSeconds === 'undefined') updates.messageCooldownSeconds = DEFAULT_COOLDOWN;
+          
           if (Object.keys(updates).length > 0) {
             await updateDoc(sessionDocRef, updates);
-            console.log(`Session doc for ${sessionId} updated.`);
+            console.log(`AdminDashboard: Session doc for ${sessionId} updated with:`, updates);
+            operationsDone = true;
           }
         }
       } catch (error) {
-        console.error("Error managing session document:", error);
+        console.error(`AdminDashboard: Error managing session document for ${sessionId}:`, error);
         setPageError(prevError => prevError || "Sitzungsdokument konnte nicht initialisiert/geladen werden.");
+      } finally {
+        if (operationsDone) {
+          // If we created/updated, the listener below will pick it up.
+        }
       }
 
-      // Regardless of creation/update, set up the listener
+      console.log(`AdminDashboard: Setting up onSnapshot listener for session ${sessionId}.`);
       const unsubscribe = onSnapshot(sessionDocRef, (docSn) => {
         if (docSn.exists()) {
           const data = docSn.data() as SessionData;
+          console.log(`AdminDashboard: Session data snapshot for ${sessionId} received:`, data);
           setSessionData(data);
           setPaceValue(data.messageCooldownSeconds ?? DEFAULT_COOLDOWN);
         } else {
-          setSessionData(null); // Should have been created above, but handle if it disappears
+          console.warn(`AdminDashboard: Session document for ${sessionId} disappeared or does not exist in snapshot listener.`);
+          setSessionData(null); 
         }
-        setIsLoadingSessionData(false);
+        setIsLoadingSessionData(false); // Set loading to false once snapshot is processed
       }, (error) => {
-        console.error("Error listening to session data: ", error);
+        console.error(`AdminDashboard: Error listening to session data for ${sessionId}:`, error);
         setPageError(prevError => prevError || "Sitzungsstatus konnte nicht geladen werden.");
         setIsLoadingSessionData(false);
       });
-      return unsubscribe; // Return unsubscribe function for cleanup
+      return unsubscribe;
     };
-
-    // Only run ensureAndListen if currentScenario is available (needed for scenarioId in session doc)
-    // or if we are just listening to an existing session doc (where scenarioId might already be set)
-    if (currentScenario !== undefined) { // Check if currentScenario has been attempted to load
+    
+    // Only run if sessionId is present. Dependency on currentScenario ensures it re-runs if scenario loads later.
+    // isLoadingScenario dependency ensures it re-runs after scenario loading attempt.
+    if (sessionId) {
        ensureAndListenSessionDocument();
-    } else if (!isLoadingScenario) { // If scenario loading finished and it's null
-       setIsLoadingSessionData(false); // Don't try to load session data if scenario is definitively not found
+    } else {
+       setIsLoadingSessionData(false);
     }
-    // If currentScenario is still loading, this effect will re-run when it's set.
 
-  }, [sessionId, currentScenario, isLoadingScenario]); // Re-run if currentScenario or isLoadingScenario changes
+  }, [sessionId, currentScenario, isLoadingScenario]);
 
 
   const getBotDisplayName = useCallback((botConfig: BotConfig, scenarioBotsCount: number, index: number): string => {
@@ -208,10 +242,10 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
 
   const initializeBotsForSession = useCallback(async (scenarioToInit: Scenario, sId: string) => {
     if (!scenarioToInit || !scenarioToInit.defaultBotsConfig) {
-      console.log("initializeBotsForSession: Scenario data or bot config missing for scenario ID:", sId);
+      console.warn(`initializeBotsForSession: Scenario data or bot config missing for scenario ID: ${sId}. Scenario:`, scenarioToInit);
       return;
     }
-    console.log(`Initializing/syncing bots for scenario: ${scenarioToInit.title} (ID: ${sId})`);
+    console.log(`AdminDashboard: Initializing/syncing bots for scenario: ${scenarioToInit.title} (ID: ${sId})`);
     const scenarioBotsConfig = scenarioToInit.defaultBotsConfig || [];
     const participantsColRef = collection(db, "sessions", sId, "participants");
     const batch = writeBatch(db);
@@ -227,7 +261,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       if (!configBotScenarioIds.has(botScenarioIdInDb)) {
         batch.delete(doc(participantsColRef, botDetails.docId));
         operationsInBatch++;
-        console.log(`Deleting bot with ScenarioID: ${botScenarioIdInDb} (DocID: ${botDetails.docId}) as it's no longer in scenario config.`);
+        console.log(`AdminDashboard: Deleting bot with ScenarioID: ${botScenarioIdInDb} (DocID: ${botDetails.docId}) as it's no longer in scenario config.`);
       }
     });
 
@@ -235,16 +269,16 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
     for (const [index, botConfig] of scenarioBotsConfig.entries()) {
       const botScenarioId = botConfig.id;
       if (!botScenarioId) {
-        console.error("Bot config is missing a unique id:", botConfig);
+        console.error("AdminDashboard: Bot config is missing a unique id (from scenario.defaultBotsConfig):", botConfig);
         continue; 
       }
       const botDisplayName = getBotDisplayName(botConfig, scenarioBotsConfig.length, index);
       
       const botDataForFirestore: Omit<Participant, 'id' | 'joinedAt'> & { joinedAt?: any, botConfig: BotConfig } = {
-        userId: `bot-${botScenarioId}`,
+        userId: `bot-${botScenarioId}`, // Unique based on scenario bot ID
         name: botDisplayName,
         role: `Bot (${botConfig.personality || 'standard'})`,
-        avatarFallback: botConfig.avatarFallback || (botConfig.personality || 'standard').substring(0, 2).toUpperCase(),
+        avatarFallback: botConfig.avatarFallback || (botConfig.name || botConfig.personality.substring(0,1) + botConfig.id.substring(0,1)).substring(0, 2).toUpperCase() || "BT",
         isBot: true,
         status: "Aktiv", 
         botConfig: { 
@@ -263,66 +297,68 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
         const newBotDocRef = doc(collection(db, "sessions", sId, "participants")); 
         batch.set(newBotDocRef, { ...botDataForFirestore, id: newBotDocRef.id, joinedAt: serverTimestamp() });
         operationsInBatch++;
-        console.log(`Adding new bot: ${botDataForFirestore.name} (ScenarioID: ${botScenarioId}) to session ${sId}`);
+        console.log(`AdminDashboard: Adding new bot: ${botDataForFirestore.name} (ScenarioID: ${botScenarioId}) to session ${sId}`);
       } else {
         const botDocRef = doc(participantsColRef, existingBotDetails.docId);
         const existingBotData = existingBotDetails.data;
         
-        const updatedBotConfig = {
-            ...(existingBotData?.botConfig || {}), 
-            ...botConfig, 
+        const updatedBotConfig: BotConfig = {
+            ...(existingBotData?.botConfig || {} as BotConfig), // Start with existing or empty
+            ...botConfig, // Overlay with scenario config
+            // Explicitly carry over runtime states or default from scenario if not present
             isActive: existingBotData?.botConfig?.isActive ?? botConfig.isActive ?? true,
             currentEscalation: existingBotData?.botConfig?.currentEscalation ?? botConfig.currentEscalation ?? 0,
             autoTimerEnabled: existingBotData?.botConfig?.autoTimerEnabled ?? botConfig.autoTimerEnabled ?? false,
             currentMission: existingBotData?.botConfig?.currentMission ?? botConfig.initialMission ?? "",
+            id: botScenarioId, // Ensure scenario ID is primary
         };
 
         const updateData: Partial<Participant> & { [key: string]: any } = {
             name: botDisplayName,
             role: `Bot (${botConfig.personality || 'standard'})`,
-            avatarFallback: botConfig.avatarFallback || (botConfig.personality || 'standard').substring(0, 2).toUpperCase(),
+            avatarFallback: botDataForFirestore.avatarFallback,
             botConfig: updatedBotConfig,
-            // Ensure botScenarioId is always present from scenario config
             botScenarioId: botScenarioId, 
         };
         batch.update(botDocRef, updateData);
         operationsInBatch++;
-        console.log(`Updating existing bot: ${botDataForFirestore.name} (ScenarioID: ${botScenarioId}) in session ${sId}`);
+        console.log(`AdminDashboard: Updating existing bot: ${botDataForFirestore.name} (ScenarioID: ${botScenarioId}) in session ${sId}`);
       }
     }
     if (operationsInBatch > 0) {
         try {
             await batch.commit();
-            console.log(`Bot initialization/sync batch commit successful for session ${sId}. Operations: ${operationsInBatch}`);
+            console.log(`AdminDashboard: Bot initialization/sync batch commit successful for session ${sId}. Operations: ${operationsInBatch}`);
         } catch (e) {
-            console.error(`Error committing bot initialization/sync batch for session ${sId}:`, e);
+            console.error(`AdminDashboard: Error committing bot initialization/sync batch for session ${sId}:`, e);
             toast({ variant: "destructive", title: "Bot Fehler", description: "Bots konnten nicht initialisiert/synchronisiert werden."});
         }
     } else {
-        console.log(`No bot changes needed for session ${sId}.`);
+        console.log(`AdminDashboard: No bot changes needed for session ${sId}.`);
     }
   }, [getBotDisplayName, toast]);
 
-  // Effect to initialize bots when scenario and session are ready
+  // Effect to initialize bots when scenario and session are ready and active/paused
   useEffect(() => {
     if (currentScenario && sessionData && (sessionData.status === 'active' || sessionData.status === 'paused') && !isLoadingScenario && !isLoadingSessionData) {
-      console.log("AdminDashboard: Conditions met for initializing bots.");
+      console.log("AdminDashboard: Conditions met for initializing bots. Scenario:", currentScenario.title, "Session Status:", sessionData.status);
       initializeBotsForSession(currentScenario, sessionId);
     } else {
       console.log("AdminDashboard: Conditions NOT met for initializing bots.", {isLoadingScenario, isLoadingSessionData, currentScenarioExists: !!currentScenario, sessionDataExists: !!sessionData, sessionStatus: sessionData?.status});
     }
   }, [currentScenario, sessionData, sessionId, isLoadingScenario, isLoadingSessionData, initializeBotsForSession]);
 
+
   // Effect to listen for participants
   useEffect(() => {
-    if (!sessionId) {
+    if (!sessionId || pageError) { // Don't setup if there's already a page error
       setIsLoadingParticipants(false);
       return;
     }
     setIsLoadingParticipants(true);
     console.log(`AdminDashboard: Setting up participant listener for session ${sessionId}`);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
-    // Only sort by joinedAt to avoid needing composite index; further sort client-side
+    // Sort by joinedAt on Firestore side to simplify client-side logic, then further sort client-side
     const participantsQuery = query(participantsColRef, orderBy("joinedAt", "asc")); 
     
     const unsubscribeParticipants = onSnapshot(participantsQuery, (querySnapshot) => {
@@ -336,37 +372,35 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       fetchedParticipants.sort((a, b) => {
         if (a.isBot && !b.isBot) return -1;
         if (!a.isBot && b.isBot) return 1;
-        // joinedAt is already sorted by Firestore, but if not, uncomment below
-        // const aTime = a.joinedAt instanceof Timestamp ? a.joinedAt.toMillis() : 0;
-        // const bTime = b.joinedAt instanceof Timestamp ? b.joinedAt.toMillis() : 0;
-        // return aTime - bTime;
-        return 0; // Keep Firestore's joinedAt order if primary sort is already done
+        return 0; 
       });
       
       setSessionParticipants(fetchedParticipants);
-      console.log("AdminDashboard: Updated sessionParticipants state:", fetchedParticipants);
+      console.log("AdminDashboard: Updated sessionParticipants state:", fetchedParticipants.map(p => ({name: p.name, isBot: p.isBot, id: p.id}) ));
       
-      const newBotMissions: Record<string, string> = {};
+      const newBotMissionsState: Record<string, string> = {};
       fetchedParticipants.filter(p => p.isBot && p.botConfig).forEach(bot => {
-        newBotMissions[bot.id] = bot.botConfig!.currentMission || bot.botConfig!.initialMission || "";
+        newBotMissionsState[bot.id] = bot.botConfig!.currentMission || bot.botConfig!.initialMission || "";
       });
-      setBotMissions(newBotMissions);
+      setBotMissions(prevMissions => ({...prevMissions, ...newBotMissionsState}));
+
 
       setIsLoadingParticipants(false);
     }, (error) => {
-      console.error("Error fetching participants: ", error);
+      console.error(`AdminDashboard: Error fetching participants for session ${sessionId}:`, error);
       setIsLoadingParticipants(false);
+      setPageError(prevError => prevError || `Teilnehmer konnten nicht geladen werden: ${error.message}`);
       toast({ variant: "destructive", title: "Fehler Teilnehmerliste", description: `Teilnehmer konnten nicht geladen werden: ${error.message}` });
     });
     return () => {
       console.log(`AdminDashboard: Cleaning up participant listener for session ${sessionId}`);
       unsubscribeParticipants();
     };
-  }, [sessionId, toast]);
+  }, [sessionId, toast, pageError]); // Re-run if pageError changes (e.g., gets cleared)
 
   // Effect to listen for messages (simplified admin preview)
   useEffect(() => {
-    if (!sessionId || showParticipantMirrorView) { // Only load if not showing full mirror
+    if (!sessionId || showParticipantMirrorView || pageError) { // Only load if not showing full mirror and no page error
       setIsLoadingMessages(false);
       return;
     }
@@ -387,12 +421,13 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       setChatMessages(fetchedMessages);
       setIsLoadingMessages(false);
     }, (error) => {
-      console.error("Error fetching messages: ", error);
+      console.error(`AdminDashboard: Error fetching messages for session ${sessionId}:`, error);
       setIsLoadingMessages(false);
+      setPageError(prevError => prevError || "Nachrichten konnten nicht geladen werden.");
       toast({ variant: "destructive", title: "Fehler Chatverlauf", description: "Nachrichten konnten nicht geladen werden." });
     });
     return () => unsubscribeMessages();
-  }, [sessionId, showParticipantMirrorView, toast]);
+  }, [sessionId, showParticipantMirrorView, toast, pageError]);
 
   // Auto-scroll for admin chat preview
   useEffect(() => {
@@ -415,7 +450,10 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
   }, [displayedInvitationLink, toast]);
 
   const handleGenerateNewInvitationToken = useCallback(async () => {
-    if (!sessionId || !sessionData) return;
+    if (!sessionId || !sessionData) {
+       console.warn("AdminDashboard: Cannot generate new token, session ID or data missing.");
+       return;
+    }
     setIsGeneratingLink(true);
     const newSessionToken = generateToken();
     const sessionDocRef = doc(db, "sessions", sessionId);
@@ -423,7 +461,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await updateDoc(sessionDocRef, { invitationToken: newSessionToken, updatedAt: serverTimestamp() });
       toast({ title: "Neuer Einladungslink generiert", description: "Der Token wurde aktualisiert." });
     } catch (error) {
-      console.error("Error generating new invitation token: ", error);
+      console.error(`AdminDashboard: Error generating new invitation token for session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Neuer Link-Token konnte nicht generiert werden." });
     } finally {
       setIsGeneratingLink(false);
@@ -431,11 +469,18 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
   }, [sessionId, sessionData, toast]);
 
   const handleStartRestartSession = useCallback(async () => {
-    if (!sessionId || !currentScenario) { // Ensure currentScenario is loaded
-        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen."});
+    if (!sessionId) {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Sitzungs-ID fehlt."});
+        return;
+    }
+    if (!currentScenario) {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen oder fehlen."});
+        console.error("AdminDashboard: Cannot start/restart session, currentScenario is null or undefined.");
+        setIsStartingOrRestartingSession(false);
         return;
     }
     setIsStartingOrRestartingSession(true);
+    console.log(`AdminDashboard: Attempting to start/restart session ${sessionId} for scenario ${currentScenario.title}`);
     const sessionDocRef = doc(db, "sessions", sessionId);
     let baseLink = "";
      if (typeof window !== "undefined") {
@@ -445,50 +490,55 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
 
     const sessionUpdateData: Partial<SessionData> = {
         status: "active",
-        messageCooldownSeconds: sessionData?.messageCooldownSeconds ?? DEFAULT_COOLDOWN, // Keep existing cooldown or set default
-        scenarioId: currentScenario.id, // Ensure correct scenario ID is set
+        messageCooldownSeconds: sessionData?.messageCooldownSeconds ?? DEFAULT_COOLDOWN,
+        scenarioId: currentScenario.id, 
         invitationLink: baseLink,
         invitationToken: newSessionToken,
-        updatedAt: serverTimestamp() as Timestamp,
+        updatedAt: serverTimestamp(),
     };
-    if (sessionData?.status === "ended" || !sessionData) { // If starting fresh or from ended
-        sessionUpdateData.createdAt = serverTimestamp() as Timestamp;
+    if (sessionData?.status === "ended" || !sessionData) { 
+        sessionUpdateData.createdAt = serverTimestamp();
         sessionUpdateData.messageCooldownSeconds = DEFAULT_COOLDOWN;
     }
 
-
     try {
         await setDoc(sessionDocRef, sessionUpdateData, { merge: true });
-        // Bots will be re-initialized by the useEffect that watches sessionData and currentScenario
-        // Explicit call to initializeBotsForSession might be needed if status change alone isn't enough
+        console.log(`AdminDashboard: Session ${sessionId} started/restarted. Calling initializeBotsForSession.`);
         await initializeBotsForSession(currentScenario, sessionId); 
         toast({ title: "Sitzung gestartet/aktualisiert", description: "Die Sitzung ist jetzt aktiv." });
     } catch (error) {
-        console.error("Error starting/restarting session: ", error);
+        console.error(`AdminDashboard: Error starting/restarting session ${sessionId}:`, error);
         toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht gestartet/aktualisiert werden." });
     } finally {
         setIsStartingOrRestartingSession(false);
     }
-  }, [sessionId, currentScenario, toast, initializeBotsForSession, sessionData]);
+  }, [sessionId, currentScenario, sessionData, toast, initializeBotsForSession]);
 
   const handleResetSession = useCallback(async () => {
-    if (!sessionId || !currentScenario) {
-        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen."});
+    if (!sessionId) {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Sitzungs-ID fehlt."});
+        return;
+    }
+    if (!currentScenario) {
+        toast({variant: "destructive", title: "Aktion fehlgeschlagen", description: "Szenarioinformationen sind noch nicht geladen oder fehlen."});
+        console.error("AdminDashboard: Cannot reset session, currentScenario is null or undefined.");
+        setIsResettingSession(false);
         return;
     }
     setIsResettingSession(true);
+    console.log(`AdminDashboard: Attempting to reset session ${sessionId} for scenario ${currentScenario.title}`);
     const sessionDocRef = doc(db, "sessions", sessionId);
     const participantsColRef = collection(db, "sessions", sessionId, "participants");
     const messagesColRef = collection(db, "sessions", sessionId, "messages");
 
     try {
-      const batch = writeBatch(db);
+      const batchReset = writeBatch(db);
       const messagesSnap = await getDocs(messagesColRef);
-      messagesSnap.forEach(messageDoc => batch.delete(messageDoc.ref));
+      messagesSnap.forEach(messageDoc => batchReset.delete(messageDoc.ref));
       const participantsSnap = await getDocs(participantsColRef);
-      participantsSnap.forEach(participantDoc => batch.delete(participantDoc.ref));
-      await batch.commit();
-      console.log("All messages and participants deleted for session reset.");
+      participantsSnap.forEach(participantDoc => batchReset.delete(participantDoc.ref));
+      await batchReset.commit();
+      console.log(`AdminDashboard: All messages and participants deleted for session ${sessionId} reset.`);
 
       let baseLink = "";
       if (typeof window !== "undefined") {
@@ -497,18 +547,19 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       const newSessionToken = generateToken();
       const newSessionData: SessionData = {
         scenarioId: currentScenario.id,
-        createdAt: serverTimestamp() as Timestamp,
+        createdAt: serverTimestamp(),
         invitationLink: baseLink,
         invitationToken: newSessionToken,
         status: "active",
         messageCooldownSeconds: DEFAULT_COOLDOWN,
       };
-      await setDoc(sessionDocRef, newSessionData); // Overwrite with new session data
+      await setDoc(sessionDocRef, newSessionData); 
+      console.log(`AdminDashboard: New session document created for ${sessionId} after reset. Calling initializeBotsForSession.`);
       await initializeBotsForSession(currentScenario, sessionId); 
 
       toast({ title: "Sitzung zurückgesetzt", description: "Alle Teilnehmer und Nachrichten wurden gelöscht. Sitzung neu gestartet." });
     } catch (error) {
-      console.error("Error resetting session: ", error);
+      console.error(`AdminDashboard: Error resetting session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht zurückgesetzt werden." });
     } finally {
       setIsResettingSession(false);
@@ -524,7 +575,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await updateDoc(sessionDocRef, { status: "ended", updatedAt: serverTimestamp() });
       toast({ title: "Sitzung beendet", description: "Die Sitzung wurde als beendet markiert." });
     } catch (error) {
-      console.error("Error ending session: ", error);
+      console.error(`AdminDashboard: Error ending session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Sitzung konnte nicht beendet werden." });
     } finally {
         setIsEndingSession(false);
@@ -539,20 +590,21 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await updateDoc(sessionDocRef, { status: newStatus, updatedAt: serverTimestamp() });
       toast({ title: "Simulationsstatus geändert", description: `Simulation ist jetzt ${newStatus === 'active' ? 'aktiv' : 'pausiert'}.` });
     } catch (error) {
-      console.error("Error toggling simulation active: ", error);
+      console.error(`AdminDashboard: Error toggling simulation active for session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Simulationsstatus konnte nicht geändert werden." });
     }
   }, [sessionId, sessionData, toast]);
 
-  const handlePaceChange = useCallback(async (newPaceValues: number[]) => {
+  const handlePaceChangeCommit = useCallback(async (newPaceValues: number[]) => {
     if (!sessionId || !sessionData || sessionData.status === "ended") return;
     const newCooldown = newPaceValues[0];
+    setPaceValue(newCooldown); // Optimistically update local state for slider feel
     const sessionDocRef = doc(db, "sessions", sessionId);
     try {
       await updateDoc(sessionDocRef, { messageCooldownSeconds: newCooldown, updatedAt: serverTimestamp() });
-      // paceValue state will update from onSnapshot listener to sessionData
+      // paceValue state will update from onSnapshot listener to sessionData eventually
     } catch (error) {
-      console.error("Error updating pace: ", error);
+      console.error(`AdminDashboard: Error updating pace for session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Pace konnte nicht angepasst werden." });
     }
   }, [sessionId, sessionData, toast]);
@@ -575,7 +627,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await batchMute.commit();
       toast({ title: "Alle Teilnehmer stummgeschaltet" });
     } catch (error) {
-      console.error("Error muting all users: ", error);
+      console.error(`AdminDashboard: Error muting all users for session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnten nicht alle stummgeschaltet werden." });
     }
   }, [sessionId, sessionData, toast]);
@@ -587,7 +639,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await updateDoc(participantDocRef, { isMuted: !currentMuteStatus });
       toast({ title: `Teilnehmer ${!currentMuteStatus ? 'stummgeschaltet' : 'freigeschaltet'}` });
     } catch (error) {
-      console.error("Error toggling mute for participant: ", error);
+      console.error(`AdminDashboard: Error toggling mute for participant ${participantId} in session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Stummschaltung konnte nicht geändert werden." });
     }
   }, [sessionId, sessionData, toast]);
@@ -599,7 +651,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await updateDoc(botDocRef, { "botConfig.isActive": !currentActiveStatus });
       toast({ title: `Bot ${!currentActiveStatus ? 'aktiviert' : 'deaktiviert'}` });
     } catch (error: any) {
-      console.error("Error toggling bot active state: ", error);
+      console.error(`AdminDashboard: Error toggling bot active state for bot ${botParticipantId} in session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: `Bot-Status konnte nicht geändert werden: ${error.message}` });
     }
   },[sessionId, sessionData, toast]);
@@ -617,7 +669,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
     try {
       await updateDoc(botDocRef, { "botConfig.currentEscalation": newEscalation });
     } catch (error: any) {
-      console.error("Error changing bot escalation: ", error);
+      console.error(`AdminDashboard: Error changing bot escalation for bot ${botParticipantId} in session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: `Bot-Eskalation konnte nicht geändert werden: ${error.message}` });
     }
   }, [sessionId, sessionData, sessionParticipants, toast]);
@@ -629,7 +681,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await updateDoc(botDocRef, { "botConfig.autoTimerEnabled": !currentAutoTimerStatus });
       toast({ title: `Bot Auto-Timer ${!currentAutoTimerStatus ? 'aktiviert' : 'deaktiviert'}` });
     } catch (error: any) {
-      console.error("Error toggling bot auto-timer: ", error);
+      console.error(`AdminDashboard: Error toggling bot auto-timer for bot ${botParticipantId} in session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: `Bot Auto-Timer konnte nicht geändert werden: ${error.message}` });
     }
   }, [sessionId, sessionData, toast]);
@@ -641,13 +693,17 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
   const handleUpdateBotMissionInFirestore = useCallback(async (botParticipantId: string) => {
     if (!sessionId) return;
     const missionToSave = botMissions[botParticipantId];
-    if (typeof missionToSave === 'undefined') return;
-
+    if (typeof missionToSave === 'undefined') {
+        console.log(`AdminDashboard: No mission in local state for bot ${botParticipantId} to save to Firestore.`);
+        return;
+    }
+    console.log(`AdminDashboard: Attempting to update mission for bot ${botParticipantId} in session ${sessionId} to: "${missionToSave}"`);
     const botDocRef = doc(db, "sessions", sessionId, "participants", botParticipantId);
     try {
       await updateDoc(botDocRef, { "botConfig.currentMission": missionToSave });
+      toast({ title: "Bot-Mission aktualisiert."});
     } catch (error: any) {
-      console.error("Error updating bot mission in Firestore: ", error);
+      console.error(`AdminDashboard: Error updating bot mission in Firestore for bot ${botParticipantId} in session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler Bot-Mission", description: `Bot-Mission konnte nicht gespeichert werden: ${error.message}` });
     }
   }, [sessionId, toast, botMissions]);
@@ -661,6 +717,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
     setIsPostingForBot(botParticipant.id);
     
     const missionForThisPost = botMissions[botParticipant.id] ?? botParticipant.botConfig.currentMission ?? botParticipant.botConfig.initialMission ?? "";
+    console.log(`AdminDashboard: Posting for bot ${botParticipant.name} with mission: "${missionForThisPost}"`);
 
     try {
       const chatHistoryMessages = chatMessages
@@ -698,7 +755,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       toast({ title: `Nachricht von ${botParticipant.name} gesendet.`});
 
     } catch (error: any) {
-      console.error("Error posting for bot:", error);
+      console.error(`AdminDashboard: Error posting for bot ${botParticipant.name} in session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler beim Posten für Bot", description: error.message || "Nachricht konnte nicht generiert oder gesendet werden." });
     } finally {
       setIsPostingForBot(null);
@@ -714,7 +771,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await deleteDoc(participantDocRef);
       toast({ title: "Teilnehmer entfernt", description: "Der Teilnehmer wurde erfolgreich aus der Sitzung entfernt." });
     } catch (error) {
-      console.error("Error removing participant: ", error);
+      console.error(`AdminDashboard: Error removing participant ${participantId} from session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnte nicht entfernt werden." });
     } finally {
       setIsRemovingParticipant(null);
@@ -740,7 +797,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       await batch.commit();
       toast({ title: "Alle Teilnehmer entfernt", description: "Alle menschlichen Teilnehmer wurden aus der Sitzung entfernt." });
     } catch (error) {
-      console.error("Error removing all participants: ", error);
+      console.error(`AdminDashboard: Error removing all participants from session ${sessionId}:`, error);
       toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer konnten nicht entfernt werden." });
     } finally {
       setIsRemovingAllParticipants(false);
@@ -798,7 +855,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
     });
 
     const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' }); // Added BOM for Excel
     const link = document.createElement("a");
     if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
@@ -821,7 +878,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
 
 
   const displayParticipantsList: Participant[] = [...sessionParticipants];
-  if (currentScenario && !isLoadingParticipants && displayParticipantsList.filter(p => !p.isBot).length < expectedStudentRoles) {
+  if (currentScenario && !isLoadingParticipants && !isLoadingScenario && displayParticipantsList.filter(p => !p.isBot).length < expectedStudentRoles) {
     const placeholdersToAdd = expectedStudentRoles - displayParticipantsList.filter(p => !p.isBot).length;
     const existingRoleNames = new Set(sessionParticipants.filter(p => !p.isBot).map(p => p.role));
 
@@ -854,27 +911,32 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
 
   if (isLoadingPage) {
     return (
-      <div className="flex items-center justify-center h-full p-6">
+      <div className="flex flex-col items-center justify-center min-h-screen p-6">
         <Card className="w-full max-w-md">
-          <CardHeader><CardTitle>Lade Sitzungsdaten...</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-center py-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mr-3" />
-            <p>Dashboard wird vorbereitet...</p>
+          <CardHeader className="items-center">
+            <CardTitle className="flex items-center"><Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />Lade Dashboard...</CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <p className="text-muted-foreground">Szenario- und Sitzungsdaten werden abgerufen...</p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  if (pageError) {
+  if (pageError && !currentScenario) { // Show critical page error if scenario couldn't be loaded
      return (
-      <div className="flex flex-col items-center justify-center h-full p-6">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Fehler beim Laden des Dashboards</CardTitle>
+      <div className="flex flex-col items-center justify-center min-h-screen p-6">
+        <Card className="w-full max-w-lg">
+          <CardHeader className="items-center">
+            <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-6 w-6"/> Fehler beim Laden des Dashboards</CardTitle>
             <CardDescription>{pageError}</CardDescription>
             </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col items-center gap-4">
+             <p className="text-sm text-muted-foreground">
+                Stellen Sie sicher, dass die Szenario-ID gültig ist und das Szenario in der Datenbank existiert.
+                Überprüfen Sie auch Ihre Netzwerkverbindung und Firestore-Sicherheitsregeln.
+             </p>
             <Button onClick={() => router.push('/admin')} variant="outline">
               <ArrowLeft className="mr-2 h-4 w-4"/> Zurück zur Szenarienübersicht
             </Button>
@@ -883,15 +945,15 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
       </div>
     );
   }
-  if (!currentScenario) { // Should be caught by pageError, but as a fallback
+  if (!currentScenario) { 
      return (
-      <div className="flex flex-col items-center justify-center h-full p-6">
+      <div className="flex flex-col items-center justify-center min-h-screen p-6">
         <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2"/> Szenario nicht geladen</CardTitle>
+          <CardHeader className="items-center">
+            <CardTitle className="text-destructive flex items-center"><AlertCircle className="mr-2 h-6 w-6"/> Szenario nicht geladen</CardTitle>
             <CardDescription>Das zugehörige Szenario konnte nicht geladen werden. Bitte überprüfen Sie die Szenario-ID oder wählen Sie ein anderes Szenario.</CardDescription>
             </CardHeader>
-          <CardContent>
+          <CardContent className="flex justify-center">
             <Button onClick={() => router.push('/admin')} variant="outline">
               <ArrowLeft className="mr-2 h-4 w-4"/> Zurück zur Szenarienübersicht
             </Button>
@@ -909,7 +971,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
           <h1 className="text-2xl md:text-3xl font-bold text-primary">
             Live Dashboard: <span className="text-foreground">{scenarioTitle}</span>
           </h1>
-          <p className="text-muted-foreground">Sitzungs-ID: {sessionId}</p>
+          <p className="text-muted-foreground text-xs md:text-sm">Sitzungs-ID: {sessionId}</p>
         </div>
         <div className="flex items-center gap-2">
            <Link href={`/admin/scenario-editor/${sessionId}`} passHref legacyBehavior>
@@ -971,7 +1033,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
                 sessionId={sessionId}
                 initialUserName="Admin"
                 initialUserRole="Moderator"
-                initialUserId="ADMIN_USER_ID_FIXED"
+                initialUserId="ADMIN_USER_ID_FIXED" // Ensure this is a unique and fixed ID for the admin user
                 initialUserAvatarFallback="AD"
                 isAdminView={true}
               />
@@ -999,14 +1061,14 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
                   <div>
                     <Label htmlFor="invitation-link" className="font-semibold">Einladungslink:</Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Input id="invitation-link" type="text" value={isLoadingSessionData ? "Lade Sitzungsdaten..." : displayedInvitationLink} readOnly className="bg-muted" />
-                      <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...") || displayedInvitationLink.includes("Lade")}>
+                      <Input id="invitation-link" type="text" value={isLoadingSessionData || !sessionData ? "Lade Sitzungsdaten..." : displayedInvitationLink} readOnly className="bg-muted" />
+                      <Button variant="outline" size="icon" onClick={copyToClipboard} aria-label="Link kopieren" disabled={isLoadingSessionData || !sessionData || displayedInvitationLink.includes("Wird generiert...") || displayedInvitationLink.includes("Lade")}>
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => alert("QR-Code Anzeige ist noch nicht implementiert.")} disabled={isLoadingSessionData || displayedInvitationLink.includes("Wird generiert...") || displayedInvitationLink.includes("Lade")}>
+                    <Button variant="outline" onClick={() => toast({title: "QR-Code (Platzhalter)", description:"QR-Code Anzeige ist noch nicht implementiert."})} disabled={isLoadingSessionData || !sessionData || displayedInvitationLink.includes("Wird generiert...") || displayedInvitationLink.includes("Lade")}>
                         <QrCode className="mr-2 h-4 w-4" /> QR-Code anzeigen
                     </Button>
                     <Button variant="default" onClick={handleGenerateNewInvitationToken} disabled={isLoadingSessionData || isGeneratingLink || !sessionData}>
@@ -1038,7 +1100,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
                       <span className="ml-1">{msg.content}</span>
                       {msg.imageUrl &&
                         <div className="mt-1">
-                            <Image src={msg.imageUrl} alt="Bild im Chat" width={200} height={150} className="rounded max-w-xs max-h-32 object-contain" data-ai-hint="chat image"/>
+                            <NextImage src={msg.imageUrl} alt="Bild im Chat" width={200} height={150} className="rounded max-w-xs max-h-32 object-contain" data-ai-hint="chat image"/>
                         </div>
                       }
                       <span className="text-xs text-muted-foreground/70 float-right pt-1">{msg.timestampDisplay}</span>
@@ -1081,7 +1143,8 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button variant="destructive" disabled={isStartingOrRestartingSession || isResettingSession || isLoadingSessionData || isLoadingScenario || !currentScenario} className="bg-red-700 hover:bg-red-800">
-                                    <RotateCcw className="mr-2 h-4 w-4" /> Sitzung zurücksetzen
+                                    {isResettingSession ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <RotateCcw className="mr-2 h-4 w-4" />}
+                                     Sitzung zurücksetzen
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
@@ -1109,15 +1172,15 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
                             value={[paceValue]}
                             max={30} step={1}
                             id="pace-slider"
-                            onValueChange={(value) => setPaceValue(value[0])} // Live update local state for slider feel
-                            onValueCommit={handlePaceChange} // Update Firestore on release
+                            onValueChange={(value) => setPaceValue(value[0])} 
+                            onValueCommit={handlePaceChangeCommit} 
                             disabled={isSessionEnded || isStartingOrRestartingSession || isResettingSession || !sessionData || sessionData.status !== 'active'}
                         />
                     </div>
                     <div className="flex items-center justify-between">
                         <Label htmlFor="simulation-active" className="text-base">
                             Simulation Aktiv <Badge variant={sessionData?.status === 'active' ? 'default' : (sessionData?.status === "paused" ? "secondary" : "destructive")}
-                                                className={sessionData?.status === 'active' ? 'bg-green-500 hover:bg-green-600' : (sessionData?.status === "paused" ? 'bg-amber-500 hover:bg-amber-600' : 'bg-red-500 hover:bg-red-600')}
+                                                className={sessionData?.status === 'active' ? 'bg-green-500 hover:bg-green-600' : (sessionData?.status === "paused" ? 'bg-amber-500 hover:bg-amber-600' : 'bg-red-500 hover:bg-red-500')}
                                             >
                                             {sessionData?.status === 'active' ? <Play className="mr-1.5 h-3.5 w-3.5"/> : (sessionData?.status === "paused" ? <Pause className="mr-1.5 h-3.5 w-3.5"/> : <Power className="mr-1.5 h-3.5 w-3.5"/>)}
                                             {sessionData?.status || (isLoadingSessionData ? "Laden..." : "Unbekannt")}
@@ -1310,7 +1373,7 @@ export default function AdminSessionDashboardPage({ params: routeParams }: Admin
                     <CardTitle className="flex items-center"><Download className="mr-2 h-5 w-5 text-primary" /> Datenexport</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <Button className="w-full" onClick={handleDownloadCsv} disabled={chatMessages.length === 0}>
+                    <Button className="w-full" onClick={handleDownloadCsv} disabled={chatMessages.length === 0 || isLoadingMessages}>
                         Chat-Protokoll als CSV herunterladen
                     </Button>
                 </CardContent>
