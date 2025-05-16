@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Scenario } from '@/lib/types';
-import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks, NotebookPen, Trash2, Copy, Eye, ShieldCheck, Loader2 } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Removed TabsContent as it's not used here directly
+import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks, NotebookPen, Trash2, Copy, Eye, ShieldCheck, Loader2, PlayCircle, Filter, ArrowUpDown } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy, Timestamp, deleteDoc, doc, addDoc, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -26,43 +26,48 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { createDefaultScenario } from '@/app/admin/scenario-editor/[scenarioId]/page';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 
 export default function ScenarioEditorHubPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'published'>('all');
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isDuplicating, setIsDuplicating] = useState<string | null>(null);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
   useEffect(() => {
     setIsLoading(true);
     const scenariosColRef = collection(db, "scenarios");
-    // Order by title by default, can be changed if other default sort is preferred
-    const q = query(scenariosColRef, orderBy("title", "asc")); 
+    // Order by title by default for Firestore query
+    const q = query(scenariosColRef, orderBy("title", "asc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedScenarios: Scenario[] = [];
-      querySnapshot.forEach((doc) => {
-        // Ensure all fields, especially optional ones, are handled
-        const data = doc.data() as Omit<Scenario, 'id'>; 
-        const scenario: Scenario = {
-          id: doc.id,
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        fetchedScenarios.push({
+          id: docSnap.id,
           title: data.title || "Unbenanntes Szenario",
           kurzbeschreibung: data.kurzbeschreibung || "",
           langbeschreibung: data.langbeschreibung || "",
-          lernziele: data.lernziele || [],
+          lernziele: data.lernziele || "", // Keep as string
           iconName: data.iconName || "ImageIcon",
           tags: data.tags || [],
           previewImageUrl: data.previewImageUrl || "",
           status: data.status || "draft",
           defaultBotsConfig: data.defaultBotsConfig || [],
           humanRolesConfig: data.humanRolesConfig || [],
-          createdAt: data.createdAt, // Keep as is, could be undefined
-          updatedAt: data.updatedAt, // Keep as is, could be undefined
-        };
-        fetchedScenarios.push(scenario);
+          initialPost: data.initialPost || createDefaultScenario().initialPost,
+          events: data.events || [],
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        } as Scenario);
       });
       setScenarios(fetchedScenarios);
       setIsLoading(false);
@@ -80,20 +85,45 @@ export default function ScenarioEditorHubPage() {
   }, [toast]);
 
   const filteredScenarios = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return scenarios;
-    }
-    const lowerCaseSearchTerm = searchTerm.toLowerCase();
-    return scenarios.filter(
-      (scenario) =>
-        scenario.title.toLowerCase().includes(lowerCaseSearchTerm) ||
-        (scenario.kurzbeschreibung && scenario.kurzbeschreibung.toLowerCase().includes(lowerCaseSearchTerm)) ||
-        (scenario.tags && scenario.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(lowerCaseSearchTerm)))
-    );
-  }, [searchTerm, scenarios]);
+    return scenarios
+      .filter(scenario => {
+        if (statusFilter === 'all') return true;
+        return scenario.status === statusFilter;
+      })
+      .filter(scenario => {
+        if (!searchTerm.trim()) return true;
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        return (
+          scenario.title.toLowerCase().includes(lowerSearchTerm) ||
+          (scenario.kurzbeschreibung && scenario.kurzbeschreibung.toLowerCase().includes(lowerSearchTerm)) ||
+          (scenario.tags && scenario.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(lowerSearchTerm)))
+        );
+      });
+  }, [searchTerm, scenarios, statusFilter]);
 
-  const handleCreateNewScenario = () => {
-    router.push('/admin/scenario-editor/new');
+  const handleCreateNewScenario = async () => {
+    setIsCreatingNew(true);
+    try {
+      const newScenarioData = createDefaultScenario();
+      const scenarioToSave: Omit<Scenario, 'id'> = {
+        ...newScenarioData,
+        title: "Neues Szenario (Entwurf)",
+        status: 'draft',
+        createdAt: serverTimestamp() as Timestamp,
+        updatedAt: serverTimestamp() as Timestamp,
+      };
+      const docRef = await addDoc(collection(db, "scenarios"), scenarioToSave);
+      toast({
+        title: "Szenario erstellt",
+        description: `Neues Szenario "${scenarioToSave.title}" wurde als Entwurf angelegt.`,
+      });
+      router.push(`/admin/scenario-editor/${docRef.id}`);
+    } catch (error) {
+      console.error("Error creating new scenario: ", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Neues Szenario konnte nicht erstellt werden." });
+    } finally {
+      setIsCreatingNew(false);
+    }
   };
 
   const handleDeleteScenario = async (scenarioId: string, scenarioTitle: string) => {
@@ -124,20 +154,10 @@ export default function ScenarioEditorHubPage() {
 
       if (scenarioSnap.exists()) {
         const originalScenarioData = scenarioSnap.data() as Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>;
-        // Ensure all fields are carried over, providing defaults for any potentially missing ones
-        const duplicatedScenarioData = {
-          ...originalScenarioData, // Spread original data first
+        const duplicatedScenarioData: Omit<Scenario, 'id'> = {
+          ...originalScenarioData,
           title: `Kopie von ${originalScenarioData.title || 'Unbenanntes Szenario'}`,
-          status: 'draft' as 'draft' | 'published', // New copies are drafts
-          kurzbeschreibung: originalScenarioData.kurzbeschreibung || "",
-          langbeschreibung: originalScenarioData.langbeschreibung || "",
-          lernziele: originalScenarioData.lernziele || [],
-          iconName: originalScenarioData.iconName || "ImageIcon",
-          tags: originalScenarioData.tags || [],
-          previewImageUrl: originalScenarioData.previewImageUrl || "",
-          defaultBotsConfig: originalScenarioData.defaultBotsConfig || [],
-          humanRolesConfig: originalScenarioData.humanRolesConfig || [],
-          // Timestamps will be set by Firestore on creation
+          status: 'draft',
           createdAt: serverTimestamp() as Timestamp,
           updatedAt: serverTimestamp() as Timestamp,
         };
@@ -158,7 +178,6 @@ export default function ScenarioEditorHubPage() {
     }
   };
 
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -170,16 +189,23 @@ export default function ScenarioEditorHubPage() {
             Verwalten Sie Szenarien und Vorlagen für Chat-Simulationen.
           </p>
         </div>
-        <Button onClick={handleCreateNewScenario} className="w-full sm:w-auto">
-          <PlusCircle className="mr-2 h-5 w-5" />
-          Neues Szenario erstellen
-        </Button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Link href="/admin" passHref legacyBehavior>
+            <Button variant="outline" className="w-full sm:w-auto">
+              <ListChecks className="mr-2 h-5 w-5" /> Zur Szenarienauswahl
+            </Button>
+          </Link>
+          <Button onClick={handleCreateNewScenario} className="w-full sm:w-auto" disabled={isCreatingNew}>
+            {isCreatingNew ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <PlusCircle className="mr-2 h-5 w-5" />}
+            Neues Szenario erstellen
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="scenarios" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="scenarios" onClick={() => router.push('/admin/scenario-editor')}>
-            <ListChecks className="mr-2 h-4 w-4" />Szenarien
+          <TabsTrigger value="scenarios">
+            <ListChecks className="mr-2 h-4 w-4" />Szenarien ({filteredScenarios.length})
           </TabsTrigger>
           <TabsTrigger value="bot-templates" onClick={() => router.push('/admin/bot-template-editor')}>
             <Bot className="mr-2 h-4 w-4" />Bot-Vorlagen
@@ -189,46 +215,67 @@ export default function ScenarioEditorHubPage() {
           </TabsTrigger>
         </TabsList>
         
-        {/* Content for "Szenarien" tab is directly here */}
-        <Card className="mt-4">
+        <TabsContent value="scenarios" className="mt-4">
+          <Card>
             <CardHeader className="pb-4">
               <CardTitle>Vorhandene Szenarien</CardTitle>
               <CardDescription>
-                Durchsuchen und bearbeiten Sie die aktuell verfügbaren Szenarien.
+                Durchsuchen, bearbeiten, duplizieren oder löschen Sie die verfügbaren Szenarien.
               </CardDescription>
-              <div className="relative mt-4">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Szenarien durchsuchen (Titel, Beschreibung, Tags)..."
-                  className="w-full pl-10 pr-4 py-2 text-base"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+              <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                <div className="relative flex-grow">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Szenarien durchsuchen (Titel, Beschreibung, Tags)..."
+                    className="w-full pl-10 pr-4 py-2"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                    <Filter className="h-5 w-5 text-muted-foreground"/>
+                    <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as any)}>
+                        <SelectTrigger className="w-full sm:w-[180px]">
+                            <SelectValue placeholder="Status filtern" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Alle Status</SelectItem>
+                            <SelectItem value="draft">Entwurf</SelectItem>
+                            <SelectItem value="published">Veröffentlicht</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
                 <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
-                    <p className="text-center text-muted-foreground">Lade Szenarien...</p>
+                  <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
+                  <p className="text-center text-muted-foreground">Lade Szenarien...</p>
                 </div>
               ) : filteredScenarios.length > 0 ? (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[250px]">Titel</TableHead>
-                        <TableHead>Kurzbeschreibung</TableHead>
-                        <TableHead className="w-[150px]">Status</TableHead>
-                        <TableHead className="w-[200px]">Tags</TableHead>
-                        <TableHead className="w-[220px] text-right">Aktionen</TableHead>
+                        <TableHead className="w-1/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
+                        <TableHead className="w-3/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Titel</TableHead>
+                        <TableHead className="w-3/12">Kurzbeschreibung</TableHead>
+                        <TableHead className="w-1/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Status</TableHead>
+                        <TableHead className="w-2/12">Tags</TableHead>
+                        <TableHead className="w-2/12 text-right">Aktionen</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredScenarios.map((scenario: Scenario) => (
                         <TableRow key={scenario.id}>
-                          <TableCell className="font-medium">{scenario.title}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground truncate max-w-[80px]">{scenario.id}</TableCell>
+                          <TableCell className="font-medium">
+                            <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
+                              <a className="hover:text-primary hover:underline">{scenario.title}</a>
+                            </Link>
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-xs max-w-xs truncate">{scenario.kurzbeschreibung}</TableCell>
                           <TableCell>
                             <Badge variant={scenario.status === 'published' ? 'default' : 'secondary'} 
@@ -239,55 +286,62 @@ export default function ScenarioEditorHubPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-1">
-                              {scenario.tags && scenario.tags.slice(0, 3).map((tag) => (
-                                <Badge key={tag} variant="secondary" className="text-xs">
-                                  {typeof tag === 'string' ? tag : 'Invalid Tag'}
+                              {(scenario.tags || []).slice(0, 3).map((tag) => (
+                                <Badge key={tag} variant="outline" className="text-xs">
+                                  {tag}
                                 </Badge>
                               ))}
-                              {scenario.tags && scenario.tags.length > 3 && <Badge variant="outline" className="text-xs">...</Badge>}
+                              {(scenario.tags || []).length > 3 && <Badge variant="outline" className="text-xs">...</Badge>}
                             </div>
                           </TableCell>
-                          <TableCell className="text-right space-x-1">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => handleDuplicateScenario(scenario.id)}
-                              disabled={isDuplicating === scenario.id || isDeleting === scenario.id}
-                            >
-                              {isDuplicating === scenario.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
-                              Duplizieren
-                            </Button>
-                            <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
-                              <Button variant="outline" size="sm" disabled={isDeleting === scenario.id || isDuplicating === scenario.id}>
-                                <FileEdit className="mr-1 h-3.5 w-3.5" />
-                                Bearbeiten
-                              </Button>
-                            </Link>
-                             <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="destructive" size="sm" className="bg-red-600 hover:bg-red-700" disabled={isDeleting === scenario.id || isDuplicating === scenario.id}>
-                                  {isDeleting === scenario.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-3.5 w-3.5" />}
-                                  Löschen
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Link href={`/admin/session-dashboard/${scenario.id}`} passHref legacyBehavior>
+                                <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90" title="Dashboard/Simulation starten">
+                                  <PlayCircle className="mr-1 h-4 w-4" />
+                                  Starten
                                 </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Szenario "{scenario.title}" wirklich löschen?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Diese Aktion kann nicht rückgängig gemacht werden. Das Szenario wird dauerhaft aus der Datenbank entfernt.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    onClick={() => handleDeleteScenario(scenario.id, scenario.title)}
-                                    className="bg-destructive hover:bg-destructive/90"
-                                  >
-                                    Ja, löschen
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                              </Link>
+                              <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
+                                <Button variant="outline" size="sm" title="Bearbeiten">
+                                  <FileEdit className="mr-1 h-4 w-4" />
+                                  Edit
+                                </Button>
+                              </Link>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => handleDuplicateScenario(scenario.id)}
+                                disabled={isDuplicating === scenario.id || isDeleting === scenario.id}
+                                title="Duplizieren"
+                              >
+                                {isDuplicating === scenario.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="destructive" size="sm" className="bg-red-600 hover:bg-red-700" disabled={isDeleting === scenario.id || isDuplicating === scenario.id} title="Löschen">
+                                    {isDeleting === scenario.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Szenario "{scenario.title}" wirklich löschen?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Diese Aktion kann nicht rückgängig gemacht werden. Das Szenario wird dauerhaft aus der Datenbank entfernt.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                      onClick={() => handleDeleteScenario(scenario.id, scenario.title)}
+                                      className="bg-destructive hover:bg-destructive/90"
+                                    >
+                                      Ja, löschen
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -296,14 +350,13 @@ export default function ScenarioEditorHubPage() {
                 </div>
               ) : (
                 <p className="text-center text-muted-foreground py-8">
-                  {searchTerm === '' ? "Keine Szenarien in der Datenbank gefunden. Erstellen Sie ein neues Szenario." : "Keine Szenarien gefunden, die Ihrer Suche entsprechen." }
+                  {searchTerm === '' && statusFilter === 'all' ? "Keine Szenarien in der Datenbank gefunden. Erstellen Sie ein neues Szenario." : "Keine Szenarien gefunden, die Ihrer Suche/Filterung entsprechen." }
                 </p>
               )}
             </CardContent>
           </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );
 }
-
-    

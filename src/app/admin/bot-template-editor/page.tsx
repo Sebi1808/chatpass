@@ -8,26 +8,43 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, PlusCircle, Loader2 } from "lucide-react";
+import { Bot, PlusCircle, Loader2, FileEdit, Trash2, ArrowUpDown, Filter } from "lucide-react";
 import Link from "next/link";
-import React, { useState, useEffect, type FormEvent } from "react";
+import React, { useState, useEffect, type FormEvent, useMemo } from "react";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import type { BotTemplate } from "@/lib/types"; // Using specific BotTemplate type
+import type { BotTemplate } from "@/lib/types"; 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export default function BotTemplateEditorPage() {
   const { toast } = useToast();
   const [templates, setTemplates] = useState<BotTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  
+  const [editingTemplate, setEditingTemplate] = useState<BotTemplate | null>(null);
 
-  // Form state for new template
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplatePersonality, setNewTemplatePersonality] = useState<'provokateur' | 'verteidiger' | 'informant' | 'standard'>('standard');
   const [newTemplateAvatarFallback, setNewTemplateAvatarFallback] = useState("");
   const [newTemplateInitialMission, setNewTemplateInitialMission] = useState("");
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [personalityFilter, setPersonalityFilter] = useState<'all' | BotTemplate['personality']>('all');
+
 
   useEffect(() => {
     setIsLoadingTemplates(true);
@@ -36,9 +53,8 @@ export default function BotTemplateEditorPage() {
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedTemplates: BotTemplate[] = [];
-      querySnapshot.forEach((doc) => {
-        // The document ID is the templateId
-        fetchedTemplates.push({ templateId: doc.id, ...doc.data() } as BotTemplate);
+      querySnapshot.forEach((docSnap) => {
+        fetchedTemplates.push({ templateId: docSnap.id, ...docSnap.data() } as BotTemplate);
       });
       setTemplates(fetchedTemplates);
       setIsLoadingTemplates(false);
@@ -51,7 +67,32 @@ export default function BotTemplateEditorPage() {
     return () => unsubscribe();
   }, [toast]);
 
-  const handleCreateNewTemplate = async (event: FormEvent<HTMLFormElement>) => {
+  const filteredTemplates = useMemo(() => {
+    return templates
+      .filter(template => {
+        if (personalityFilter === 'all') return true;
+        return template.personality === personalityFilter;
+      })
+      .filter(template => {
+        if (!searchTerm.trim()) return true;
+        const lowerSearchTerm = searchTerm.toLowerCase();
+        return (
+          template.name.toLowerCase().includes(lowerSearchTerm) ||
+          (template.initialMission && template.initialMission.toLowerCase().includes(lowerSearchTerm))
+        );
+      });
+  }, [templates, searchTerm, personalityFilter]);
+
+
+  const resetForm = () => {
+    setNewTemplateName("");
+    setNewTemplatePersonality("standard");
+    setNewTemplateAvatarFallback("");
+    setNewTemplateInitialMission("");
+    setEditingTemplate(null);
+  };
+
+  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!newTemplateName.trim() || !newTemplatePersonality) {
       toast({ variant: "destructive", title: "Fehlende Eingabe", description: "Name und Persönlichkeit sind erforderlich." });
@@ -59,31 +100,58 @@ export default function BotTemplateEditorPage() {
     }
     setIsSavingTemplate(true);
 
-    const newTemplateData: Omit<BotTemplate, 'templateId'> = {
+    const templateData: Omit<BotTemplate, 'templateId' | 'createdAt'> = {
       name: newTemplateName.trim(),
       personality: newTemplatePersonality,
       avatarFallback: newTemplateAvatarFallback.trim().substring(0, 2) || newTemplateName.substring(0,2).toUpperCase() || "BT",
       initialMission: newTemplateInitialMission.trim(),
-      // Note: We don't set a templateId here, Firestore will generate one or we can use a custom ID strategy if needed.
-      // For simplicity, we'll let Firestore generate the document ID which we'll then use as templateId.
     };
 
     try {
-      const docRef = await addDoc(collection(db, "botTemplates"), {
-        ...newTemplateData,
-        createdAt: serverTimestamp(), // Optional: for tracking when template was created
-      });
-      toast({ title: "Bot-Vorlage erstellt", description: `Vorlage "${newTemplateName}" wurde gespeichert.` });
-      // Reset form
-      setNewTemplateName("");
-      setNewTemplatePersonality("standard");
-      setNewTemplateAvatarFallback("");
-      setNewTemplateInitialMission("");
+      if (editingTemplate) {
+        // Update existing template
+        const templateDocRef = doc(db, "botTemplates", editingTemplate.templateId);
+        await updateDoc(templateDocRef, { ...templateData, updatedAt: serverTimestamp() });
+        toast({ title: "Bot-Vorlage aktualisiert", description: `Vorlage "${templateData.name}" wurde gespeichert.` });
+      } else {
+        // Create new template
+        await addDoc(collection(db, "botTemplates"), {
+          ...templateData,
+          createdAt: serverTimestamp(),
+        });
+        toast({ title: "Bot-Vorlage erstellt", description: `Vorlage "${templateData.name}" wurde gespeichert.` });
+      }
+      resetForm();
     } catch (error) {
-      console.error("Error creating bot template: ", error);
-      toast({ variant: "destructive", title: "Speicherfehler", description: "Bot-Vorlage konnte nicht erstellt werden." });
+      console.error("Error saving bot template: ", error);
+      toast({ variant: "destructive", title: "Speicherfehler", description: "Bot-Vorlage konnte nicht gespeichert werden." });
     } finally {
       setIsSavingTemplate(false);
+    }
+  };
+
+  const handleEditTemplate = (template: BotTemplate) => {
+    setEditingTemplate(template);
+    setNewTemplateName(template.name);
+    setNewTemplatePersonality(template.personality);
+    setNewTemplateAvatarFallback(template.avatarFallback || "");
+    setNewTemplateInitialMission(template.initialMission || "");
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to form
+  };
+
+  const handleDeleteTemplate = async (templateId: string, templateName: string) => {
+    setIsDeleting(templateId);
+    try {
+      await deleteDoc(doc(db, "botTemplates", templateId));
+      toast({ title: "Bot-Vorlage gelöscht", description: `Vorlage "${templateName}" wurde entfernt.` });
+      if (editingTemplate?.templateId === templateId) {
+        resetForm();
+      }
+    } catch (error) {
+      console.error("Error deleting bot template: ", error);
+      toast({ variant: "destructive", title: "Fehler beim Löschen", description: "Bot-Vorlage konnte nicht gelöscht werden." });
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -106,9 +174,9 @@ export default function BotTemplateEditorPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Neue Bot-Vorlage erstellen</CardTitle>
+          <CardTitle>{editingTemplate ? "Bot-Vorlage bearbeiten" : "Neue Bot-Vorlage erstellen"}</CardTitle>
         </CardHeader>
-        <form onSubmit={handleCreateNewTemplate}>
+        <form onSubmit={handleFormSubmit}>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -139,11 +207,16 @@ export default function BotTemplateEditorPage() {
               <Textarea id="newTemplateInitialMission" value={newTemplateInitialMission} onChange={(e) => setNewTemplateInitialMission(e.target.value)} placeholder="Was soll der Bot standardmäßig tun?" rows={3} disabled={isSavingTemplate} />
             </div>
           </CardContent>
-          <CardFooter>
+          <CardFooter className="flex justify-between">
             <Button type="submit" disabled={isSavingTemplate}>
               {isSavingTemplate ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
-              Vorlage erstellen
+              {editingTemplate ? "Vorlage aktualisieren" : "Vorlage erstellen"}
             </Button>
+            {editingTemplate && (
+              <Button type="button" variant="outline" onClick={resetForm} disabled={isSavingTemplate}>
+                Abbrechen
+              </Button>
+            )}
           </CardFooter>
         </form>
       </Card>
@@ -153,8 +226,34 @@ export default function BotTemplateEditorPage() {
           <CardTitle>Vorhandene Bot-Vorlagen</CardTitle>
           <CardDescription>
             Übersicht der in der Datenbank gespeicherten Bot-Vorlagen.
-            (Bearbeiten und Löschen wird später implementiert)
           </CardDescription>
+           <div className="flex flex-col sm:flex-row gap-2 mt-4">
+            <div className="relative flex-grow">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Vorlagen durchsuchen (Name, Mission)..."
+                className="w-full pl-10 pr-4 py-2"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+                <Filter className="h-5 w-5 text-muted-foreground"/>
+                <Select value={personalityFilter} onValueChange={(value) => setPersonalityFilter(value as any)}>
+                    <SelectTrigger className="w-full sm:w-[200px]">
+                        <SelectValue placeholder="Persönlichkeit filtern" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Alle Persönlichkeiten</SelectItem>
+                        <SelectItem value="standard">Standard</SelectItem>
+                        <SelectItem value="provokateur">Provokateur</SelectItem>
+                        <SelectItem value="verteidiger">Verteidiger</SelectItem>
+                        <SelectItem value="informant">Informant</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoadingTemplates ? (
@@ -162,34 +261,71 @@ export default function BotTemplateEditorPage() {
               <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
               <p className="text-muted-foreground">Lade Vorlagen...</p>
             </div>
-          ) : templates.length > 0 ? (
+          ) : filteredTemplates.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Persönlichkeit</TableHead>
-                  <TableHead>Initiale Mission</TableHead>
-                  <TableHead>Template ID</TableHead>
+                  <TableHead className="w-1/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
+                  <TableHead className="w-3/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Name</TableHead>
+                  <TableHead className="w-2/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Persönlichkeit</TableHead>
+                  <TableHead className="w-4/12">Initiale Mission</TableHead>
+                  <TableHead className="w-2/12 text-right">Aktionen</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {templates.map((template) => (
+                {filteredTemplates.map((template) => (
                   <TableRow key={template.templateId}>
-                    <TableCell className="font-medium">{template.name}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground truncate max-w-[80px]">{template.templateId}</TableCell>
+                    <TableCell className="font-medium">
+                        <button onClick={() => handleEditTemplate(template)} className="hover:text-primary hover:underline text-left">
+                            {template.name}
+                        </button>
+                    </TableCell>
                     <TableCell>{template.personality}</TableCell>
                     <TableCell className="text-xs max-w-sm truncate">{template.initialMission || "-"}</TableCell>
-                    <TableCell className="text-xs font-mono">{template.templateId}</TableCell>
+                    <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                            <Button variant="outline" size="sm" onClick={() => handleEditTemplate(template)} title="Bearbeiten">
+                                <FileEdit className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" size="sm" disabled={isDeleting === template.templateId} title="Löschen">
+                                        {isDeleting === template.templateId ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Vorlage "{template.name}" wirklich löschen?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                    Diese Aktion kann nicht rückgängig gemacht werden. Die Vorlage wird dauerhaft entfernt.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                                    <AlertDialogAction 
+                                        onClick={() => handleDeleteTemplate(template.templateId, template.name)}
+                                        className="bg-destructive hover:bg-destructive/90"
+                                        disabled={isDeleting === template.templateId}
+                                    >
+                                    {isDeleting === template.templateId ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, löschen"}
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           ) : (
-            <p className="text-muted-foreground text-center py-6">Keine Bot-Vorlagen in der Datenbank gefunden.</p>
+            <p className="text-muted-foreground text-center py-6">
+              {searchTerm === '' && personalityFilter === 'all' ? "Keine Bot-Vorlagen in der Datenbank gefunden." : "Keine Bot-Vorlagen für Ihre Suche/Filterung gefunden."}
+            </p>
           )}
         </CardContent>
       </Card>
     </div>
   );
 }
-
-    
