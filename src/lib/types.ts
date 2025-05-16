@@ -4,14 +4,14 @@ import type { Timestamp } from 'firebase/firestore';
 
 export interface InitialPostConfig {
   authorName: string;
-  authorAvatarFallback: string; // z.B. "SYS" für System
+  authorAvatarFallback: string; 
   content: string;
   imageUrl?: string;
   platform?: 'Generic' | 'WhatsApp' | 'Instagram' | 'TikTok' | 'TwitterX';
 }
 
 export interface HumanRoleConfig {
-  id: string; // Unique ID for the role definition within the scenario
+  id: string; 
   name: string;
   description: string;
   templateOriginId?: string;
@@ -25,11 +25,11 @@ export interface ScenarioEvent {
 }
 
 export interface Scenario {
-  id: string; // Firestore document ID for the scenario
+  id: string; 
   title: string;
   kurzbeschreibung: string;
   langbeschreibung: string;
-  lernziele: string; // Was a string[], now a string for potential HTML from WYSIWYG
+  lernziele: string; 
   iconName: string;
   tags: string[];
   previewImageUrl?: string;
@@ -43,7 +43,7 @@ export interface Scenario {
 }
 
 export interface BotConfig {
-  id: string; // Unique ID for the bot definition within the scenario
+  id: string; 
   name: string;
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   avatarFallback?: string;
@@ -51,12 +51,12 @@ export interface BotConfig {
   isActive?: boolean;
   autoTimerEnabled?: boolean;
   initialMission?: string;
-  templateOriginId?: string; // ID der Vorlage, falls davon erstellt
-  currentMission?: string; // Von Admin im Dashboard gesetzt
+  templateOriginId?: string; 
+  currentMission?: string; 
 }
 
 export interface BotTemplate {
-  templateId: string; // This will be the Firestore document ID
+  templateId: string; 
   name: string;
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   avatarFallback?: string;
@@ -65,7 +65,7 @@ export interface BotTemplate {
 }
 
 export interface RoleTemplate {
-  templateId: string; // This will be the Firestore document ID
+  templateId: string; 
   name: string;
   description: string;
   createdAt?: Timestamp;
@@ -73,46 +73,48 @@ export interface RoleTemplate {
 
 export interface SessionData {
   scenarioId: string;
-  createdAt: Timestamp | Date | any; // Firestore Timestamp oder JS Date für Flexibilität mit ServerTimestamp
-  updatedAt?: Timestamp | Date | any;
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
   invitationLink: string;
   invitationToken?: string;
-  status: "pending" | "open" | "active" | "paused" | "ended"; // Added "pending" and "open"
+  status: "pending" | "open" | "active" | "paused" | "ended";
   messageCooldownSeconds: number;
+  roleSelectionLocked?: boolean;
+  simulationStartCountdownEndTime?: Timestamp | null;
 }
 
 export interface Participant {
-  id: string; // Firestore document ID for this participant in this session
-  userId: string; // A unique identifier for the user across sessions if possible, or generated per session
-  name: string; // Klarname
-  nickname?: string; // Nickname for chat display
-  role: string; // Name der Rolle
+  id: string; 
+  userId: string; 
+  realName: string; // Klarname
+  displayName: string; // Nickname, im Chat sichtbar
+  role: string; 
   avatarFallback: string;
   isBot: boolean;
-  joinedAt?: Timestamp | Date | any;
+  joinedAt?: Timestamp;
   status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
   isMuted?: boolean;
-  botConfig?: BotConfig; // Wird direkt aus scenario.defaultBotsConfig übernommen und ggf. für die Sitzung angepasst
-  botScenarioId?: string; // ID linking back to the BotConfig in the Scenario document's defaultBotsConfig array
+  botConfig?: BotConfig; 
+  botScenarioId?: string; 
 }
 
 export interface DisplayParticipant extends Participant {}
 
 export interface Message {
-  id: string; // Firestore document ID
+  id: string; 
   senderUserId: string;
-  senderName: string; // Nickname, wenn vorhanden, sonst Klarname für User; Bot-Name für Bots; "Admin" für Admins
+  senderName: string; // This will be the displayName (nickname)
   senderType: 'admin' | 'user' | 'bot' | 'system';
   avatarFallback: string;
   content: string;
-  timestamp: Timestamp | Date | null | any;
+  timestamp: Timestamp | null;
   replyToMessageId?: string;
   replyToMessageContentSnippet?: string;
   replyToMessageSenderName?: string;
   botFlag?: boolean;
   imageUrl?: string;
   imageFileName?: string;
-  reactions?: { [emoji: string]: string[] }; // emoji: userId[]
+  reactions?: { [emoji: string]: string[] }; 
   platform?: 'Generic' | 'WhatsApp' | 'Instagram' | 'TikTok' | 'TwitterX';
 }
 

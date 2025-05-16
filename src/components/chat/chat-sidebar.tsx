@@ -10,13 +10,13 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from '@/lib/utils';
 import type { Scenario, DisplayParticipant } from "@/lib/types";
 import type { ParticipantColor } from '@/lib/config';
-import { Bot as BotIcon, User, VolumeX, ShieldCheck, Crown } from "lucide-react";
+import { Bot as BotIcon, User, VolumeX, ShieldCheck, Crown, Loader2 } from "lucide-react"; // Added Loader2
 
 interface ChatSidebarProps {
   participants: DisplayParticipant[];
-  isLoadingParticipants: boolean; // Added this prop
+  isLoadingParticipants: boolean; 
   currentUserId: string | null;
-  userName: string | null; // This will be the nickname for display
+  userName: string | null; // This is displayName (nickname)
   userRole: string | null;
   userAvatarFallback: string;
   currentScenario: Scenario | undefined;
@@ -29,7 +29,7 @@ const ChatSidebar = memo(function ChatSidebar({
   participants,
   isLoadingParticipants,
   currentUserId,
-  userName, // This is nickname
+  userName, // This is displayName (nickname)
   userRole,
   userAvatarFallback,
   currentScenario,
@@ -40,31 +40,31 @@ const ChatSidebar = memo(function ChatSidebar({
   return (
     <>
       <h2 className="text-lg font-semibold">Teilnehmende ({isLoadingParticipants ? '...' : participants.length})</h2>
-      <ScrollArea className="flex-1 -mr-2">
+      <ScrollArea className="flex-1 -mr-2"> 
         <div className="space-y-3 py-2 pr-2">
           {isLoadingParticipants ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
               <p className="text-sm text-muted-foreground">Lade Teilnehmer...</p>
             </div>
-          ) : participants.length === 0 ? (
+          ) : (!participants || participants.length === 0) ? (
             <p className="text-sm text-muted-foreground py-4 text-center">Noch keine Teilnehmer beigetreten.</p>
           ) : (
             participants.map((p) => {
               const pColor = getParticipantColorClasses(p.userId, p.isBot ? 'bot' : (p.userId === currentUserId && isAdminView ? 'admin' : 'user'));
               const isAdminParticipant = p.userId === currentUserId && isAdminView;
               const isCurrentParticipantMuted = p.isMuted ?? false;
-              const displayName = p.nickname || p.name; // Prefer nickname
+              const participantDisplayName = p.displayName || p.realName; // Use displayName (nickname)
 
               return (
                 <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
                   <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                    <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={displayName} data-ai-hint="person user"/>
-                    <AvatarFallback className={cn(pColor.bg, pColor.text)}>{p.avatarFallback}</AvatarFallback>
+                    <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={participantDisplayName} data-ai-hint="person user"/>
+                    <AvatarFallback className={cn("font-semibold",pColor.bg, pColor.text)}>{p.avatarFallback}</AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="text-sm font-medium flex items-center">
-                      <span className={cn("text-neutral-200", pColor.nameText)}>{displayName}</span> {/* Use nickname */}
+                      <span className={cn("text-neutral-200", pColor.nameText)}>{participantDisplayName}</span>
                       {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-purple-700 text-white border border-purple-900/50 shadow-sm flex items-center gap-1"><BotIcon className="h-3 w-3" />BOT</Badge>}
                       {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-red-700 text-white border border-red-900/50 shadow-sm flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
                       {p.userId === currentUserId && !isAdminView && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">Du</Badge>}
@@ -78,7 +78,7 @@ const ChatSidebar = memo(function ChatSidebar({
           )}
         </div>
       </ScrollArea>
-      {!isAdminView && userRole && currentScenario && userName && currentUserId && ( // userName here is the nickname
+      {!isAdminView && userRole && currentScenario && userName && currentUserId && ( 
         <>
           <Separator />
           <Card className="mt-auto bg-muted/30">
@@ -91,16 +91,16 @@ const ChatSidebar = memo(function ChatSidebar({
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <CardTitle className="text-base">Du als: {userName}</CardTitle> {/* userName is nickname */}
+                  <CardTitle className="text-base">Du als: {userName}</CardTitle> {/* userName is displayName (nickname) */}
                   <p className="text-xs text-muted-foreground">Deine Rolle: {userRole}</p>
                 </div>
               </div>
             </CardHeader>
-            {currentScenario.langbeschreibung && (
+            {currentScenario?.humanRolesConfig?.find(r => r.name === userRole)?.description && (
               <CardContent className="p-3 pt-0">
-                  <ScrollArea className="h-[80px] text-xs"> {/* Reduced height for role description */}
+                  <ScrollArea className="h-[80px] text-xs"> 
                       <CardDescription className="text-muted-foreground border-l-2 border-primary pl-2 italic">
-                          {currentScenario.humanRolesConfig?.find(r => r.name === userRole)?.description || currentScenario.langbeschreibung}
+                          {currentScenario.humanRolesConfig.find(r => r.name === userRole)?.description}
                       </CardDescription>
                   </ScrollArea>
               </CardContent>

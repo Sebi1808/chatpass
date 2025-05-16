@@ -28,7 +28,11 @@ export function useSessionData(sessionId: string | null) {
     const unsubscribe = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         // console.log(`useSessionData: Received session data for ${sessionId}:`, docSnap.data());
-        const data = docSnap.data() as Omit<SessionData, 'createdAt' | 'updatedAt'> & { createdAt?: Timestamp | Date, updatedAt?: Timestamp | Date };
+        const data = docSnap.data() as Omit<SessionData, 'createdAt' | 'updatedAt' | 'simulationStartCountdownEndTime'> & { 
+            createdAt?: Timestamp | Date, 
+            updatedAt?: Timestamp | Date,
+            simulationStartCountdownEndTime?: Timestamp | Date | null 
+        };
         
         let createdAtTimestamp: Timestamp | undefined = undefined;
         if (data.createdAt instanceof Timestamp) {
@@ -47,17 +51,34 @@ export function useSessionData(sessionId: string | null) {
         } else if (data.updatedAt && typeof (data.updatedAt as any).seconds === 'number') {
            updatedAtTimestamp = new Timestamp((data.updatedAt as any).seconds, (data.updatedAt as any).nanoseconds);
         }
+
+        let countdownEndTime: Timestamp | null = null;
+        if (data.simulationStartCountdownEndTime === null) {
+            countdownEndTime = null;
+        } else if (data.simulationStartCountdownEndTime instanceof Timestamp) {
+            countdownEndTime = data.simulationStartCountdownEndTime;
+        } else if (data.simulationStartCountdownEndTime instanceof Date) {
+            countdownEndTime = Timestamp.fromDate(data.simulationStartCountdownEndTime);
+        } else if (data.simulationStartCountdownEndTime && typeof (data.simulationStartCountdownEndTime as any).seconds === 'number') {
+            countdownEndTime = new Timestamp((data.simulationStartCountdownEndTime as any).seconds, (data.simulationStartCountdownEndTime as any).nanoseconds);
+        }
         
         setSessionData({
             ...data,
-            createdAt: createdAtTimestamp || Timestamp.now(), // Fallback if undefined
-            updatedAt: updatedAtTimestamp
+            scenarioId: data.scenarioId || sessionId, // Ensure scenarioId is present
+            createdAt: createdAtTimestamp || Timestamp.now(), 
+            updatedAt: updatedAtTimestamp,
+            status: data.status || "pending",
+            invitationLink: data.invitationLink || "",
+            messageCooldownSeconds: data.messageCooldownSeconds ?? 0,
+            roleSelectionLocked: data.roleSelectionLocked ?? false,
+            simulationStartCountdownEndTime: countdownEndTime,
         } as SessionData);
         setError(null);
       } else {
         // console.warn(`useSessionData: Session document ${sessionId} does not exist.`);
         setSessionData(null);
-        setError("Sitzungsdokument nicht gefunden.");
+        setError("Sitzungsdokument nicht gefunden. Der Admin muss die Sitzung möglicherweise erst im Dashboard öffnen.");
       }
       setIsLoading(false);
     }, (err) => {
