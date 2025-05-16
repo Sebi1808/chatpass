@@ -28,7 +28,7 @@ import {
   ArrowDown,
   LayoutGrid // Added LayoutGrid import
 } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"; // Added TabsContent
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { collection, onSnapshot, query, orderBy as firestoreOrderBy, Timestamp, deleteDoc, doc, addDoc, getDoc, serverTimestamp } from 'firebase/firestore';
@@ -65,25 +65,39 @@ export default function ScenarioEditorHubPage() {
   useEffect(() => {
     setIsLoading(true);
     const scenariosColRef = collection(db, "scenarios");
-    // No specific Firestore orderBy here for status, will be handled client-side with title/ID
-    // Default ordering by title can be a good start if many scenarios exist.
-    // For more complex default sorting (e.g. updatedAt desc), an index would be needed.
+    
+    // For Firestore, a compound query with `orderBy` on a different field than `where` often needs a composite index.
+    // For now, we sort client-side after fetching all or filtering by status if needed.
+    // If performance becomes an issue with many scenarios, creating the Firestore index is the way to go.
+    // Default query: order by title. Filtering for status is done client-side.
     const q = query(scenariosColRef, firestoreOrderBy("title", "asc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedScenarios: Scenario[] = [];
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        // Ensure Timestamps are handled correctly
-        const createdAt = data.createdAt instanceof Timestamp ? data.createdAt : (data.createdAt?.toDate ? Timestamp.fromDate(data.createdAt.toDate()) : undefined);
-        const updatedAt = data.updatedAt instanceof Timestamp ? data.updatedAt : (data.updatedAt?.toDate ? Timestamp.fromDate(data.updatedAt.toDate()) : undefined);
+        
+        let createdAt: Timestamp | undefined = undefined;
+        if (data.createdAt instanceof Timestamp) {
+            createdAt = data.createdAt;
+        } else if (data.createdAt && typeof (data.createdAt as any).seconds === 'number') {
+            createdAt = new Timestamp((data.createdAt as any).seconds, (data.createdAt as any).nanoseconds);
+        }
+
+        let updatedAt: Timestamp | undefined = undefined;
+        if (data.updatedAt instanceof Timestamp) {
+            updatedAt = data.updatedAt;
+        } else if (data.updatedAt && typeof (data.updatedAt as any).seconds === 'number') {
+            updatedAt = new Timestamp((data.updatedAt as any).seconds, (data.updatedAt as any).nanoseconds);
+        }
+
 
         fetchedScenarios.push({
           id: docSnap.id,
           title: data.title || "Unbenanntes Szenario",
           kurzbeschreibung: data.kurzbeschreibung || "",
           langbeschreibung: data.langbeschreibung || "",
-          lernziele: data.lernziele || "",
+          lernziele: data.lernziele || "", // Assuming lernziele is stored as a single string
           iconName: data.iconName || "ImageIcon",
           tags: data.tags || [],
           previewImageUrl: data.previewImageUrl || "",
@@ -103,7 +117,7 @@ export default function ScenarioEditorHubPage() {
       toast({
         variant: "destructive",
         title: "Fehler beim Laden der Szenarien",
-        description: "Szenarien konnten nicht aus der Datenbank geladen werden.",
+        description: "Szenarien konnten nicht aus der Datenbank geladen werden. Benötigt die Abfrage einen Index?",
       });
       setIsLoading(false);
     });
@@ -161,15 +175,18 @@ export default function ScenarioEditorHubPage() {
   const handleCreateNewScenario = async () => {
     setIsCreatingNew(true);
     try {
-      const newScenarioData = createDefaultScenario();
-      const scenarioToSave: Omit<Scenario, 'id'> & { createdAt: Timestamp, updatedAt: Timestamp } = {
-        ...newScenarioData,
+      const newScenarioBase = createDefaultScenario();
+      const scenarioToSave: Scenario = {
+        ...newScenarioBase,
+        id: '', // Firestore will generate this, but type needs it
         title: "Neues Szenario (Entwurf)",
         status: 'draft',
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
+        createdAt: serverTimestamp() as Timestamp, // Firestore will convert this
+        updatedAt: serverTimestamp() as Timestamp, // Firestore will convert this
       };
-      const docRef = await addDoc(collection(db, "scenarios"), scenarioToSave);
+      // Firestore expects data without the 'id' field for addDoc
+      const { id, ...dataToSave } = scenarioToSave;
+      const docRef = await addDoc(collection(db, "scenarios"), dataToSave);
       toast({
         title: "Szenario erstellt",
         description: `Neues Szenario "${scenarioToSave.title}" wurde als Entwurf angelegt.`,
@@ -210,11 +227,11 @@ export default function ScenarioEditorHubPage() {
       const scenarioSnap = await getDoc(scenarioToDuplicateRef);
 
       if (scenarioSnap.exists()) {
-        const originalScenarioData = scenarioSnap.data() as Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>; // Type assertion
+        const originalScenarioData = scenarioSnap.data() as Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>; 
         const duplicatedScenarioData = {
           ...originalScenarioData,
           title: `Kopie von ${originalScenarioData.title || 'Unbenanntes Szenario'}`,
-          status: 'draft' as 'draft' | 'published', // Ensure status type
+          status: 'draft' as 'draft' | 'published', 
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
@@ -253,7 +270,7 @@ export default function ScenarioEditorHubPage() {
             Verwalten Sie Szenarien und Vorlagen für Chat-Simulationen.
           </p>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto flex-col sm:flex-row">
            <Link href="/admin" passHref legacyBehavior>
             <Button variant="outline" className="w-full sm:w-auto">
                 <LayoutGrid className="mr-2 h-5 w-5" /> Zur Szenarienauswahl
@@ -291,7 +308,7 @@ export default function ScenarioEditorHubPage() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     type="search"
-                    placeholder="Szenarien durchsuchen (Titel, Beschreibung, Tags)..."
+                    placeholder="Szenarien durchsuchen (Titel, Kurzbeschreibung, Tags)..."
                     className="w-full pl-10 pr-4 py-2"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -323,27 +340,27 @@ export default function ScenarioEditorHubPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[120px] cursor-pointer hover:text-primary" onClick={() => requestSort('id')}>
+                        <TableHead className="w-[100px] cursor-pointer hover:text-primary" onClick={() => requestSort('id')}>
                           ID {getSortIcon('id')}
                         </TableHead>
                         <TableHead className="cursor-pointer hover:text-primary" onClick={() => requestSort('title')}>
                           Titel {getSortIcon('title')}
                         </TableHead>
                         <TableHead>Kurzbeschreibung</TableHead>
-                        <TableHead className="w-[150px] cursor-pointer hover:text-primary" onClick={() => requestSort('status')}>
+                        <TableHead className="w-[130px] cursor-pointer hover:text-primary" onClick={() => requestSort('status')}>
                           Status {getSortIcon('status')}
                         </TableHead>
                         <TableHead>Tags</TableHead>
-                         <TableHead className="w-[180px] cursor-pointer hover:text-primary" onClick={() => requestSort('updatedAt')}>
+                         <TableHead className="w-[160px] cursor-pointer hover:text-primary" onClick={() => requestSort('updatedAt')}>
                           Letzte Änderung {getSortIcon('updatedAt')}
                         </TableHead>
-                        <TableHead className="text-right w-[200px] sm:w-auto">Aktionen</TableHead>
+                        <TableHead className="text-right w-[220px]">Aktionen</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredAndSortedScenarios.map((scenario: Scenario) => (
                         <TableRow key={scenario.id}>
-                          <TableCell className="font-mono text-xs text-muted-foreground truncate" title={scenario.id}>{scenario.id.substring(0, 10)}...</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground truncate max-w-[80px]" title={scenario.id}>{scenario.id.substring(0, 8)}...</TableCell>
                           <TableCell className="font-medium">
                             <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
                               <a className="hover:text-primary hover:underline">{scenario.title}</a>
@@ -352,28 +369,28 @@ export default function ScenarioEditorHubPage() {
                           <TableCell className="text-muted-foreground text-xs max-w-xs truncate">{scenario.kurzbeschreibung}</TableCell>
                           <TableCell>
                             <Badge variant={scenario.status === 'published' ? 'default' : 'secondary'} 
-                                   className={scenario.status === 'published' ? 'bg-green-500 hover:bg-green-600' : 'bg-amber-500 hover:bg-amber-600'}>
+                                   className={scenario.status === 'published' ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-amber-500 hover:bg-amber-600 text-white'}>
                               {scenario.status === 'published' ? <ShieldCheck className="mr-1.5 h-3.5 w-3.5"/> : <FileEdit className="mr-1.5 h-3.5 w-3.5"/>}
-                              {scenario.status === 'published' ? 'Veröffentlicht' : 'Entwurf'}
+                              {scenario.status === 'published' ? 'Veröffent.' : 'Entwurf'}
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-wrap gap-1 max-w-[200px] overflow-hidden">
-                              {(scenario.tags || []).slice(0, 3).map((tag) => (
+                            <div className="flex flex-wrap gap-1 max-w-[150px] overflow-hidden">
+                              {(scenario.tags || []).slice(0, 2).map((tag) => (
                                 <Badge key={tag} variant="outline" className="text-xs">
                                   {tag}
                                 </Badge>
                               ))}
-                              {(scenario.tags || []).length > 3 && <Badge variant="outline" className="text-xs">...</Badge>}
+                              {(scenario.tags || []).length > 2 && <Badge variant="outline" className="text-xs">...</Badge>}
                             </div>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
-                            {scenario.updatedAt instanceof Timestamp ? scenario.updatedAt.toDate().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                            {scenario.updatedAt instanceof Timestamp ? scenario.updatedAt.toDate().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : (scenario.createdAt instanceof Timestamp ? 'Erstellt: ' + scenario.createdAt.toDate().toLocaleDateString('de-DE') : 'N/A')}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               <Link href={`/admin/session-dashboard/${scenario.id}`} passHref legacyBehavior>
-                                <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90" title="Dashboard/Simulation starten" disabled={scenario.status !== 'published'}>
+                                <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90" title="Dashboard/Simulation starten">
                                   <PlayCircle className="h-4 w-4" /> 
                                 </Button>
                               </Link>
