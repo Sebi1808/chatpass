@@ -28,10 +28,11 @@ export function useSessionData(sessionId: string | null) {
     const unsubscribe = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         // console.log(`useSessionData: Received session data for ${sessionId}:`, docSnap.data());
-        const data = docSnap.data() as Omit<SessionData, 'createdAt' | 'updatedAt' | 'simulationStartCountdownEndTime'> & { 
+        const data = docSnap.data() as Omit<SessionData, 'createdAt' | 'updatedAt' | 'simulationStartCountdownEndTime' | 'roleSelectionLocked'> & { 
             createdAt?: Timestamp | Date, 
             updatedAt?: Timestamp | Date,
-            simulationStartCountdownEndTime?: Timestamp | Date | null 
+            simulationStartCountdownEndTime?: Timestamp | Date | null,
+            roleSelectionLocked?: boolean,
         };
         
         let createdAtTimestamp: Timestamp | undefined = undefined;
@@ -65,11 +66,12 @@ export function useSessionData(sessionId: string | null) {
         
         setSessionData({
             ...data,
-            scenarioId: data.scenarioId || sessionId, // Ensure scenarioId is present
+            scenarioId: data.scenarioId || sessionId, 
             createdAt: createdAtTimestamp || Timestamp.now(), 
             updatedAt: updatedAtTimestamp,
             status: data.status || "pending",
             invitationLink: data.invitationLink || "",
+            invitationToken: data.invitationToken,
             messageCooldownSeconds: data.messageCooldownSeconds ?? 0,
             roleSelectionLocked: data.roleSelectionLocked ?? false,
             simulationStartCountdownEndTime: countdownEndTime,

@@ -9,17 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Scenario, SessionData, Participant, HumanRoleConfig } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, LogIn, AlertTriangle, Loader2, UserCheck, Info, Users, CheckCircle, Clock, Users2 } from "lucide-react";
+import { ArrowLeft, LogIn, AlertTriangle, Loader2, UserCheck, Info, Users2, CheckCircle, Clock, UserPlus, Users as UsersIcon, Check } from "lucide-react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, Timestamp, onSnapshot, updateDoc, runTransaction } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, Timestamp, onSnapshot, updateDoc, runTransaction, setDoc } from "firebase/firestore";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useSessionData } from "@/hooks/use-session-data";
-import { createDefaultScenario } from '@/app/admin/scenario-editor/[scenarioId]/page'; // Import helper
+import { createDefaultScenario } from '@/app/admin/scenario-editor/[scenarioId]/page'; 
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+
 
 type JoinStep = "nameInput" | "roleSelection" | "waitingRoom";
 
@@ -37,6 +39,16 @@ const LoadingScreen = ({ text = "Sitzung wird geladen..." }: { text?: string }) 
   </div>
 );
 
+// Helper to generate a simple unique enough ID for local use
+const generateLocalUserId = () => {
+  let userId = localStorage.getItem('localUserId');
+  if (!userId) {
+    userId = `localUser-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    localStorage.setItem('localUserId', userId);
+  }
+  return userId;
+};
+
 
 export default function JoinSessionPage() {
   const router = useRouter();
@@ -46,40 +58,59 @@ export default function JoinSessionPage() {
 
   const sessionId = params.sessionId as string;
   const urlToken = searchParamsHook.get("token");
-  const initialStep = (searchParamsHook.get("step") as JoinStep) || "nameInput";
-
-  const [step, setStep] = useState<JoinStep>(initialStep);
+  
+  const [joinStep, setJoinStep] = useState<JoinStep>("nameInput");
   
   const [realName, setRealName] = useState("");
   const [displayName, setDisplayName] = useState(""); // Nickname
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>("");
 
   const [currentScenario, setCurrentScenario] = useState<Scenario | null>(null);
-  const { sessionData, isLoading: isLoadingSessionHook, error: sessionErrorHook } = useSessionData(sessionId);
+  const { sessionData, isLoading: isLoadingSessionData, error: sessionError } = useSessionData(sessionId);
   
   const [sessionParticipants, setSessionParticipants] = useState<Participant[]>([]);
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(true);
   const [isLoadingScenario, setIsLoadingScenario] = useState(true); 
   
   const [isSubmittingName, setIsSubmittingName] = useState(false);
-  const [isJoining, setIsJoining] = useState(false);
+  const [isProcessingRole, setIsProcessingRole] = useState(false);
 
   const [accessError, setAccessError] = useState<string | null>(null);
-  const [userHasJoined, setUserHasJoined] = useState(false); // Tracks if current browser session has joined this Firestore session
+  const [userHasJoinedBefore, setUserHasJoinedBefore] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
-  const [joinedParticipantData, setJoinedParticipantData] = useState<Participant | null>(null);
+  const [participantDocId, setParticipantDocId] = useState<string | null>(null);
 
 
   useEffect(() => {
-    if (sessionErrorHook) {
-      setAccessError(sessionErrorHook);
+    if (sessionError) {
+      setAccessError(sessionError);
     }
-  }, [sessionErrorHook]);
+  }, [sessionError]);
 
-  // Effect to load scenario details once sessionData is available
+  useEffect(() => {
+    const localId = generateLocalUserId();
+    setUserId(localId);
+    const storedRealName = localStorage.getItem(`chatUser_${sessionId}_${localId}_realName`);
+    const storedDisplayName = localStorage.getItem(`chatUser_${sessionId}_${localId}_displayName`);
+    const storedRoleId = localStorage.getItem(`chatUser_${sessionId}_${localId}_roleId`);
+
+    if (storedRealName && storedDisplayName) {
+      setRealName(storedRealName);
+      setDisplayName(storedDisplayName);
+      setUserHasJoinedBefore(true); // Indicates this browser/user combo has entered names before
+      if (storedRoleId) {
+        setSelectedRoleId(storedRoleId);
+      }
+      // Potentially advance step if names are already there
+      // setJoinStep("roleSelection"); // Consider if this is desired UX
+    }
+  }, [sessionId]);
+
+
   useEffect(() => {
     if (!sessionData || !sessionData.scenarioId) {
-      if (!isLoadingSessionHook && !sessionData && !sessionErrorHook) {
+      if (!isLoadingSessionData && !sessionData && !sessionError) {
          setAccessError(prev => prev || "Sitzungsdaten nicht gefunden oder ungültige Szenario-Referenz.");
       }
       setIsLoadingScenario(false);
@@ -96,7 +127,9 @@ export default function JoinSessionPage() {
         } else {
           const scenario = { id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario;
           setCurrentScenario(scenario);
-          setAccessError(null); 
+          if (accessError === "Sitzungsdaten nicht gefunden oder ungültige Szenario-Referenz." || accessError?.startsWith("Szenariodetails konnten nicht geladen werden")) {
+             setAccessError(null); 
+          }
         }
       })
       .catch(error => {
@@ -107,88 +140,54 @@ export default function JoinSessionPage() {
       .finally(() => {
         setIsLoadingScenario(false);
       });
-  }, [sessionData, isLoadingSessionHook, sessionErrorHook]);
+  }, [sessionData, isLoadingSessionData, sessionError, accessError]);
 
-  // Check if user already joined this session (from localStorage)
+
   useEffect(() => {
-    if (!sessionId) return;
-    const storedUserId = localStorage.getItem(`chatUser_${sessionId}_userId`);
-    const storedRoleName = localStorage.getItem(`chatUser_${sessionId}_role`);
-    const storedDisplayName = localStorage.getItem(`chatUser_${sessionId}_displayName`);
-    const storedRealName = localStorage.getItem(`chatUser_${sessionId}_realName`);
-
-    if (storedUserId && storedRoleName && storedDisplayName && storedRealName) {
-      setUserHasJoined(true); // Indicates this browser has credentials
-      setRealName(storedRealName);
-      setDisplayName(storedDisplayName);
-      setJoinedParticipantData(prev => prev || { // Keep existing if already set by join logic
-          id: storedUserId, // This is actually the participant doc ID if we had it, using userId for now
-          userId: storedUserId,
-          realName: storedRealName,
-          displayName: storedDisplayName,
-          role: storedRoleName,
-          avatarFallback: storedDisplayName.substring(0,2).toUpperCase() || "XX",
-          isBot: false,
-      });
-      // If user has joined and is not in nameInput step, try to find their role in current scenario
-      if (step !== "nameInput" && currentScenario?.humanRolesConfig) {
-        const roleConfig = currentScenario.humanRolesConfig.find(r => r.name === storedRoleName);
-        if (roleConfig) setSelectedRoleId(roleConfig.id);
-      }
-    }
-  }, [sessionId, currentScenario, step]);
-
-
-  // Effect to validate access based on session status and token
-  useEffect(() => {
-    if (isLoadingSessionHook || isLoadingScenario) return; // Wait for initial data
+    if (isLoadingSessionData || isLoadingScenario) return;
 
     if (!sessionData || !urlToken || sessionData.invitationToken !== urlToken) {
-      if (!accessError) { // Only set if no more specific error exists
+      if (!accessError) {
            setAccessError("Ungültiger oder abgelaufener Einladungslink.");
       }
       return;
     }
     
-    // Check if a user from this browser has already joined this session
-    // If so, and the session is open, they should go to/stay in the waiting room
-    // If the session is active, they should be redirected to chat
-    if (userHasJoined) {
+    if (userHasJoinedBefore && participantDocId) { // If user has already completed name step and has a participant doc ID
         if (sessionData.status === "active") {
             router.push(`/chat/${sessionId}`);
             return;
-        } else if (sessionData.status === "open" && step !== "waitingRoom") {
-             if (step !== 'nameInput' || (localStorage.getItem(`chatUser_${sessionId}_role`) && selectedRoleId)) {
-                setStep("waitingRoom");
-             } // else stay in name input or role selection if they backed out
+        } else if (sessionData.status === "open" && joinStep !== "waitingRoom") {
+             if (selectedRoleId) { // if they have a role, they are in waiting room
+                setJoinStep("waitingRoom");
+             } else if (joinStep !== "roleSelection") { // if no role yet, go to role selection
+                setJoinStep("roleSelection");
+             }
         }
     }
     
     if (sessionData.status === "pending") {
         setAccessError("Der Administrator bereitet die Sitzung vor. Bitte warte einen Moment oder versuche es später erneut.");
-    } else if (sessionData.status === "active" && !userHasJoined) { 
+    } else if (sessionData.status === "active" && !participantDocId) { 
         setAccessError("Diese Simulation läuft bereits. Ein neuer Beitritt ist nicht möglich.");
     } else if (sessionData.status === "ended") {
         setAccessError("Diese Sitzung wurde bereits beendet.");
     } else if (sessionData.status === "paused") {
         setAccessError("Diese Sitzung ist aktuell pausiert. Ein Beitritt ist momentan nicht möglich.");
-    } else if (sessionData.status === "open" && !currentScenario?.humanRolesConfig?.length && step === 'roleSelection') {
-        setAccessError("Für dieses Szenario sind keine Teilnehmerrollen definiert.");
     } else {
-       if (accessError && (accessError.includes("Ungültiger oder abgelaufener Einladungslink.") || accessError.includes("Sitzungsdaten nicht gefunden")) ) {
+       if (accessError && (accessError.includes("Ungültiger oder abgelaufener Einladungslink."))) {
          // Don't clear these specific errors
        } else {
-         setAccessError(null); // Clear other errors if conditions are met for join
+         setAccessError(null); 
        }
     }
-  }, [sessionId, sessionData, urlToken, userHasJoined, currentScenario, step, router, accessError, isLoadingSessionHook, isLoadingScenario]);
+  }, [sessionId, sessionData, urlToken, userHasJoinedBefore, participantDocId, currentScenario, joinStep, router, accessError, isLoadingSessionData, isLoadingScenario]);
 
-
-  // Effect to load participants for role selection and waiting room
+  // Listener for sessionParticipants for role selection display
   useEffect(() => {
-    if (!sessionId || !currentScenario || (step !== 'roleSelection' && step !== 'waitingRoom')) {
+    if (!sessionId || joinStep !== 'roleSelection') {
       setIsLoadingParticipants(false);
-      if (step !== 'nameInput' && step !== 'waitingRoom') setSessionParticipants([]);
+      if (joinStep !== 'roleSelection') setSessionParticipants([]); // Clear if not in role selection step
       return;
     }
     
@@ -203,17 +202,16 @@ export default function JoinSessionPage() {
       setIsLoadingParticipants(false);
     }, (error) => {
       console.error("Error fetching session participants:", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmerdaten konnten nicht geladen werden." });
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmerdaten für Rollenauswahl konnten nicht geladen werden." });
       setIsLoadingParticipants(false);
       setSessionParticipants([]);
     });
     return () => unsubscribe();
-  }, [sessionId, toast, currentScenario, step]);
-
+  }, [sessionId, toast, joinStep]);
 
   // Effect for countdown and redirection from waiting room
   useEffect(() => {
-    if (step !== "waitingRoom" || !sessionData?.simulationStartCountdownEndTime) {
+    if (joinStep !== "waitingRoom" || !sessionData?.simulationStartCountdownEndTime) {
       setCountdownSeconds(null);
       return;
     }
@@ -226,178 +224,148 @@ export default function JoinSessionPage() {
       if (remainingMillis <= 0) {
         setCountdownSeconds(0);
         clearInterval(interval);
-         // The redirection to chat is now handled by the session status listener below
+        // Redirection is handled by status listener now
       } else {
         setCountdownSeconds(Math.ceil(remainingMillis / 1000));
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [step, sessionData, sessionId, router, toast]);
+  }, [joinStep, sessionData?.simulationStartCountdownEndTime]);
 
-   // Effect to listen for session status change to "active" while in waiting room (or any step if already joined)
+   // Effect to listen for session status change to "active" while in waiting room
   useEffect(() => {
-    if ((step === "waitingRoom" || userHasJoined) && sessionId && sessionData) {
+    if (joinStep === "waitingRoom" && sessionId && sessionData) {
       if (sessionData.status === "active") {
-        if (countdownSeconds !== 0 && step === "waitingRoom") { 
-            toast({title: "Simulation gestartet!", description: "Du wirst zum Chat weitergeleitet."});
-        } else if (step !== "waitingRoom" && userHasJoined) { // User re-opened join page while session became active
-             toast({title: "Simulation läuft bereits!", description: "Du wirst zum Chat weitergeleitet."});
-        }
+        toast({title: "Simulation gestartet!", description: "Du wirst zum Chat weitergeleitet."});
         router.push(`/chat/${sessionId}`);
-      } else if ((sessionData.status === "ended" || sessionData.status === "paused") && step === "waitingRoom") {
+      } else if ((sessionData.status === "ended" || sessionData.status === "paused") && joinStep === "waitingRoom") {
         setAccessError(`Die Sitzung wurde vom Administrator ${sessionData.status === "ended" ? "beendet" : "pausiert"}.`);
-        // Consider resetting step to 'nameInput' or showing a specific "session ended/paused" message
-        // For now, accessError will be displayed.
       }
     }
-  }, [step, sessionId, sessionData, userHasJoined, router, toast, countdownSeconds]);
+  }, [joinStep, sessionId, sessionData, router, toast]);
 
-
-  const handleNameSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleNameSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmittingName(true);
     if (!realName.trim()) {
       toast({ variant: "destructive", title: "Fehler", description: "Bitte Klarnamen eingeben." });
-      setIsSubmittingName(false);
-      return;
+      setIsSubmittingName(false); return;
     }
     if (!displayName.trim()) {
       toast({ variant: "destructive", title: "Fehler", description: "Bitte Nicknamen eingeben." });
-      setIsSubmittingName(false);
-      return;
+      setIsSubmittingName(false); return;
     }
-    localStorage.setItem(`chatUser_${sessionId}_realName`, realName.trim());
-    localStorage.setItem(`chatUser_${sessionId}_displayName`, displayName.trim());
-    router.push(`/join/${sessionId}?token=${urlToken}&step=roleSelection`, { scroll: false });
-    setStep("roleSelection");
-    setIsSubmittingName(false);
+
+    localStorage.setItem(`chatUser_${sessionId}_${userId}_realName`, realName.trim());
+    localStorage.setItem(`chatUser_${sessionId}_${userId}_displayName`, displayName.trim());
+
+    try {
+      const participantRef = doc(db, "sessions", sessionId, "participants", userId);
+      const participantSnap = await getDoc(participantRef);
+
+      const participantData: Partial<Participant> = {
+        userId: userId,
+        realName: realName.trim(),
+        displayName: displayName.trim(),
+        isBot: false,
+        status: "Beigetreten", // Initial status when names are set
+        // role and roleId will be set in the next step or if already set
+      };
+
+      if (participantSnap.exists()) {
+        await updateDoc(participantRef, {
+            ...participantData,
+            role: participantSnap.data().role || "", // keep existing role if any
+            roleId: participantSnap.data().roleId || null,
+            updatedAt: serverTimestamp()
+        });
+      } else {
+        await setDoc(participantRef, {
+            ...participantData,
+            role: "", // No role selected yet
+            roleId: null,
+            joinedAt: serverTimestamp()
+        });
+      }
+      setParticipantDocId(userId); // Store the doc ID which is our userId
+      setUserHasJoinedBefore(true);
+      setJoinStep("roleSelection");
+      toast({ title: "Namen bestätigt", description: "Wähle nun deine Rolle."});
+    } catch (error: any) {
+      console.error("Error saving/updating participant name details:", error);
+      toast({variant: "destructive", title: "Speicherfehler", description: `Namen konnten nicht gespeichert werden: ${error.message}`});
+    } finally {
+      setIsSubmittingName(false);
+    }
   };
 
-  const handleRoleSelection = (roleId: string) => {
-    if (sessionData?.roleSelectionLocked) {
+  const handleRoleSelection = async (newRoleId: string) => {
+    if (!currentScenario || !currentScenario.humanRolesConfig || !userId || !participantDocId) {
+      toast({ variant: "destructive", title: "Fehler", description: "Notwendige Daten für Rollenauswahl fehlen." });
+      return;
+    }
+    if (sessionData?.roleSelectionLocked && selectedRoleId && selectedRoleId !== newRoleId) {
         toast({ variant: "default", title: "Rollenauswahl gesperrt", description: "Die Rollenauswahl wurde vom Administrator gesperrt.", className: "bg-yellow-500/10 border-yellow-500"});
         return;
     }
-    setSelectedRoleId(roleId);
-  };
-  
-  const handleJoinSession = async () => {
-    if (!selectedRoleId) {
-      toast({ variant: "destructive", title: "Fehler", description: "Bitte eine Rolle wählen." }); return;
-    }
-    if (!sessionData || !currentScenario || sessionData.status !== "open") {
-      toast({ variant: "destructive", title: "Fehler", description: "Beitritt nicht möglich (Sitzungsstatus nicht 'open' oder Szenario nicht geladen)." });
-      setAccessError("Beitritt nicht möglich. Die Sitzung ist möglicherweise nicht mehr für den Beitritt geöffnet oder das Szenario fehlt.");
-      return;
-    }
-     if (sessionData.roleSelectionLocked) {
-        toast({ variant: "default", title: "Rollenauswahl gesperrt", description: "Die Rollenauswahl wurde vom Administrator gesperrt. Deine aktuelle Auswahl kann nicht geändert werden.", className: "bg-yellow-500/10 border-yellow-500"});
-        // Allow proceeding if they already selected a role before lock.
-        // This needs careful handling if they somehow get to this point without selectedRoleId set.
-        // For now, if they have a selectedRoleId, they can try to join.
-        // More robust logic would be to disable the "Confirm and Join" button if locked and no role selected.
-    }
     
-    setIsJoining(true);
-    const storedRealName = localStorage.getItem(`chatUser_${sessionId}_realName`) || realName;
-    const storedDisplayName = localStorage.getItem(`chatUser_${sessionId}_displayName`) || displayName;
-
-    if (!storedRealName || !storedDisplayName) {
-        toast({ variant: "destructive", title: "Fehler", description: "Namen nicht im Speicher gefunden. Bitte kehre zum ersten Schritt zurück." });
-        router.push(`/join/${sessionId}?token=${urlToken}&step=nameInput`, { scroll: false });
-        setStep("nameInput");
-        setIsJoining(false);
+    const selectedRoleConfig = currentScenario.humanRolesConfig.find(r => r.id === newRoleId);
+    if (!selectedRoleConfig) {
+        toast({ variant: "destructive", title: "Fehler", description: "Ausgewählte Rolle nicht gefunden." });
         return;
     }
 
-    const userIdGenerated = localStorage.getItem(`chatUser_${sessionId}_userId`) || `user-${storedDisplayName.replace(/\s+/g, '-').toLowerCase().substring(0,10)}-${Date.now().toString().slice(-5)}`;
-    const avatarFallback = storedDisplayName.substring(0, 2).toUpperCase() || "XX";
-    const selectedRoleConfig = currentScenario.humanRolesConfig?.find(role => role.id === selectedRoleId);
-
-    if (!selectedRoleConfig) {
-        toast({ variant: "destructive", title: "Fehler", description: "Ausgewählte Rolle nicht gefunden." });
-        setIsJoining(false); return;
-    }
-
+    setIsProcessingRole(true);
     try {
-      // Check if user with this userId already exists in this session's participants
-      const participantsColRef = collection(db, "sessions", sessionId, "participants");
-      const qUser = query(participantsColRef, where("userId", "==", userIdGenerated));
-      const userSnap = await getDocs(qUser);
-
-      let participantDocId: string;
-
-      if (!userSnap.empty) { // User already exists, update their role if different
-        participantDocId = userSnap.docs[0].id;
-        const existingParticipantData = userSnap.docs[0].data() as Participant;
-        if (existingParticipantData.role !== selectedRoleConfig.name || existingParticipantData.displayName !== storedDisplayName || existingParticipantData.realName !== storedRealName) {
-          await updateDoc(doc(participantsColRef, participantDocId), {
-            role: selectedRoleConfig.name,
-            displayName: storedDisplayName,
-            realName: storedRealName,
-            avatarFallback: avatarFallback,
-            status: "Beigetreten", // Update status
-            updatedAt: serverTimestamp() // Add an updated timestamp
-          });
-        }
-         toast({ title: "Rollenauswahl aktualisiert", description: "Du bist nun im Wartebereich." });
-      } else { // User does not exist, add new participant
-        const newParticipantData: Omit<Participant, 'id' | 'botConfig' | 'botScenarioId'> = {
-          realName: storedRealName, 
-          displayName: storedDisplayName,
-          role: selectedRoleConfig.name,
-          userId: userIdGenerated,
-          avatarFallback: avatarFallback,
-          isBot: false,
-          isMuted: false, 
-          status: "Beigetreten",
-          joinedAt: serverTimestamp() as Timestamp
-        };
-        const participantDocRef = await addDoc(participantsColRef, newParticipantData);
-        participantDocId = participantDocRef.id;
-        toast({ title: "Wartebereich beigetreten", description: `Du bist als ${storedDisplayName} (${selectedRoleConfig.name}) beigetreten.`});
-      }
-      
-      setJoinedParticipantData({ 
-          id: participantDocId, 
-          userId: userIdGenerated, 
-          realName: storedRealName, 
-          displayName: storedDisplayName, 
-          role: selectedRoleConfig.name, 
-          avatarFallback, 
-          isBot: false 
+      const participantRef = doc(db, "sessions", sessionId, "participants", participantDocId);
+      await updateDoc(participantRef, {
+        role: selectedRoleConfig.name,
+        roleId: selectedRoleConfig.id,
+        updatedAt: serverTimestamp()
       });
-      localStorage.setItem(`chatUser_${sessionId}_role`, selectedRoleConfig.name);
-      localStorage.setItem(`chatUser_${sessionId}_userId`, userIdGenerated); // Ensure userId is stored
-      localStorage.setItem(`chatUser_${sessionId}_avatarFallback`, avatarFallback);
-      
-      setUserHasJoined(true);
-      router.push(`/join/${sessionId}?token=${urlToken}&step=waitingRoom`, { scroll: false });
-      setStep("waitingRoom");
-
-    } catch (error) {
-      console.error("Error adding/updating participant in Firestore: ", error);
-      toast({ variant: "destructive", title: "Fehler", description: "Beitritt fehlgeschlagen. Bitte versuche es erneut." });
+      setSelectedRoleId(newRoleId);
+      localStorage.setItem(`chatUser_${sessionId}_${userId}_roleId`, newRoleId);
+      localStorage.setItem(`chatUser_${sessionId}_${userId}_roleName`, selectedRoleConfig.name); // Store role name for chat page
+      // toast({ title: "Rolle ausgewählt", description: `Du hast die Rolle "${selectedRoleConfig.name}" gewählt.` });
+    } catch (error: any) {
+      console.error("Error updating participant role:", error);
+      toast({variant: "destructive", title: "Fehler", description: `Rolle konnte nicht aktualisiert werden: ${error.message}`});
     } finally {
-      setIsJoining(false);
+      setIsProcessingRole(false);
     }
   };
+  
+  const handleConfirmRoleAndGoToWaitingRoom = () => {
+    if (!selectedRoleId) {
+      toast({variant: "destructive", title: "Keine Rolle gewählt", description: "Bitte wähle zuerst eine Rolle aus."});
+      return;
+    }
+    setJoinStep("waitingRoom");
+  };
+
+  const handleDisplayNameChange = async (newDisplayName: string) => {
+    setDisplayName(newDisplayName);
+    if (userId && participantDocId && newDisplayName.trim()) {
+        localStorage.setItem(`chatUser_${sessionId}_${userId}_displayName`, newDisplayName.trim());
+        try {
+            const participantRef = doc(db, "sessions", sessionId, "participants", participantDocId);
+            await updateDoc(participantRef, { displayName: newDisplayName.trim(), updatedAt: serverTimestamp() });
+        } catch (error) {
+            console.warn("Could not update displayName in Firestore immediately:", error);
+        }
+    }
+  };
+
 
   const allScenarioRoles = useMemo(() => {
     return currentScenario?.humanRolesConfig || [];
   }, [currentScenario]);
   
-  const selectedRoleDetails = useMemo(() => {
-    if (!selectedRoleId || !currentScenario?.humanRolesConfig) return null;
-    return currentScenario.humanRolesConfig.find(r => r.id === selectedRoleId);
-  }, [selectedRoleId, currentScenario?.humanRolesConfig]);
+  const isLoadingInitialPageData = isLoadingSessionData || isLoadingScenario;
 
-
-  const isLoadingPage = isLoadingSessionHook || isLoadingScenario;
-
-  if (isLoadingPage && !accessError) { // Only show main loading if no access error yet
-    return <LoadingScreen text="Sitzung wird geladen..." />;
+  if (isLoadingInitialPageData && !accessError) {
+    return <LoadingScreen text="Sitzungs- und Szenariodaten werden geladen..." />;
   }
   
   if (accessError) {
@@ -426,48 +394,196 @@ export default function JoinSessionPage() {
     );
   }
 
-  if (step === "waitingRoom") {
-    const roleNameToDisplay = joinedParticipantData?.role || localStorage.getItem(`chatUser_${sessionId}_role`) || "Unbekannt";
-    const displayNameForWaitingRoom = joinedParticipantData?.displayName || localStorage.getItem(`chatUser_${sessionId}_displayName`) || "Teilnehmer";
-    const roleDesc = currentScenario?.humanRolesConfig?.find(r => r.name === roleNameToDisplay)?.description || "Keine Rollenbeschreibung verfügbar.";
+  if (joinStep === "nameInput") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+        <Link href="/" className="absolute top-4 left-4 sm:top-8 sm:left-8" aria-label="Zur Startseite">
+            <Button variant="ghost" size="icon"><ArrowLeft className="h-6 w-6" /></Button>
+        </Link>
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-2xl text-primary">Simulation beitreten: {currentScenario?.title || "Szenario lädt..."}</CardTitle>
+            <CardDescription>Schritt 1: Gib deine Namen ein.</CardDescription>
+          </CardHeader>
+          <form onSubmit={handleNameSubmit}>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="realName">Dein Klarname (nur für Admin sichtbar)</Label>
+                <Input id="realName" type="text" placeholder="Max Mustermann" value={realName} onChange={(e) => setRealName(e.target.value)} required disabled={isSubmittingName} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="displayName">Dein Nickname (im Chat sichtbar)</Label>
+                <Input id="displayName" type="text" placeholder="MaxPower99" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required disabled={isSubmittingName} />
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" className="w-full" disabled={isSubmittingName || !realName.trim() || !displayName.trim()}>
+                {isSubmittingName ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <UserPlus className="mr-2 h-5 w-5" />}
+                Namen bestätigen & Rollen anzeigen
+              </Button>
+            </CardFooter>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
+  if (joinStep === "roleSelection") {
+     return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+         <Link href={`/join/${sessionId}?token=${urlToken}`} onClick={(e)=>{e.preventDefault(); setJoinStep("nameInput");}} className="absolute top-4 left-4 sm:top-8 sm:left-8" aria-label="Zurück zur Namenseingabe">
+            <Button variant="ghost" size="icon"><ArrowLeft className="h-6 w-6" /></Button>
+        </Link>
+        <Card className="w-full max-w-3xl">
+          <CardHeader>
+            <CardTitle className="text-2xl text-primary">Rollenauswahl: {currentScenario?.title}</CardTitle>
+            <CardDescription>Schritt 2: Wähle deine Rolle für die Simulation. Dein Nickname ist <span className="font-semibold">{displayName}</span>.</CardDescription>
+             <div className="mt-2">
+                <Label htmlFor="displayNameChange" className="text-xs">Nickname ändern:</Label>
+                <Input id="displayNameChange" type="text" value={displayName} onChange={(e) => handleDisplayNameChange(e.target.value)} className="h-8 text-sm" disabled={isProcessingRole}/>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {sessionData?.roleSelectionLocked && (
+              <Alert variant="default" className="bg-yellow-500/10 border-yellow-500 text-yellow-700">
+                <Info className="h-4 w-4 !text-yellow-700" />
+                <AlertTitle>Rollenauswahl gesperrt</AlertTitle>
+                <AlertDescription>Die Rollenauswahl wurde vom Administrator gesperrt. Deine aktuelle Auswahl (falls vorhanden) bleibt bestehen.</AlertDescription>
+              </Alert>
+            )}
+            {isLoadingParticipants && <div className="text-sm text-muted-foreground flex items-center py-4"><Loader2 className="h-4 w-4 animate-spin mr-2"/> Lade aktuelle Rollenbelegungen...</div>}
+            {!isLoadingParticipants && allScenarioRoles.length === 0 && <p className="text-sm text-muted-foreground py-4">Für dieses Szenario sind keine Rollen definiert.</p>}
+            
+            <ScrollArea className="h-[calc(100vh-350px)] min-h-[200px] pr-3">
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {allScenarioRoles.map((role) => {
+                        const participantsInThisRole = sessionParticipants.filter(p => p.roleId === role.id);
+                        const isSelectedByCurrentUser = selectedRoleId === role.id;
+
+                        return (
+                            <Card
+                                key={role.id} // Use unique role.id as key
+                                className={cn(
+                                "cursor-pointer transition-all hover:shadow-lg flex flex-col justify-between",
+                                isSelectedByCurrentUser ? "ring-2 ring-primary shadow-primary/30" : "ring-1 ring-border",
+                                (sessionData?.roleSelectionLocked && selectedRoleId && selectedRoleId !== role.id) ? "opacity-60 cursor-not-allowed" : ""
+                                )}
+                                onClick={() => handleRoleSelection(role.id)}
+                            >
+                                <CardHeader className="pb-2 pt-3">
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle className="text-base">{role.name}</CardTitle>
+                                        {isSelectedByCurrentUser && <UserCheck className="h-5 w-5 text-primary" />}
+                                         <Dialog>
+                                            <DialogTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => e.stopPropagation()}><Info className="h-4 w-4"/></Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="sm:max-w-md">
+                                                <DialogHeader>
+                                                <DialogTitle>{role.name} - Rollenbeschreibung</DialogTitle>
+                                                <DialogDescription className="max-h-[60vh] overflow-y-auto py-2">
+                                                    <ScrollArea className="max-h-[55vh]">
+                                                        <pre className="whitespace-pre-wrap text-sm">{role.description}</pre>
+                                                    </ScrollArea>
+                                                </DialogDescription>
+                                                </DialogHeader>
+                                                <DialogClose asChild><Button type="button" variant="secondary" className="mt-2">Schließen</Button></DialogClose>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="text-xs text-muted-foreground space-y-1 flex-grow pb-2">
+                                    <p className="font-medium text-foreground mb-1 flex items-center text-xs"><UsersIcon className="h-3 w-3 mr-1.5"/>Belegt durch:</p>
+                                    {isLoadingParticipants ? <Loader2 className="h-3 w-3 animate-spin"/> : 
+                                        participantsInThisRole.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+                                            {participantsInThisRole.map(p => <Badge key={p.id} variant="secondary" className="text-xs">{p.displayName}</Badge>)}
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs italic">Noch frei</p>
+                                    )}
+                                    {isSelectedByCurrentUser && displayName.trim() && !participantsInThisRole.find(p => p.displayName === displayName.trim()) && (
+                                        <div className="mt-1 pt-1 border-t border-dashed">
+                                            <Badge variant="default" className="text-xs bg-primary/20 text-primary border-primary/50">Du: {displayName.trim()}</Badge>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
+                </div>
+            </ScrollArea>
+          </CardContent>
+          <CardFooter>
+              <Button onClick={handleConfirmRoleAndGoToWaitingRoom} className="w-full" disabled={isProcessingRole || !selectedRoleId}>
+                {isProcessingRole ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <Check className="mr-2 h-5 w-5" />}
+                Auswahl bestätigen & zum Wartebereich
+              </Button>
+            </CardFooter>
+        </Card>
+      </div>
+    );
+  }
+
+
+  if (joinStep === "waitingRoom") {
+    const roleNameForWaitingRoom = currentScenario?.humanRolesConfig?.find(r => r.id === selectedRoleId)?.name || "Unbekannt";
+    const roleDescForWaitingRoom = currentScenario?.humanRolesConfig?.find(r => r.id === selectedRoleId)?.description || "Keine Rollenbeschreibung verfügbar.";
 
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="flex items-center text-primary">
-              <CheckCircle className="h-6 w-6 mr-2" />
+        <Card className="w-full max-w-lg">
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-3">
+                {countdownSeconds !== null && countdownSeconds > 0 && sessionData?.status !== 'active' ? (
+                    <div className="relative h-24 w-24">
+                        <svg className="transform -rotate-90" viewBox="0 0 120 120">
+                            <circle cx="60" cy="60" r="54" fill="none" stroke="hsl(var(--border))" strokeWidth="8" />
+                            <circle
+                            cx="60"
+                            cy="60"
+                            r="54"
+                            fill="none"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth="8"
+                            strokeDasharray={`${(countdownSeconds / 10) * 2 * Math.PI * 54} ${2 * Math.PI * 54}`} 
+                            strokeLinecap="round"
+                            className="transition-all duration-1000 ease-linear"
+                            />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center text-3xl font-bold text-primary">
+                            {countdownSeconds}
+                        </div>
+                    </div>
+                ) : countdownSeconds === 0 || sessionData?.status === 'active' ? (
+                    <CheckCircle className="h-20 w-20 text-green-500" />
+                ) : (
+                    <Clock className="h-20 w-20 text-primary animate-pulse" />
+                )}
+            </div>
+            <CardTitle className="text-2xl text-primary">
               Wartebereich: {currentScenario?.title || "Szenario"}
             </CardTitle>
             <CardDescription>
               Du bist erfolgreich der Simulation beigetreten!
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-center">
-            <p>Dein Nickname: <span className="font-semibold">{displayNameForWaitingRoom}</span></p>
-            <p>Deine Rolle: <span className="font-semibold">{roleNameToDisplay}</span></p>
-            {roleDesc && (
-                <div className="mt-2 p-3 bg-muted/50 rounded-md text-sm text-left">
+          <CardContent className="space-y-3 text-center">
+            <p>Dein Nickname: <span className="font-semibold">{displayName}</span></p>
+            <p>Deine Rolle: <span className="font-semibold">{roleNameForWaitingRoom}</span></p>
+            {roleDescForWaitingRoom && (
+                <div className="mt-2 p-3 bg-muted/50 rounded-md text-sm text-left max-h-40 overflow-y-auto">
                     <p className="font-medium mb-1">Rollenbeschreibung:</p>
-                    <ScrollArea className="h-[100px]"><p className="whitespace-pre-wrap">{roleDesc}</p></ScrollArea>
+                    <ScrollArea className="max-h-[100px] text-xs"><p className="whitespace-pre-wrap">{roleDescForWaitingRoom}</p></ScrollArea>
                 </div>
             )}
-            <div className="flex items-center justify-center text-muted-foreground pt-4">
+            <div className="pt-3 text-muted-foreground">
                 {countdownSeconds !== null && countdownSeconds > 0 && sessionData?.status !== 'active' ? (
-                    <>
-                        <Clock className="h-5 w-5 mr-2 text-primary"/>
-                        <p>Simulation startet in <span className="font-bold text-primary">{countdownSeconds}</span> Sekunden...</p>
-                    </>
+                    <p>Simulation startet in Kürze automatisch...</p>
                 ) : countdownSeconds === 0 || sessionData?.status === 'active' ? (
-                     <>
-                        <Loader2 className="h-5 w-5 mr-2 animate-spin text-primary"/>
-                        <p>Simulation startet jetzt oder läuft bereits. Du wirst weitergeleitet...</p>
-                    </>
+                    <p className="flex items-center justify-center"><Loader2 className="h-5 w-5 mr-2 animate-spin text-green-500"/>Simulation startet jetzt oder läuft bereits. Du wirst weitergeleitet...</p>
                 ) : (
-                    <>
-                        <Loader2 className="h-5 w-5 mr-2 animate-spin"/>
-                        <p>Bitte warte, bis der Administrator die Simulation startet...</p>
-                    </>
+                    <p className="flex items-center justify-center"><Loader2 className="h-5 w-5 mr-2 animate-spin"/>Bitte warte, bis der Administrator die Simulation startet...</p>
                 )}
             </div>
           </CardContent>
@@ -476,132 +592,6 @@ export default function JoinSessionPage() {
     );
   }
 
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
-      <Link href="/" className="absolute top-4 left-4 sm:top-8 sm:left-8" aria-label="Zur Startseite">
-        <Button variant="ghost" size="icon">
-          <ArrowLeft className="h-6 w-6" />
-        </Button>
-      </Link>
-      <Card className="w-full max-w-2xl">
-        <CardHeader>
-          <CardTitle className="text-2xl text-primary">
-            Simulation beitreten: {currentScenario?.title || (isLoadingScenario ? "Szenario-Titel lädt..." : "Unbekanntes Szenario")}
-          </CardTitle>
-          <CardDescription>
-            Sitzungs-ID: <span className="font-mono text-xs">{sessionId}</span>
-            {step === "nameInput" && " Bitte gib zuerst deinen Klarnamen und Nicknamen ein."}
-            {step === "roleSelection" && currentScenario && " Wähle nun eine Rolle für die Simulation."}
-          </CardDescription>
-        </CardHeader>
-        
-        {step === "nameInput" && (
-          <form onSubmit={handleNameSubmit}>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="realName">Ihr Klarname (nur für Admin sichtbar)</Label>
-                <Input
-                  id="realName" type="text" placeholder="Max Mustermann"
-                  value={realName} onChange={(e) => setRealName(e.target.value)}
-                  required disabled={isSubmittingName || sessionData?.status !== 'open'}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="displayName">Ihr Nickname (im Chat sichtbar)</Label>
-                <Input
-                  id="displayName" type="text" placeholder="MaxPower99"
-                  value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-                  required disabled={isSubmittingName || sessionData?.status !== 'open'}
-                />
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button type="submit" className="w-full" disabled={isSubmittingName || !realName.trim() || !displayName.trim() || sessionData?.status !== 'open'}>
-                {isSubmittingName ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <LogIn className="mr-2 h-5 w-5" />}
-                Weiter zur Rollenauswahl
-              </Button>
-            </CardFooter>
-          </form>
-        )}
-
-        {step === "roleSelection" && currentScenario && (
-          <>
-            <CardContent className="space-y-6">
-              {sessionData?.roleSelectionLocked && (
-                  <Alert variant="default" className="bg-yellow-500/10 border-yellow-500">
-                      <Info className="h-4 w-4" />
-                      <AlertTitle>Rollenauswahl gesperrt</AlertTitle>
-                      <AlertDescription>Die Rollenauswahl wurde vom Administrator gesperrt. Deine aktuell ausgewählte Rolle (falls vorhanden) bleibt bestehen.</AlertDescription>
-                  </Alert>
-              )}
-              <div>
-                <Label className="block mb-2">Wähle deine Rolle:</Label>
-                 <p className="text-sm text-muted-foreground mb-1">Klarname: <span className="font-medium">{realName}</span>, Nickname: <span className="font-medium">{displayName}</span></p>
-                {isLoadingParticipants && <div className="text-sm text-muted-foreground flex items-center py-4"><Loader2 className="h-4 w-4 animate-spin mr-2"/> Lade aktuelle Teilnehmerbelegungen...</div>}
-                {!isLoadingParticipants && allScenarioRoles.length === 0 && (
-                    <p className="text-sm text-muted-foreground py-4">Für dieses Szenario sind keine Rollen definiert.</p>
-                )}
-                <ScrollArea className="h-[350px] md:h-[400px] rounded-md border p-1 -mx-1"> {/* Negative margin to counter CardContent padding */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-3">
-                        {allScenarioRoles.map((role) => {
-                            const participantsInThisRole = sessionParticipants.filter(p => p.role === role.name);
-                            const isSelectedByCurrentUser = selectedRoleId === role.id;
-
-                            return (
-                                <Card
-                                    key={role.id}
-                                    className={cn(
-                                    "cursor-pointer transition-all hover:shadow-lg flex flex-col",
-                                    isSelectedByCurrentUser ? "ring-2 ring-primary shadow-primary/30" : "ring-1 ring-border",
-                                    sessionData?.roleSelectionLocked && !isSelectedByCurrentUser ? "opacity-60 cursor-not-allowed" : ""
-                                    )}
-                                    onClick={() => handleRoleSelection(role.id)}
-                                >
-                                    <CardHeader className="pb-2 pt-3">
-                                        <CardTitle className="text-base flex items-center justify-between">
-                                            {role.name}
-                                            {isSelectedByCurrentUser && <UserCheck className="h-5 w-5 text-primary" />}
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="text-xs text-muted-foreground space-y-1 flex-grow pb-3">
-                                        <ScrollArea className="h-[60px] pr-2"><p className="whitespace-pre-wrap">{role.description}</p></ScrollArea>
-                                        
-                                        <div className="mt-2 pt-2 border-t h-16 overflow-y-auto"> {/* Fixed height for taken by section */}
-                                            <p className="text-xs font-medium text-foreground mb-1 flex items-center"><Users2 className="h-3 w-3 mr-1.5"/>Belegt durch:</p>
-                                            {participantsInThisRole.length > 0 ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                    {participantsInThisRole.map(p => <Badge key={p.id} variant="secondary" className="text-xs">{p.displayName}</Badge>)}
-                                                </div>
-                                            ) : (
-                                                <p className="text-xs italic">Noch frei</p>
-                                            )}
-                                            {isSelectedByCurrentUser && displayName.trim() && !participantsInThisRole.find(p=>p.displayName === displayName) && ( // Only show if not already listed
-                                                <div className="mt-1 pt-1 border-t border-dashed">
-                                                    <Badge variant="default" className="text-xs bg-primary/20 text-primary border-primary/50">
-                                                        Du: {displayName.trim()}
-                                                    </Badge>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            );
-                        })}
-                    </div>
-                </ScrollArea>
-              </div>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={handleJoinSession} className="w-full" disabled={isJoining || !selectedRoleId || (sessionData?.roleSelectionLocked && !selectedRoleDetails) || sessionData?.status !== 'open'}>
-                {isJoining ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : <LogIn className="mr-2 h-5 w-5" />}
-                Bestätigen und zum Wartebereich
-              </Button>
-            </CardFooter>
-          </>
-        )}
-      </Card>
-    </div>
-  );
+  // Fallback, sollte nicht erreicht werden, wenn Logik stimmt
+  return <LoadingScreen text="Lade Beitritts-Status..." />;
 }
-

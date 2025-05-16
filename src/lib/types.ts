@@ -89,10 +89,11 @@ export interface Participant {
   realName: string; // Klarname
   displayName: string; // Nickname, im Chat sichtbar
   role: string; 
+  roleId?: string; // ID der Rolle aus humanRolesConfig
   avatarFallback: string;
   isBot: boolean;
   joinedAt?: Timestamp;
-  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
+  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten"; // "Beigetreten" ist der Status im Wartebereich
   isMuted?: boolean;
   botConfig?: BotConfig; 
   botScenarioId?: string; 

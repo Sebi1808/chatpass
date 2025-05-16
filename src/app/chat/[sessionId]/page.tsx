@@ -36,18 +36,17 @@ interface ChatPageProps {
 
 interface ChatPageContentProps {
   sessionId: string;
-  initialUserName?: string; // This will be displayName (nickname)
+  initialUserDisplayName?: string; // This will be displayName (nickname)
   initialUserRole?: string;
   initialUserId?: string;
   initialUserAvatarFallback?: string;
-  initialUserRealName?: string; // Added for completeness if needed
+  initialUserRealName?: string; 
   isAdminView?: boolean;
 }
 
 const simpleHash = (str: string): number => {
   let hash = 0;
   if (!str || str.length === 0) {
-    // console.log("simpleHash: input is empty or null, returning 0");
     return hash;
   }
   for (let i = 0; i < str.length; i++) {
@@ -55,7 +54,6 @@ const simpleHash = (str: string): number => {
     hash = (hash << 5) - hash + char;
     hash |= 0; 
   }
-  // console.log(`simpleHash: input='${str}', output=${hash}`);
   return hash;
 };
 
@@ -70,11 +68,11 @@ const LoadingScreen = ({ text = "Chat wird geladen..." }: { text?: string }) => 
 
 export function ChatPageContent({
   sessionId: sessionIdProp,
-  initialUserName: initialDisplayNameProp, // Renamed for clarity
+  initialUserDisplayName: initialDisplayNameProp,
   initialUserRole: initialUserRoleProp,
   initialUserId: initialUserIdProp,
   initialUserAvatarFallback: initialUserAvatarFallbackProp,
-  initialUserRealName: initialUserRealNameProp, // Added
+  initialUserRealName: initialUserRealNameProp,
   isAdminView = false
 }: ChatPageContentProps) {
 
@@ -82,14 +80,12 @@ export function ChatPageContent({
   const { toast } = useToast();
   const router = useRouter();
 
-  // User details state
-  const [userRealName, setUserRealName] = useState<string | null>(initialUserRealNameProp || null); // Klarname
-  const [userName, setUserName] = useState<string | null>(initialDisplayNameProp || null); // This is displayName (nickname)
+  const [userRealName, setUserRealName] = useState<string | null>(initialUserRealNameProp || null); 
+  const [userDisplayName, setUserDisplayName] = useState<string | null>(initialDisplayNameProp || null); 
   const [userRole, setUserRole] = useState<string | null>(initialUserRoleProp || null);
   const [userId, setUserId] = useState<string | null>(initialUserIdProp || null);
   const [userAvatarFallback, setUserAvatarFallback] = useState<string>(initialUserAvatarFallbackProp || "??");
   const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(!isAdminView && !initialDisplayNameProp);
-
 
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [lastMessageSentAt, setLastMessageSentAt] = useState<number>(0);
@@ -100,15 +96,14 @@ export function ChatPageContent({
   const [isLoadingScenario, setIsLoadingScenario] = useState(true); 
   
   const { participants, isLoadingParticipants: isLoadingParticipantsHook, participantsError } = useParticipants(sessionId);
-  // Pass currentScenario and sessionData to useMessages for initialPost logic
   const { messages, isLoadingMessages: isLoadingMessagesHook, messagesError } = useMessages(sessionId, userId, isAdminView, currentScenario, sessionData);
 
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
   const viewportRef = useRef<null | HTMLDivElement>(null);
-  const firstTimeMessagesLoadRef = useRef(true); // To ensure initial scroll to bottom
+  const firstTimeMessagesLoadRef = useRef(true);
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
-  const SCROLL_UP_THRESHOLD = 50; // Pixels from bottom to hide scroll button
+  const SCROLL_UP_THRESHOLD = 50; 
 
   const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
@@ -119,9 +114,6 @@ export function ChatPageContent({
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
-  
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   
   const [pageError, setPageErrorState] = useState<string | null>(null);
 
@@ -134,57 +126,64 @@ export function ChatPageContent({
 
  useEffect(() => {
     if (!isAdminView && (!initialDisplayNameProp || !initialUserRoleProp || !initialUserIdProp || !initialUserAvatarFallbackProp)) {
-      const realNameFromStorage = localStorage.getItem(`chatUser_${sessionId}_realName`);
-      const displayNameFromStorage = localStorage.getItem(`chatUser_${sessionId}_displayName`);
-      const roleFromStorage = localStorage.getItem(`chatUser_${sessionId}_role`);
-      const userIdFromStorage = localStorage.getItem(`chatUser_${sessionId}_userId`);
-      const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${sessionId}_avatarFallback`);
+      const localUserId = localStorage.getItem('localUserId');
+      if (!localUserId) {
+        toast({ variant: "destructive", title: "Fehler", description: "Benutzer-ID nicht gefunden. Bitte treten Sie der Sitzung erneut bei." });
+        if (sessionId) router.push(`/join/${sessionId}`); else router.push('/');
+        setIsLoadingUserDetails(false);
+        return;
+      }
+      setUserId(localUserId); // Set userId first
 
-      if (!realNameFromStorage || !displayNameFromStorage || !roleFromStorage || !userIdFromStorage || !avatarFallbackFromStorage ) {
-        toast({ variant: "destructive", title: "Fehler", description: "Benutzerdetails nicht gefunden. Bitte treten Sie der Sitzung erneut bei." });
+      const realNameFromStorage = localStorage.getItem(`chatUser_${sessionId}_${localUserId}_realName`);
+      const displayNameFromStorage = localStorage.getItem(`chatUser_${sessionId}_${localUserId}_displayName`);
+      const roleFromStorage = localStorage.getItem(`chatUser_${sessionId}_${localUserId}_roleName`); // Use roleName
+      const avatarFallbackFromStorage = localStorage.getItem(`chatUser_${sessionId}_${localUserId}_avatarFallback`);
+
+      if (!realNameFromStorage || !displayNameFromStorage || !roleFromStorage || !avatarFallbackFromStorage ) {
+        toast({ variant: "destructive", title: "Fehler", description: "Benutzerdetails nicht vollständig im Speicher gefunden. Bitte treten Sie der Sitzung erneut bei." });
         if (sessionId) router.push(`/join/${sessionId}`); else router.push('/');
         setIsLoadingUserDetails(false);
         return;
       }
       setUserRealName(realNameFromStorage);
-      setUserName(displayNameFromStorage); // userName is the nickname
+      setUserDisplayName(displayNameFromStorage);
       setUserRole(roleFromStorage);
-      setUserId(userIdFromStorage);
       setUserAvatarFallback(avatarFallbackFromStorage);
     }
     setIsLoadingUserDetails(false);
   }, [sessionId, isAdminView, initialDisplayNameProp, initialUserRoleProp, initialUserIdProp, initialUserAvatarFallbackProp, router, toast]);
 
 
-  // Load scenario data from Firestore
   useEffect(() => {
-    if (sessionData?.scenarioId) {
-      setIsLoadingScenario(true);
-      const scenarioDocRef = doc(db, "scenarios", sessionData.scenarioId);
-      getDoc(scenarioDocRef).then(docSnap => {
-        if (docSnap.exists()) {
-          setCurrentScenario({ id: docSnap.id, ...docSnap.data() } as Scenario);
-          setPageErrorState(null);
-        } else {
-          setPageErrorState("Szenario-Details nicht gefunden. Die Sitzung ist möglicherweise ungültig.");
-          setCurrentScenario(undefined);
-        }
-      }).catch(error => {
-        console.error("ChatPage: Error fetching scenario:", error);
-        setPageErrorState("Szenario-Details konnten nicht geladen werden.");
-        setCurrentScenario(undefined);
-      }).finally(() => {
-        setIsLoadingScenario(false);
-      });
-    } else if (!isLoadingSessionDataHook && !sessionData?.scenarioId) {
-      // Session data loaded, but no scenarioId, or sessionData itself is null
-      if (!pageError) { // Avoid overwriting more specific errors like "Sitzungsdokument nicht gefunden."
-         setPageErrorState(prev => prev || "Keine Szenario-ID in Sitzungsdaten oder Sitzung nicht gefunden.");
+    if (!sessionData?.scenarioId) {
+      if (!isLoadingSessionDataHook && !sessionData?.scenarioId && !pageError && !isAdminView) {
+         setPageErrorState(prev => prev || "Keine Szenario-ID in Sitzungsdaten gefunden. Sitzung möglicherweise fehlerhaft.");
       }
       setCurrentScenario(undefined);
       setIsLoadingScenario(false);
+      return;
     }
-  }, [sessionData, isLoadingSessionDataHook, pageError]);
+    setIsLoadingScenario(true);
+    const scenarioDocRef = doc(db, "scenarios", sessionData.scenarioId);
+    getDoc(scenarioDocRef).then(docSnap => {
+      if (docSnap.exists()) {
+        setCurrentScenario({ id: docSnap.id, ...docSnap.data() } as Scenario);
+        if (pageError === "Keine Szenario-ID in Sitzungsdaten gefunden. Sitzung möglicherweise fehlerhaft.") {
+            setPageErrorState(null); // Clear previous error if scenario is now found
+        }
+      } else {
+        setPageErrorState("Szenario-Details nicht gefunden. Die Sitzung ist möglicherweise ungültig.");
+        setCurrentScenario(undefined);
+      }
+    }).catch(error => {
+      console.error("ChatPage: Error fetching scenario:", error);
+      setPageErrorState("Szenario-Details konnten nicht geladen werden.");
+      setCurrentScenario(undefined);
+    }).finally(() => {
+      setIsLoadingScenario(false);
+    });
+  }, [sessionData?.scenarioId, isLoadingSessionDataHook, pageError, isAdminView]);
 
 
   const isLoadingPage = useMemo(() => {
@@ -202,35 +201,20 @@ export function ChatPageContent({
     }
     
     let unsubscribeParticipant: (() => void) | undefined;
-    const findParticipantDocAndListen = async () => {
-        try {
-            const participantsColRef = collection(db, "sessions", sessionId, "participants");
-            const q = query(participantsColRef, where("userId", "==", userId)); // Ensure 'where' is imported
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-              const userDoc = querySnapshot.docs[0]; 
-              unsubscribeParticipant = onSnapshot(userDoc.ref, (docSnap) => {
-                if (docSnap.exists()) {
-                  const data = docSnap.data() as DisplayParticipant;
-                  setIsMuted(data.isMuted ?? false);
-                } else {
-                  setIsMuted(false); 
-                }
-              }, (error) => {
-                console.error("Error listening to own participant data: ", error);
-                setIsMuted(false); 
-              });
-            } else {
-              // console.warn(`Participant document for userId ${userId} not found in session ${sessionId}. Assuming not muted.`);
-              setIsMuted(false); 
-            }
-        } catch (error) {
-            console.error("Error querying for participant document:", error);
-            setIsMuted(false);
-        }
-    };
+    const participantDocRef = doc(db, "sessions", sessionId, "participants", userId);
 
-    findParticipantDocAndListen();
+    unsubscribeParticipant = onSnapshot(participantDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as Participant; // Use Participant type
+        setIsMuted(data.isMuted ?? false);
+      } else {
+        // console.warn(`ChatPage: Participant document for userId ${userId} not found in session ${sessionId}. Assuming not muted.`);
+        setIsMuted(false); 
+      }
+    }, (error) => {
+      console.error("Error listening to own participant data: ", error);
+      setIsMuted(false); 
+    });
 
     return () => {
       if (unsubscribeParticipant) {
@@ -246,8 +230,6 @@ export function ChatPageContent({
       const isScrolledToBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + isNearBottomThreshold;
 
       if (force || isScrolledToBottom) {
-        // Ensure the element is actually in view before trying to scroll to it.
-        // This helps in scenarios where the ref might exist but isn't rendered.
         if (messagesEndRef.current.offsetParent !== null) { 
              messagesEndRef.current.scrollIntoView({ behavior: behavior });
         }
@@ -255,40 +237,38 @@ export function ChatPageContent({
     }
   }, []);
 
-  // Effect for scrolling when new messages arrive or page loads
   useEffect(() => {
     if (isLoadingMessagesHook || !messages.length || !viewportRef.current) return;
 
     const lastMessage = messages[messages.length - 1];
     if (!lastMessage) return;
-
     const isOwnMessage = lastMessage.senderUserId === userId;
 
     if (firstTimeMessagesLoadRef.current) {
-      setTimeout(() => scrollToBottom(true, 'auto'), 150); 
+      setTimeout(() => scrollToBottom(true, 'auto'), 200); 
       firstTimeMessagesLoadRef.current = false;
     } else {
-      // If it's not the user's own message OR if it is their own message and they are already near the bottom
-      const scrollContainer = viewportRef.current;
-      const isNearBottomForNewMessage = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 250; 
-
       if (isOwnMessage) {
-        // Explicit scroll for own messages is handled in handleSendMessage's finally/then block
-      } else if (isNearBottomForNewMessage) { // New message from someone else and user is near bottom
-        setTimeout(() => scrollToBottom(false, 'smooth'), 100);
-      } else if (!isOwnMessage && !isNearBottomForNewMessage) { // New message from someone else and user is scrolled up
-         if(!showScrollToBottomButton) setShowScrollToBottomButton(true);
+        // Explicit scroll for own messages is now handled in handleSendMessage's finally/then block
+        // Potentially add a small delay here too if race conditions occur on mobile
+        setTimeout(() => scrollToBottom(true, 'smooth'), 50);
+      } else { // New message from someone else
+        const scrollContainer = viewportRef.current;
+        const isNearBottomForNewMessage = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 250;
+        if (isNearBottomForNewMessage) {
+          setTimeout(() => scrollToBottom(false, 'smooth'), 100);
+        } else if (!showScrollToBottomButton) {
+           setShowScrollToBottomButton(true);
+        }
       }
     }
   }, [messages, isLoadingMessagesHook, userId, scrollToBottom, showScrollToBottomButton]);
 
 
-  // Effect to clear firstTimeMessagesLoadRef when session changes
   useEffect(() => {
     firstTimeMessagesLoadRef.current = true; 
   }, [sessionId]);
 
-  // Effect to manage the "scroll to bottom" button visibility
   useEffect(() => {
     const scrollContainer = viewportRef.current;
     if (!scrollContainer) return;
@@ -310,8 +290,6 @@ export function ChatPageContent({
     };
   }, [showScrollToBottomButton, SCROLL_UP_THRESHOLD]); 
 
-
-  // Effect for message cooldown timer
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
     if (sessionData?.messageCooldownSeconds && sessionData.messageCooldownSeconds > 0 && lastMessageSentAt > 0 && !isAdminView) {
@@ -336,40 +314,20 @@ export function ChatPageContent({
     };
   }, [lastMessageSentAt, sessionData?.messageCooldownSeconds, isAdminView]);
 
-
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot' | 'system'): ParticipantColor => {
     const adminColor: ParticipantColor = { name: 'admin', bg: "bg-red-600/90 dark:bg-red-700/90", text: "text-white", nameText: "text-red-100 dark:text-red-200 font-semibold", ring: "ring-red-500" };
     const botColor: ParticipantColor = { name: 'bot', bg: "bg-purple-600/80 dark:bg-purple-700/80", text: "text-purple-50", nameText: "text-purple-100 dark:text-purple-200 font-semibold", ring: "ring-purple-600" };
     const ownColor: ParticipantColor = { name: 'own', bg: "bg-primary", text: "text-primary-foreground", nameText: "text-primary-foreground/90 font-semibold", ring: "ring-primary" };
     const systemColor: ParticipantColor = { name: 'system', bg: "bg-slate-200 dark:bg-slate-700", text: "text-slate-800 dark:text-slate-200", nameText: "text-slate-600 dark:text-slate-300 font-medium", ring: "ring-slate-400" };
-    // Fallback/Default color for other users
     const emeraldColor: ParticipantColor = { name: 'emerald', bg: "bg-emerald-600/90 dark:bg-emerald-700/90", text: "text-white", nameText: "text-emerald-100 dark:text-emerald-200 font-semibold", ring: "ring-emerald-600" };
 
-    // console.log(`getParticipantColorClasses called for pUserId: ${pUserId}, pSenderType: ${pSenderType}, currentUserId: ${userId}, isAdminView: ${isAdminView}`);
-
-    if (pSenderType === 'system') {
-        // console.log("-> Resolved as SYSTEM color");
-        return systemColor;
-    }
-    if (isAdminView && pUserId === initialUserIdProp && pSenderType === 'admin') {
-        // console.log(`-> Resolved as ADMIN (self) color for ${pUserId}`);
-        return adminColor;
-    }
-    if (!isAdminView && pSenderType === 'admin') { 
-        // console.log(`-> Resolved as ADMIN (other) color for ${pUserId}`);
-        return adminColor;
-    }
-    if (pSenderType === 'bot') {
-        // console.log(`-> Resolved as BOT color for ${pUserId}`);
-        return botColor;
-    }
-    if (pUserId === userId && !isAdminView) { 
-        // console.log(`-> Resolved as OWN USER color for ${pUserId}`);
-        return ownColor;
-    }
+    if (pSenderType === 'system') return systemColor;
+    if (isAdminView && pUserId === initialUserIdProp && pSenderType === 'admin') return adminColor;
+    if (!isAdminView && pSenderType === 'admin') return adminColor;
+    if (pSenderType === 'bot') return botColor;
+    if (pUserId === userId && !isAdminView) return ownColor;
     
-    // console.log(`-> Resolved as OTHER USER (Emerald) color for ${pUserId}`);
-    return emeraldColor; 
+    return emeraldColor; // Fallback for "other users"
   }, [userId, isAdminView, initialUserIdProp]);
 
   const handleImageFileSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
@@ -400,7 +358,7 @@ export function ChatPageContent({
 
   const handleSendMessage = useCallback(async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    if ((!newMessage.trim() && !selectedImageFile) || !userName || !userId || !userAvatarFallback) {
+    if ((!newMessage.trim() && !selectedImageFile) || !userDisplayName || !userId || !userAvatarFallback) {
       toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: "Nachricht oder Bild fehlt oder Benutzerdaten fehlen." });
       return;
     }
@@ -408,7 +366,7 @@ export function ChatPageContent({
       toast({ variant: "destructive", title: "Sitzung beendet", description: "Keine Nachrichten mehr möglich." });
       return;
     }
-    if (sessionData?.status !== "active" && !isAdminView) { // Adjusted to allow sending unless explicitly not 'active'
+    if (sessionData?.status !== "active" && !isAdminView) { 
       toast({ variant: "destructive", title: "Sitzung nicht aktiv", description: `Nachrichtenversand aktuell nicht möglich (Status: ${sessionData?.status}).` });
       return;
     }
@@ -444,16 +402,12 @@ export function ChatPageContent({
         const imagePath = `chat_images/${sessionId}/${imageFileNameForPath}`;
         const sRef = storageRef(storage, imagePath);
         
-        // console.log(`Attempting to upload ${file.name} to ${imagePath}`);
-        // console.log("Storage reference:", sRef);
-
         const uploadTask = uploadBytesResumable(sRef, file);
 
         await new Promise<void>((resolve, reject) => {
           uploadTask.on('state_changed',
             (snapshot) => {
               const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              // console.log(`Upload is ${progress}% done. State: ${snapshot.state}`);
               setImageUploadProgress(progress);
             },
             (error) => {
@@ -461,7 +415,6 @@ export function ChatPageContent({
                switch (error.code) {
                 case 'storage/unauthorized': errorMessage = "Fehler: Keine Berechtigung zum Hochladen."; break;
                 case 'storage/canceled': errorMessage = "Upload abgebrochen."; break;
-                // Add more specific Firebase Storage error codes as needed
                 default: errorMessage = `Storage Fehler: ${error.message || error.code}`; break;
               }
               console.error("Upload error in state_changed listener:", error, errorMessage);
@@ -469,13 +422,10 @@ export function ChatPageContent({
               reject(new Error(errorMessage)); 
             },
             async () => { 
-              // console.log('Upload successful, getting download URL...');
               try {
                 const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                // console.log('Download URL:', downloadURL);
                 uploadedImageUrl = downloadURL;
                 uploadedImageFileName = file.name; 
-                // console.log("Image upload process finished. URL:", uploadedImageUrl);
                 resolve(); 
               } catch (getUrlError) {
                 const getUrlErrorTyped = getUrlError as Error & { code?: string };
@@ -487,20 +437,18 @@ export function ChatPageContent({
           );
         });
       } else if (selectedImageFile && !(selectedImageFile instanceof File)) {
-          // console.error("selectedImageFile is not a File object:", selectedImageFile);
           toast({ variant: "destructive", title: "Ungültige Datei", description: "Das ausgewählte Element ist keine gültige Bilddatei."});
           throw new Error("Ungültige Datei ausgewählt"); 
       }
 
       const messagesColRef = collection(db, "sessions", sessionId!, "messages");
-      const messageData: Omit<MessageType, 'id'> = {
+      const messageData: Omit<MessageType, 'id' | 'reactions'> = {
         senderUserId: userId!,
-        senderName: userName!, // This is the displayName (nickname)
+        senderName: userDisplayName!, 
         senderType: isAdminView ? 'admin' : 'user',
         avatarFallback: userAvatarFallback!,
         content: newMessage.trim(),
         timestamp: serverTimestamp() as Timestamp, 
-        reactions: {}, 
       };
 
       if (uploadedImageUrl) messageData.imageUrl = uploadedImageUrl;
@@ -512,9 +460,7 @@ export function ChatPageContent({
         messageData.replyToMessageSenderName = replyingTo.senderName;
       }
       
-      // console.log("Adding message to Firestore:", messageData);
-      await addDoc(messagesColRef, messageData);
-      // console.log("Message added to Firestore.");
+      await addDoc(messagesColRef, { ...messageData, reactions: {} });
 
       setNewMessage("");
       setReplyingTo(null);
@@ -524,19 +470,16 @@ export function ChatPageContent({
       
       setTimeout(() => scrollToBottom(true, 'smooth'), 50);
 
-
     } catch (error) { 
-      // console.error("Error in handleSendMessage:", error);
       if (!(error instanceof Error && (error.message.includes("Bild-Upload fehlgeschlagen") || error.message.includes("Bild-URL Abruf fehlgeschlagen") || error.message.includes("Ungültige Datei")))) {
          toast({ variant: "destructive", title: "Senden fehlgeschlagen", description: (error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten.") });
       }
     } finally {
-      // console.log("handleSendMessage finally block. Resetting state.");
       setIsSendingMessage(false);
-      setImageUploadProgress(null); // Ensure progress is reset
+      setImageUploadProgress(null);
     }
   }, [
-      newMessage, selectedImageFile, userName, userId, userAvatarFallback,
+      newMessage, selectedImageFile, userDisplayName, userId, userAvatarFallback,
       sessionData, isAdminView, isMuted, lastMessageSentAt, sessionId,
       toast, replyingTo, handleRemoveSelectedImage, scrollToBottom, quotingMessage
     ]
@@ -573,6 +516,8 @@ export function ChatPageContent({
     setNewMessage(prev => `${prev}@${nameToMention} `); 
     inputRef.current?.focus();
   }, []);
+  
+  const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   
   const handleReaction = useCallback(async (messageId: string, emoji: string) => {
     if (!userId || !sessionId) {
@@ -615,6 +560,7 @@ export function ChatPageContent({
     }
   }, [userId, sessionId, toast]);
 
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const handleEmojiSelectForInput = useCallback((emoji: string) => {
     setNewMessage(prev => prev + emoji);
     setShowEmojiPicker(false); 
@@ -623,11 +569,10 @@ export function ChatPageContent({
 
   if (isLoadingPage && !isAdminView) {
     let loadingText = "Chat wird geladen...";
-    if (isLoadingSessionDataHook && !sessionData) {
-      loadingText = "Sitzungsdaten werden geladen...";
-    } else if (isLoadingScenario && !currentScenario && sessionData?.scenarioId) {
-      loadingText = "Szenario-Details werden geladen...";
-    }
+    if (!userId && !isAdminView) loadingText = "Benutzerdaten werden ermittelt...";
+    else if (isLoadingSessionDataHook && !sessionData) loadingText = "Sitzungsdaten werden geladen...";
+    else if (isLoadingScenario && !currentScenario && sessionData?.scenarioId) loadingText = "Szenario-Details werden geladen...";
+    
     return <LoadingScreen text={loadingText} />;
   }
   
@@ -655,13 +600,13 @@ export function ChatPageContent({
     );
   }
   
-  if (!isAdminView && !isLoadingSessionDataHook && sessionData?.scenarioId && !currentScenario && !isLoadingScenario && !pageError) {
+  if (!isAdminView && !isLoadingPage && !currentScenario && !pageError) {
      return (
       <div className="flex h-screen w-full items-center justify-center bg-background p-4">
         <Card className="max-w-md w-full">
           <CardHeader><CardTitle className="text-destructive flex items-center"><AlertTriangle className="mr-2"/>Fehler beim Laden</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">Szenario-Details konnten nicht geladen werden, obwohl Sitzungsdaten vorhanden sind.</p>
+            <p className="text-muted-foreground">Szenario-Details konnten nicht geladen werden. Die Sitzung ist möglicherweise nicht korrekt konfiguriert.</p>
             <Button onClick={() => router.push('/')} variant="outline" className="mt-4">Zur Startseite</Button>
           </CardContent>
         </Card>
@@ -691,7 +636,7 @@ export function ChatPageContent({
                     participants={participants}
                     isLoadingParticipants={isLoadingParticipantsHook}
                     currentUserId={userId}
-                    userName={userName} // This is displayName (nickname)
+                    userDisplayName={userDisplayName}
                     userRole={userRole}
                     userAvatarFallback={userAvatarFallback}
                     currentScenario={currentScenario}
@@ -714,7 +659,7 @@ export function ChatPageContent({
                 participants={participants}
                 isLoadingParticipants={isLoadingParticipantsHook}
                 currentUserId={userId}
-                userName={userName} // This is displayName (nickname)
+                userDisplayName={userDisplayName}
                 userRole={userRole}
                 userAvatarFallback={userAvatarFallback}
                 currentScenario={currentScenario}
@@ -793,8 +738,8 @@ export function ChatPageContent({
   );
 }
 
-export default function ChatPage({ params }: ChatPageProps) {
-  const { sessionId } = params;
+export default function ChatPage({ params: pageParams }: ChatPageProps) { // Changed params to pageParams
+  const { sessionId } = pageParams; // Destructure sessionId from pageParams
 
   if (!sessionId) { 
     return (
