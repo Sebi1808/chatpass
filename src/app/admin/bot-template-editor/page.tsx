@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, PlusCircle, Loader2, FileEdit, Trash2, ArrowUpDown, Filter } from "lucide-react";
+import { Bot, PlusCircle, Loader2, FileEdit, Trash2, ArrowUpDown, Filter, Search } from "lucide-react"; // Added Search
 import Link from "next/link";
 import React, { useState, useEffect, type FormEvent, useMemo } from "react";
 import { db } from "@/lib/firebase";
@@ -100,7 +100,7 @@ export default function BotTemplateEditorPage() {
     }
     setIsSavingTemplate(true);
 
-    const templateData: Omit<BotTemplate, 'templateId' | 'createdAt'> = {
+    const templateData: Omit<BotTemplate, 'templateId' | 'createdAt' | 'updatedAt'> = { // Added updatedAt to Omit
       name: newTemplateName.trim(),
       personality: newTemplatePersonality,
       avatarFallback: newTemplateAvatarFallback.trim().substring(0, 2) || newTemplateName.substring(0,2).toUpperCase() || "BT",
@@ -115,10 +115,12 @@ export default function BotTemplateEditorPage() {
         toast({ title: "Bot-Vorlage aktualisiert", description: `Vorlage "${templateData.name}" wurde gespeichert.` });
       } else {
         // Create new template
-        await addDoc(collection(db, "botTemplates"), {
+        const newDocData: BotTemplate = {
           ...templateData,
-          createdAt: serverTimestamp(),
-        });
+          templateId: '', // Firestore will generate this
+          createdAt: serverTimestamp() as Timestamp,
+        }
+        await addDoc(collection(db, "botTemplates"), newDocData );
         toast({ title: "Bot-Vorlage erstellt", description: `Vorlage "${templateData.name}" wurde gespeichert.` });
       }
       resetForm();
@@ -209,7 +211,7 @@ export default function BotTemplateEditorPage() {
           </CardContent>
           <CardFooter className="flex justify-between">
             <Button type="submit" disabled={isSavingTemplate}>
-              {isSavingTemplate ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+              {isSavingTemplate ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingTemplate ? <FileEdit className="mr-2 h-4 w-4" /> : <PlusCircle className="mr-2 h-4 w-4" />)}
               {editingTemplate ? "Vorlage aktualisieren" : "Vorlage erstellen"}
             </Button>
             {editingTemplate && (
@@ -262,63 +264,65 @@ export default function BotTemplateEditorPage() {
               <p className="text-muted-foreground">Lade Vorlagen...</p>
             </div>
           ) : filteredTemplates.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-1/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
-                  <TableHead className="w-3/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Name</TableHead>
-                  <TableHead className="w-2/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Persönlichkeit</TableHead>
-                  <TableHead className="w-4/12">Initiale Mission</TableHead>
-                  <TableHead className="w-2/12 text-right">Aktionen</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTemplates.map((template) => (
-                  <TableRow key={template.templateId}>
-                    <TableCell className="font-mono text-xs text-muted-foreground truncate max-w-[80px]">{template.templateId}</TableCell>
-                    <TableCell className="font-medium">
-                        <button onClick={() => handleEditTemplate(template)} className="hover:text-primary hover:underline text-left">
-                            {template.name}
-                        </button>
-                    </TableCell>
-                    <TableCell>{template.personality}</TableCell>
-                    <TableCell className="text-xs max-w-sm truncate">{template.initialMission || "-"}</TableCell>
-                    <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                            <Button variant="outline" size="sm" onClick={() => handleEditTemplate(template)} title="Bearbeiten">
-                                <FileEdit className="h-4 w-4" />
-                            </Button>
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="destructive" size="sm" disabled={isDeleting === template.templateId} title="Löschen">
-                                        {isDeleting === template.templateId ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                <AlertDialogHeader>
-                                    <AlertDialogTitle>Vorlage "{template.name}" wirklich löschen?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                    Diese Aktion kann nicht rückgängig gemacht werden. Die Vorlage wird dauerhaft entfernt.
-                                    </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                    <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-                                    <AlertDialogAction 
-                                        onClick={() => handleDeleteTemplate(template.templateId, template.name)}
-                                        className="bg-destructive hover:bg-destructive/90"
-                                        disabled={isDeleting === template.templateId}
-                                    >
-                                    {isDeleting === template.templateId ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, löschen"}
-                                    </AlertDialogAction>
-                                </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-                        </div>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[150px]"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
+                    <TableHead><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Name</TableHead>
+                    <TableHead><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Persönlichkeit</TableHead>
+                    <TableHead>Initiale Mission</TableHead>
+                    <TableHead className="text-right w-[120px]">Aktionen</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredTemplates.map((template) => (
+                    <TableRow key={template.templateId}>
+                      <TableCell className="font-mono text-xs text-muted-foreground truncate" title={template.templateId}>{template.templateId.substring(0, 10)}...</TableCell>
+                      <TableCell className="font-medium">
+                          <button onClick={() => handleEditTemplate(template)} className="hover:text-primary hover:underline text-left">
+                              {template.name}
+                          </button>
+                      </TableCell>
+                      <TableCell>{template.personality}</TableCell>
+                      <TableCell className="text-xs max-w-sm truncate" title={template.initialMission || "-"}>{template.initialMission || "-"}</TableCell>
+                      <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                              <Button variant="outline" size="sm" onClick={() => handleEditTemplate(template)} title="Bearbeiten">
+                                  <FileEdit className="h-4 w-4" />
+                              </Button>
+                              <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                      <Button variant="destructive" size="sm" disabled={isDeleting === template.templateId} title="Löschen">
+                                          {isDeleting === template.templateId ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                                      </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                      <AlertDialogTitle>Vorlage "{template.name}" wirklich löschen?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                      Diese Aktion kann nicht rückgängig gemacht werden. Die Vorlage wird dauerhaft entfernt.
+                                      </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                      <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+                                      <AlertDialogAction 
+                                          onClick={() => handleDeleteTemplate(template.templateId, template.name)}
+                                          className="bg-destructive hover:bg-destructive/90"
+                                          disabled={isDeleting === template.templateId}
+                                      >
+                                      {isDeleting === template.templateId ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, löschen"}
+                                      </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                  </AlertDialogContent>
+                              </AlertDialog>
+                          </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : (
             <p className="text-muted-foreground text-center py-6">
               {searchTerm === '' && personalityFilter === 'all' ? "Keine Bot-Vorlagen in der Datenbank gefunden." : "Keine Bot-Vorlagen für Ihre Suche/Filterung gefunden."}

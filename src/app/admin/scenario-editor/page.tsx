@@ -44,19 +44,18 @@ export default function ScenarioEditorHubPage() {
   useEffect(() => {
     setIsLoading(true);
     const scenariosColRef = collection(db, "scenarios");
-    // Order by title by default for Firestore query
     const q = query(scenariosColRef, orderBy("title", "asc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedScenarios: Scenario[] = [];
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        fetchedScenarios.push({
+        const scenarioData: Scenario = {
           id: docSnap.id,
           title: data.title || "Unbenanntes Szenario",
           kurzbeschreibung: data.kurzbeschreibung || "",
           langbeschreibung: data.langbeschreibung || "",
-          lernziele: data.lernziele || "", // Keep as string
+          lernziele: data.lernziele || "", 
           iconName: data.iconName || "ImageIcon",
           tags: data.tags || [],
           previewImageUrl: data.previewImageUrl || "",
@@ -67,7 +66,8 @@ export default function ScenarioEditorHubPage() {
           events: data.events || [],
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
-        } as Scenario);
+        };
+        fetchedScenarios.push(scenarioData);
       });
       setScenarios(fetchedScenarios);
       setIsLoading(false);
@@ -104,12 +104,12 @@ export default function ScenarioEditorHubPage() {
   const handleCreateNewScenario = async () => {
     setIsCreatingNew(true);
     try {
-      const newScenarioData = createDefaultScenario();
+      const newScenarioData = createDefaultScenario(); // Get default structure
       const scenarioToSave: Omit<Scenario, 'id'> = {
-        ...newScenarioData,
-        title: "Neues Szenario (Entwurf)",
+        ...newScenarioData, // Spread default values
+        title: "Neues Szenario (Entwurf)", // Overwrite specific fields
         status: 'draft',
-        createdAt: serverTimestamp() as Timestamp,
+        createdAt: serverTimestamp() as Timestamp, // Set server timestamp
         updatedAt: serverTimestamp() as Timestamp,
       };
       const docRef = await addDoc(collection(db, "scenarios"), scenarioToSave);
@@ -157,7 +157,7 @@ export default function ScenarioEditorHubPage() {
         const duplicatedScenarioData: Omit<Scenario, 'id'> = {
           ...originalScenarioData,
           title: `Kopie von ${originalScenarioData.title || 'Unbenanntes Szenario'}`,
-          status: 'draft',
+          status: 'draft', // Duplicates are drafts
           createdAt: serverTimestamp() as Timestamp,
           updatedAt: serverTimestamp() as Timestamp,
         };
@@ -190,9 +190,9 @@ export default function ScenarioEditorHubPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Link href="/admin" passHref legacyBehavior>
+           <Link href="/admin" passHref legacyBehavior>
             <Button variant="outline" className="w-full sm:w-auto">
-              <ListChecks className="mr-2 h-5 w-5" /> Zur Szenarienauswahl
+                <ListChecks className="mr-2 h-5 w-5" /> Zur Szenarienauswahl
             </Button>
           </Link>
           <Button onClick={handleCreateNewScenario} className="w-full sm:w-auto" disabled={isCreatingNew}>
@@ -204,7 +204,7 @@ export default function ScenarioEditorHubPage() {
 
       <Tabs defaultValue="scenarios" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="scenarios">
+          <TabsTrigger value="scenarios" onClick={() => router.push('/admin/scenario-editor')}>
             <ListChecks className="mr-2 h-4 w-4" />Szenarien ({filteredScenarios.length})
           </TabsTrigger>
           <TabsTrigger value="bot-templates" onClick={() => router.push('/admin/bot-template-editor')}>
@@ -259,18 +259,18 @@ export default function ScenarioEditorHubPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-1/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
-                        <TableHead className="w-3/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Titel</TableHead>
-                        <TableHead className="w-3/12">Kurzbeschreibung</TableHead>
-                        <TableHead className="w-1/12"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Status</TableHead>
-                        <TableHead className="w-2/12">Tags</TableHead>
-                        <TableHead className="w-2/12 text-right">Aktionen</TableHead>
+                        <TableHead className="w-[150px]"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
+                        <TableHead><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Titel</TableHead>
+                        <TableHead>Kurzbeschreibung</TableHead>
+                        <TableHead><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Status</TableHead>
+                        <TableHead>Tags</TableHead>
+                        <TableHead className="text-right w-[250px]">Aktionen</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredScenarios.map((scenario: Scenario) => (
                         <TableRow key={scenario.id}>
-                          <TableCell className="font-mono text-xs text-muted-foreground truncate max-w-[80px]">{scenario.id}</TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground truncate" title={scenario.id}>{scenario.id.substring(0, 10)}...</TableCell>
                           <TableCell className="font-medium">
                             <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
                               <a className="hover:text-primary hover:underline">{scenario.title}</a>
@@ -297,15 +297,13 @@ export default function ScenarioEditorHubPage() {
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               <Link href={`/admin/session-dashboard/${scenario.id}`} passHref legacyBehavior>
-                                <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90" title="Dashboard/Simulation starten">
-                                  <PlayCircle className="mr-1 h-4 w-4" />
-                                  Starten
+                                <Button variant="default" size="sm" className="bg-primary hover:bg-primary/90" title="Dashboard/Simulation starten" disabled={scenario.status !== 'published'}>
+                                  <PlayCircle className="h-4 w-4" /> 
                                 </Button>
                               </Link>
                               <Link href={`/admin/scenario-editor/${scenario.id}`} passHref legacyBehavior>
                                 <Button variant="outline" size="sm" title="Bearbeiten">
-                                  <FileEdit className="mr-1 h-4 w-4" />
-                                  Edit
+                                  <FileEdit className="h-4 w-4" />
                                 </Button>
                               </Link>
                               <Button 
@@ -319,7 +317,7 @@ export default function ScenarioEditorHubPage() {
                               </Button>
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                  <Button variant="destructive" size="sm" className="bg-red-600 hover:bg-red-700" disabled={isDeleting === scenario.id || isDuplicating === scenario.id} title="Löschen">
+                                  <Button variant="destructive" size="sm" disabled={isDeleting === scenario.id || isDuplicating === scenario.id} title="Löschen">
                                     {isDeleting === scenario.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                   </Button>
                                 </AlertDialogTrigger>
@@ -335,8 +333,9 @@ export default function ScenarioEditorHubPage() {
                                     <AlertDialogAction 
                                       onClick={() => handleDeleteScenario(scenario.id, scenario.title)}
                                       className="bg-destructive hover:bg-destructive/90"
+                                      disabled={isDeleting === scenario.id}
                                     >
-                                      Ja, löschen
+                                    {isDeleting === scenario.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, löschen"}
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
