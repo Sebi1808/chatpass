@@ -7,13 +7,13 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Users, PlusCircle, Loader2, FileEdit, Trash2, ArrowUpDown, Search } from "lucide-react"; // Added Search
+import { Users, PlusCircle, Loader2, FileEdit, Trash2, ArrowUpDown, Search, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
 import React, { useState, useEffect, type FormEvent, useMemo } from "react";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, doc, updateDoc, deleteDoc, Timestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, onSnapshot, query, orderBy as firestoreOrderBy, doc, updateDoc, deleteDoc, Timestamp } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import type { RoleTemplate } from "@/lib/types"; 
+import type { RoleTemplate } from "@/lib/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   AlertDialog,
@@ -27,29 +27,46 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+type SortableRoleTemplateKeys = keyof Pick<RoleTemplate, 'templateId' | 'name'> | 'createdAt';
+
 export default function RoleTemplateEditorPage() {
   const { toast } = useToast();
   const [templates, setTemplates] = useState<RoleTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  
+
   const [editingTemplate, setEditingTemplate] = useState<RoleTemplate | null>(null);
 
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateDescription, setNewTemplateDescription] = useState("");
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: SortableRoleTemplateKeys; direction: 'asc' | 'desc' } | null>({ key: 'name', direction: 'asc' });
+
 
   useEffect(() => {
     setIsLoadingTemplates(true);
     const templatesColRef = collection(db, "roleTemplates");
-    const q = query(templatesColRef, orderBy("name", "asc"));
+    const q = query(templatesColRef, firestoreOrderBy("name", "asc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedTemplates: RoleTemplate[] = [];
       querySnapshot.forEach((docSnap) => {
-        fetchedTemplates.push({ templateId: docSnap.id, ...docSnap.data() } as RoleTemplate);
+        const data = docSnap.data();
+        let createdAt: Timestamp | undefined = undefined;
+        if (data.createdAt instanceof Timestamp) {
+            createdAt = data.createdAt;
+        } else if (data.createdAt && typeof (data.createdAt as any).seconds === 'number') {
+            createdAt = new Timestamp((data.createdAt as any).seconds, (data.createdAt as any).nanoseconds);
+        }
+
+        fetchedTemplates.push({
+          templateId: docSnap.id,
+          name: data.name || "Unbenannte Vorlage",
+          description: data.description || "",
+          createdAt: createdAt,
+        } as RoleTemplate);
       });
       setTemplates(fetchedTemplates);
       setIsLoadingTemplates(false);
@@ -62,8 +79,36 @@ export default function RoleTemplateEditorPage() {
     return () => unsubscribe();
   }, [toast]);
 
-  const filteredTemplates = useMemo(() => {
-    return templates.filter(template => {
+  const requestSort = (key: SortableRoleTemplateKeys) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+ const sortedTemplates = useMemo(() => {
+    let sortableItems = [...templates];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        const valA = a[sortConfig.key];
+        const valB = b[sortConfig.key];
+        let comparison = 0;
+
+        if (valA instanceof Timestamp && valB instanceof Timestamp) {
+          comparison = valA.toMillis() - valB.toMillis();
+        } else if (typeof valA === 'string' && typeof valB === 'string') {
+          comparison = valA.toLowerCase().localeCompare(valB.toLowerCase());
+        } else if (typeof valA === 'number' && typeof valB === 'number') {
+          comparison = valA - valB;
+        } else {
+          if (valA > valB) comparison = 1;
+          else if (valA < valB) comparison = -1;
+        }
+        return sortConfig.direction === 'asc' ? comparison : comparison * -1;
+      });
+    }
+    return sortableItems.filter(template => {
         if (!searchTerm.trim()) return true;
         const lowerSearchTerm = searchTerm.toLowerCase();
         return (
@@ -71,7 +116,14 @@ export default function RoleTemplateEditorPage() {
           template.description.toLowerCase().includes(lowerSearchTerm)
         );
       });
-  }, [templates, searchTerm]);
+  }, [templates, searchTerm, sortConfig]);
+
+  const getSortIcon = (key: SortableRoleTemplateKeys) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="inline-block ml-1 h-3 w-3 text-muted-foreground/70" />;
+    }
+    return sortConfig.direction === 'asc' ? <ArrowUp className="inline-block ml-1 h-3 w-3 text-primary" /> : <ArrowDown className="inline-block ml-1 h-3 w-3 text-primary" />;
+  };
 
 
   const resetForm = () => {
@@ -88,22 +140,19 @@ export default function RoleTemplateEditorPage() {
     }
     setIsSavingTemplate(true);
 
-    const templateData: Omit<RoleTemplate, 'templateId' | 'createdAt'| 'updatedAt'> = { // Added updatedAt to Omit
+    const templateData: Omit<RoleTemplate, 'templateId' | 'createdAt'| 'updatedAt'> = {
       name: newTemplateName.trim(),
       description: newTemplateDescription.trim(),
     };
 
     try {
       if (editingTemplate) {
-        // Update existing template
         const templateDocRef = doc(db, "roleTemplates", editingTemplate.templateId);
         await updateDoc(templateDocRef, { ...templateData, updatedAt: serverTimestamp() });
         toast({ title: "Rollen-Vorlage aktualisiert", description: `Vorlage "${templateData.name}" wurde gespeichert.` });
       } else {
-        // Create new template
-        const newDocData: RoleTemplate = {
+        const newDocData: Omit<RoleTemplate, 'templateId'> & { createdAt: Timestamp } = {
             ...templateData,
-            templateId: '', // Firestore will generate this
             createdAt: serverTimestamp() as Timestamp,
         }
         await addDoc(collection(db, "roleTemplates"), newDocData);
@@ -122,7 +171,7 @@ export default function RoleTemplateEditorPage() {
     setEditingTemplate(template);
     setNewTemplateName(template.name);
     setNewTemplateDescription(template.description);
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeleteTemplate = async (templateId: string, templateName: string) => {
@@ -210,19 +259,19 @@ export default function RoleTemplateEditorPage() {
               <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
               <p className="text-muted-foreground">Lade Vorlagen...</p>
             </div>
-          ) : filteredTemplates.length > 0 ? (
+          ) : sortedTemplates.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[150px]"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
-                    <TableHead><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Name</TableHead>
+                    <TableHead className="w-[150px] cursor-pointer hover:text-primary" onClick={() => requestSort('templateId')}>ID {getSortIcon('templateId')}</TableHead>
+                    <TableHead className="cursor-pointer hover:text-primary" onClick={() => requestSort('name')}>Name {getSortIcon('name')}</TableHead>
                     <TableHead>Beschreibung</TableHead>
                     <TableHead className="text-right w-[120px]">Aktionen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredTemplates.map((template) => (
+                  {sortedTemplates.map((template) => (
                     <TableRow key={template.templateId}>
                       <TableCell className="font-mono text-xs text-muted-foreground truncate" title={template.templateId}>{template.templateId.substring(0,10)}...</TableCell>
                       <TableCell className="font-medium">
@@ -251,7 +300,7 @@ export default function RoleTemplateEditorPage() {
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                       <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-                                      <AlertDialogAction 
+                                      <AlertDialogAction
                                           onClick={() => handleDeleteTemplate(template.templateId, template.name)}
                                           className="bg-destructive hover:bg-destructive/90"
                                           disabled={isDeleting === template.templateId}
