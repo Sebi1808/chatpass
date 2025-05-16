@@ -9,11 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Scenario } from '@/lib/types';
-import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks, NotebookPen, Trash2, Copy, Eye, ShieldCheck, Loader2, PlayCircle, Filter, ArrowUpDown } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { FileEdit, PlusCircle, Search, Bot, Users, ListChecks, NotebookPen, Trash2, Copy, Eye, ShieldCheck, Loader2, PlayCircle, Filter, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { collection, onSnapshot, query, orderBy, Timestamp, deleteDoc, doc, addDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy as firestoreOrderBy, Timestamp, deleteDoc, doc, addDoc, getDoc, serverTimestamp } from 'firebase/firestore'; // Renamed orderBy to firestoreOrderBy
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -29,6 +29,7 @@ import {
 import { createDefaultScenario } from '@/app/admin/scenario-editor/[scenarioId]/page';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+type SortableScenarioKeys = keyof Pick<Scenario, 'id' | 'title' | 'status'>;
 
 export default function ScenarioEditorHubPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,10 +42,13 @@ export default function ScenarioEditorHubPage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  const [sortConfig, setSortConfig] = useState<{ key: SortableScenarioKeys; direction: 'asc' | 'desc' } | null>({ key: 'title', direction: 'asc' });
+
   useEffect(() => {
     setIsLoading(true);
     const scenariosColRef = collection(db, "scenarios");
-    const q = query(scenariosColRef, orderBy("title", "asc"));
+    // Query only by title initially, status filter applied client-side
+    const q = query(scenariosColRef, firestoreOrderBy("title", "asc"));
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedScenarios: Scenario[] = [];
@@ -55,8 +59,8 @@ export default function ScenarioEditorHubPage() {
           title: data.title || "Unbenanntes Szenario",
           kurzbeschreibung: data.kurzbeschreibung || "",
           langbeschreibung: data.langbeschreibung || "",
-          lernziele: data.lernziele || "", 
-          iconName: data.iconName || "ImageIcon",
+          lernziele: data.lernziele || "",
+          iconName: data.iconName || "ImageIconLucide",
           tags: data.tags || [],
           previewImageUrl: data.previewImageUrl || "",
           status: data.status || "draft",
@@ -84,8 +88,36 @@ export default function ScenarioEditorHubPage() {
     return () => unsubscribe();
   }, [toast]);
 
-  const filteredScenarios = useMemo(() => {
-    return scenarios
+  const requestSort = (key: SortableScenarioKeys) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const filteredAndSortedScenarios = useMemo(() => {
+    let sortableItems = [...scenarios];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        const valA = a[sortConfig.key];
+        const valB = b[sortConfig.key];
+
+        let comparison = 0;
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          comparison = valA.toLowerCase().localeCompare(valB.toLowerCase());
+        } else if (typeof valA === 'number' && typeof valB === 'number') {
+          comparison = valA - valB;
+        } else {
+          // Fallback for other types or mixed types
+          if (valA > valB) comparison = 1;
+          else if (valA < valB) comparison = -1;
+        }
+        return sortConfig.direction === 'asc' ? comparison : comparison * -1;
+      });
+    }
+
+    return sortableItems
       .filter(scenario => {
         if (statusFilter === 'all') return true;
         return scenario.status === statusFilter;
@@ -99,17 +131,17 @@ export default function ScenarioEditorHubPage() {
           (scenario.tags && scenario.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(lowerSearchTerm)))
         );
       });
-  }, [searchTerm, scenarios, statusFilter]);
+  }, [searchTerm, scenarios, statusFilter, sortConfig]);
 
   const handleCreateNewScenario = async () => {
     setIsCreatingNew(true);
     try {
-      const newScenarioData = createDefaultScenario(); // Get default structure
-      const scenarioToSave: Omit<Scenario, 'id'> = {
-        ...newScenarioData, // Spread default values
-        title: "Neues Szenario (Entwurf)", // Overwrite specific fields
-        status: 'draft',
-        createdAt: serverTimestamp() as Timestamp, // Set server timestamp
+      const newScenarioData = createDefaultScenario();
+      const scenarioToSave = {
+        ...newScenarioData,
+        title: "Neues Szenario (Entwurf)",
+        status: 'draft' as 'draft' | 'published',
+        createdAt: serverTimestamp() as Timestamp,
         updatedAt: serverTimestamp() as Timestamp,
       };
       const docRef = await addDoc(collection(db, "scenarios"), scenarioToSave);
@@ -154,10 +186,10 @@ export default function ScenarioEditorHubPage() {
 
       if (scenarioSnap.exists()) {
         const originalScenarioData = scenarioSnap.data() as Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>;
-        const duplicatedScenarioData: Omit<Scenario, 'id'> = {
+        const duplicatedScenarioData = {
           ...originalScenarioData,
           title: `Kopie von ${originalScenarioData.title || 'Unbenanntes Szenario'}`,
-          status: 'draft', // Duplicates are drafts
+          status: 'draft' as 'draft' | 'published',
           createdAt: serverTimestamp() as Timestamp,
           updatedAt: serverTimestamp() as Timestamp,
         };
@@ -178,6 +210,14 @@ export default function ScenarioEditorHubPage() {
     }
   };
 
+  const getSortIcon = (key: SortableScenarioKeys) => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ArrowUpDown className="inline-block ml-1 h-4 w-4 text-muted-foreground/70" />;
+    }
+    return sortConfig.direction === 'asc' ? <ArrowUp className="inline-block ml-1 h-4 w-4 text-primary" /> : <ArrowDown className="inline-block ml-1 h-4 w-4 text-primary" />;
+  };
+
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -192,7 +232,7 @@ export default function ScenarioEditorHubPage() {
         <div className="flex items-center gap-2 w-full sm:w-auto">
            <Link href="/admin" passHref legacyBehavior>
             <Button variant="outline" className="w-full sm:w-auto">
-                <ListChecks className="mr-2 h-5 w-5" /> Zur Szenarienauswahl
+                <LayoutGrid className="mr-2 h-5 w-5" /> Zur Szenarienauswahl
             </Button>
           </Link>
           <Button onClick={handleCreateNewScenario} className="w-full sm:w-auto" disabled={isCreatingNew}>
@@ -205,7 +245,7 @@ export default function ScenarioEditorHubPage() {
       <Tabs defaultValue="scenarios" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="scenarios" onClick={() => router.push('/admin/scenario-editor')}>
-            <ListChecks className="mr-2 h-4 w-4" />Szenarien ({filteredScenarios.length})
+            <ListChecks className="mr-2 h-4 w-4" />Szenarien ({filteredAndSortedScenarios.length})
           </TabsTrigger>
           <TabsTrigger value="bot-templates" onClick={() => router.push('/admin/bot-template-editor')}>
             <Bot className="mr-2 h-4 w-4" />Bot-Vorlagen
@@ -254,21 +294,27 @@ export default function ScenarioEditorHubPage() {
                   <Loader2 className="h-6 w-6 animate-spin text-primary mr-2" />
                   <p className="text-center text-muted-foreground">Lade Szenarien...</p>
                 </div>
-              ) : filteredScenarios.length > 0 ? (
+              ) : filteredAndSortedScenarios.length > 0 ? (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[150px]"><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />ID</TableHead>
-                        <TableHead><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Titel</TableHead>
+                        <TableHead className="w-[120px] cursor-pointer hover:text-primary" onClick={() => requestSort('id')}>
+                          ID {getSortIcon('id')}
+                        </TableHead>
+                        <TableHead className="cursor-pointer hover:text-primary" onClick={() => requestSort('title')}>
+                          Titel {getSortIcon('title')}
+                        </TableHead>
                         <TableHead>Kurzbeschreibung</TableHead>
-                        <TableHead><ArrowUpDown className="inline-block mr-1 h-4 w-4 cursor-pointer hover:text-primary" />Status</TableHead>
+                        <TableHead className="w-[150px] cursor-pointer hover:text-primary" onClick={() => requestSort('status')}>
+                          Status {getSortIcon('status')}
+                        </TableHead>
                         <TableHead>Tags</TableHead>
-                        <TableHead className="text-right w-[250px]">Aktionen</TableHead>
+                        <TableHead className="text-right w-[200px] sm:w-[250px]">Aktionen</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredScenarios.map((scenario: Scenario) => (
+                      {filteredAndSortedScenarios.map((scenario: Scenario) => (
                         <TableRow key={scenario.id}>
                           <TableCell className="font-mono text-xs text-muted-foreground truncate" title={scenario.id}>{scenario.id.substring(0, 10)}...</TableCell>
                           <TableCell className="font-medium">
@@ -359,3 +405,5 @@ export default function ScenarioEditorHubPage() {
     </div>
   );
 }
+
+    
