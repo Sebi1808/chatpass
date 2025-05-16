@@ -24,13 +24,26 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebas
 import Image from 'next/image';
 import { availableIcons, lucideIconMap } from '@/lib/config';
 
+const editorSections = [
+  { id: "basisinfo", label: "Basis", icon: <FileText className="mr-2 h-4 w-4" /> },
+  { id: "initialpost", label: "Startpost", icon: <MessageSquareTextIcon className="mr-2 h-4 w-4" /> },
+  { id: "botconfig", label: "Bots", icon: <BotIconLucide className="mr-2 h-4 w-4" /> },
+  { id: "humanroles", label: "Rollen", icon: <UsersIconLucideReal className="mr-2 h-4 w-4" /> },
+  { id: "events", label: "Events", icon: <Sparkles className="mr-2 h-4 w-4" /> },
+  { id: "metadaten", label: "Meta", icon: <ImageIconReal className="mr-2 h-4 w-4" /> },
+  { id: "tags", label: "Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
+  // { id: "farbschema", label: "Farbschema (Zukunft)", icon: <Palette className="mr-2 h-4 w-4" /> },
+  // { id: "originaldaten", label: "DB-Daten (Debug)", icon: <DatabaseIcon className="mr-2 h-4 w-4" /> },
+];
+
+
 // Helper function to create a default scenario structure
 export function createDefaultScenario(): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> {
   return {
     title: 'Neues Szenario',
     kurzbeschreibung: '',
     langbeschreibung: '',
-    lernziele: '', // Changed from array to string
+    lernziele: '',
     iconName: availableIcons[0]?.value || 'ImageIconReal',
     tags: [],
     previewImageUrl: '',
@@ -47,16 +60,6 @@ export function createDefaultScenario(): Omit<Scenario, 'id' | 'createdAt' | 'up
     events: [],
   };
 }
-
-const editorSections = [
-  { id: "basisinfo", label: "Basis", icon: <FileText className="mr-2 h-4 w-4" /> },
-  { id: "initialpost", label: "Startpost", icon: <MessageSquareTextIcon className="mr-2 h-4 w-4" /> },
-  { id: "botconfig", label: "Bots", icon: <BotIconLucide className="mr-2 h-4 w-4" /> },
-  { id: "humanroles", label: "Rollen", icon: <UsersIconLucideReal className="mr-2 h-4 w-4" /> },
-  { id: "events", label: "Events", icon: <Sparkles className="mr-2 h-4 w-4" /> },
-  { id: "metadaten", label: "Meta", icon: <ImageIconReal className="mr-2 h-4 w-4" /> },
-  { id: "tags", label: "Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
-];
 
 
 export default function EditScenarioPage() {
@@ -167,7 +170,7 @@ export default function EditScenarioPage() {
       setLernzieleContent(newScenarioData.lernziele || '');
       setPreviewImageUrlInput(newScenarioData.previewImageUrl || '');
       setLocalPreviewUrl(newScenarioData.previewImageUrl || null);
-      setIconNameInput(newScenarioData.iconName || availableIcons[0]?.value || 'Image');
+      setIconNameInput(newScenarioData.iconName || availableIcons[0]?.value || 'ImageIconReal');
       setStatus(newScenarioData.status || 'draft');
       setSelectedTags(newScenarioData.tags || []);
       setEditableBotsConfig(JSON.parse(JSON.stringify(newScenarioData.defaultBotsConfig || [])));
@@ -196,7 +199,7 @@ export default function EditScenarioPage() {
         setLernzieleContent(foundScenario.lernziele || '');
         setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
         setLocalPreviewUrl(foundScenario.previewImageUrl || null); 
-        setIconNameInput(foundScenario.iconName || availableIcons[0]?.value || 'Image');
+        setIconNameInput(foundScenario.iconName || availableIcons[0]?.value || 'ImageIconReal');
         setStatus(foundScenario.status || 'draft');
         setSelectedTags(foundScenario.tags || []);
         setEditableBotsConfig(JSON.parse(JSON.stringify(foundScenario.defaultBotsConfig || [])));
@@ -239,10 +242,12 @@ export default function EditScenarioPage() {
   }, [currentScenarioId, isNewScenario, toast, router]);
 
   useEffect(() => {
-    if (!isLoadingTemplates || isNewScenario) { 
+    // Load scenario only if templates are loaded OR it's a new scenario (no templates needed for initial default)
+    // AND if not already loading
+    if ((!isLoadingTemplates || isNewScenario) && !isLoading) { 
         loadScenario();
     }
-  }, [loadScenario, isLoadingTemplates, isNewScenario]);
+  }, [loadScenario, isLoadingTemplates, isNewScenario, isLoading]);
 
 
   const handlePreviewImageFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -510,8 +515,8 @@ export default function EditScenarioPage() {
           return { 
             ...category, 
             tags: categoryMatches 
-              ? category.tags // If category name matches, show all its tags
-              : filteredTags.map(tag => ({ // Else, show only matching tags and their potentially filtered subTags
+              ? category.tags 
+              : filteredTags.map(tag => ({
                   ...tag,
                   subTags: tag.subTags?.filter(subTag => subTag.name.toLowerCase().includes(lowerSearchTerm))
                 }))
@@ -577,11 +582,11 @@ export default function EditScenarioPage() {
           templateOriginId: r.templateOriginId || '', 
       })),
       initialPost: {
-        authorName: editableInitialPost.authorName || 'System',
-        authorAvatarFallback: editableInitialPost.authorAvatarFallback || (editableInitialPost.authorName || 'SYS').substring(0,2).toUpperCase() || 'SY',
-        content: editableInitialPost.content || '',
-        imageUrl: editableInitialPost.imageUrl || '',
-        platform: editableInitialPost.platform || 'Generic',
+        authorName: editableInitialPost?.authorName || 'System',
+        authorAvatarFallback: editableInitialPost?.authorAvatarFallback || (editableInitialPost?.authorName || 'SYS').substring(0,2).toUpperCase() || 'SY',
+        content: editableInitialPost?.content || '',
+        imageUrl: editableInitialPost?.imageUrl || '',
+        platform: editableInitialPost?.platform || 'Generic',
       },
       events: (editableEvents || []).map(e => ({
         id: e.id || `event-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
@@ -596,11 +601,12 @@ export default function EditScenarioPage() {
         data.title = data.title || 'Unbenanntes Szenario';
         data.kurzbeschreibung = data.kurzbeschreibung || '';
         data.langbeschreibung = data.langbeschreibung || '';
-        data.lernziele = data.lernziele || '';
+        data.lernziele = data.lernziele || ''; // Array to string
         data.previewImageUrl = data.previewImageUrl || '';
         data.iconName = data.iconName || (availableIcons[0]?.value || 'ImageIconReal');
         data.status = data.status || 'draft';
         data.tags = Array.isArray(data.tags) ? data.tags.map(t => String(t || '').toLowerCase()) : [];
+        
         data.defaultBotsConfig = Array.isArray(data.defaultBotsConfig) ? data.defaultBotsConfig.map((b: any) => ({
             id: b?.id || `bot-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
             name: b?.name || 'Bot',
@@ -612,12 +618,14 @@ export default function EditScenarioPage() {
             currentEscalation: b?.currentEscalation ?? 0,
             templateOriginId: b?.templateOriginId || '',
         })) : [];
+
         data.humanRolesConfig = Array.isArray(data.humanRolesConfig) ? data.humanRolesConfig.map((r: any) => ({
             id: r?.id || `role-${Date.now()}-${Math.random().toString(36).substring(2,5)}`,
             name: r?.name || 'Rolle',
             description: r?.description || '',
             templateOriginId: r?.templateOriginId || '',
         })) : [];
+
         data.initialPost = {
             authorName: data.initialPost?.authorName || 'System',
             authorAvatarFallback: data.initialPost?.authorAvatarFallback || (data.initialPost?.authorName || 'SYS').substring(0,2).toUpperCase() || 'SY',
@@ -768,82 +776,74 @@ export default function EditScenarioPage() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
-            {renderIcon(iconNameInput)}
-            Editor: <span className="text-foreground ml-2">{displayedTitle}</span>
-          </h1>
-          <p className="text-xs text-muted-foreground mt-0.5 ml-9">
-            ID: {currentIdForDisplay}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 md:gap-3">
-           <div className="flex items-center space-x-2">
-            <Switch
-                id="publish-status"
-                checked={status === 'published'}
-                onCheckedChange={(checked) => setStatus(checked ? 'published' : 'draft')}
-                disabled={isSaving}
-            />
-            <Label htmlFor="publish-status" className="text-sm whitespace-nowrap">
-                {status === 'published' ? <span className="text-green-500 flex items-center"><ShieldCheck className="mr-1.5 h-4 w-4"/>Veröffentlicht</span> : <span className="text-amber-500 flex items-center"><FileText className="mr-1.5 h-4 w-4"/>Entwurf</span>}
-            </Label>
+      {/* Combined Sticky Header */}
+      <div className="sticky top-16 bg-background z-20 border-b"> {/* Adjust top based on main admin header height */}
+        {/* Main Action Bar (Save/Cancel) */}
+        <div className="px-4 py-3 sm:px-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
+              {renderIcon(iconNameInput)}
+              Editor: <span className="text-foreground ml-2">{displayedTitle}</span>
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5 ml-8"> {/* Adjusted margin to align with title if icon is present */}
+              ID: {currentIdForDisplay}
+            </p>
           </div>
-          <Separator orientation="vertical" className="h-8 mx-1"/>
-          <Button variant="outline" type="button" onClick={() => router.push('/admin/scenario-editor')} disabled={isSaving}>
-            <X className="mr-2 h-4 w-4" />
-            Abbrechen
-          </Button>
-          <Button type="submit" disabled={isSaving || (isLoading && !isNewScenario) || isUploadingPreviewImage} className="min-w-[150px]">
-            {isUploadingPreviewImage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />)}
-            {isUploadingPreviewImage ? "Bild lädt hoch..." : (isSaving ? "Speichert..." : (isNewScenario ? "Szenario erstellen" : "Änderungen speichern"))}
-          </Button>
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="flex items-center space-x-2">
+              <Switch
+                  id="publish-status"
+                  checked={status === 'published'}
+                  onCheckedChange={(checked) => setStatus(checked ? 'published' : 'draft')}
+                  disabled={isSaving}
+              />
+              <Label htmlFor="publish-status" className="text-sm whitespace-nowrap">
+                  {status === 'published' ? <span className="text-green-500 flex items-center"><ShieldCheck className="mr-1.5 h-4 w-4"/>Veröffentlicht</span> : <span className="text-amber-500 flex items-center"><FileText className="mr-1.5 h-4 w-4"/>Entwurf</span>}
+              </Label>
+            </div>
+            <Separator orientation="vertical" className="h-8 mx-1"/>
+            <Button variant="outline" type="button" onClick={() => router.push('/admin/scenario-editor')} disabled={isSaving}>
+              <X className="mr-2 h-4 w-4" />
+              Abbrechen
+            </Button>
+            <Button type="submit" disabled={isSaving || (isLoading && !isNewScenario) || isUploadingPreviewImage} className="min-w-[150px]">
+              {isUploadingPreviewImage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />)}
+              {isUploadingPreviewImage ? "Bild lädt hoch..." : (isSaving ? "Speichert..." : (isNewScenario ? "Szenario erstellen" : "Änderungen speichern"))}
+            </Button>
+          </div>
         </div>
+
+        {/* Shortcut Navigation Bar */}
+        <ScrollArea className="max-w-full border-t bg-background/90 backdrop-blur-sm">
+          <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2">
+            {editorSections.map(section => (
+              <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
+                <a href={`#${section.id}`}>
+                  {section.icon}
+                  <span className="hidden sm:inline ml-1">{section.label}</span>
+                </a>
+              </Button>
+            ))}
+            {(!isNewScenario && currentScenarioId && originalScenarioData) && (
+              <Button asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
+                <a href="#originaldaten">
+                  <DatabaseIcon className="mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline ml-1">DB-Daten</span>
+                </a>
+              </Button>
+            )}
+          </div>
+        </ScrollArea>
       </div>
 
-      <ScrollArea orientation="horizontal" className="sticky top-[var(--header-height,73px)] z-10 bg-background/90 backdrop-blur-sm border-b max-w-full">
-        <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2">
-        {editorSections.map(section => (
-            <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
-            <a href={`#${section.id}`}>
-                {section.icon}
-                <span className="hidden sm:inline ml-1">{section.label}</span>
-            </a>
-            </Button>
-        ))}
-          {(!isNewScenario && currentScenarioId && originalScenarioData) && (
-            <Button asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
-                <a href="#originaldaten">
-                    <DatabaseIcon className="mr-2 h-4 w-4" />
-                    <span className="hidden sm:inline ml-1">DB-Daten (Debug)</span>
-                </a>
-            </Button>
-          )}
-        </div>
-      </ScrollArea>
 
-      <style jsx global>{`
-        :root {
-          --header-height: 73px; 
-        }
-        html {
-          scroll-behavior: smooth;
-        }
-        .accordion-content-wrapper {
-            padding-bottom: 0.5rem !important;
-            padding-top: 0 !important;
-        }
-        .accordion-card-content {
-             padding-top: 0.5rem !important;
-        }
-      `}</style>
-
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8 pt-3">
+      {/* Main Scrollable Content - Added padding top to account for combined sticky header height */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8 pt-3"> {/* Adjust pt-3 or higher if needed */}
         <div className="max-w-[1000px] mx-auto"> 
             <Accordion type="multiple" defaultValue={defaultAccordionValues} className="w-full space-y-4">
 
-                <AccordionItem value="basisinfo" id="basisinfo" className="border-none scroll-mt-20">
+                {/* Basisinformationen */}
+                <AccordionItem value="basisinfo" id="basisinfo" className="border-none scroll-mt-32"> {/* Increased scroll-mt for sticky header */}
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline text-left border-b">
                     <CardTitle className="text-lg flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Basisinformationen</CardTitle>
@@ -878,7 +878,8 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                <AccordionItem value="initialpost" id="initialpost" className="border-none scroll-mt-20">
+                {/* Ausgangsposting */}
+                <AccordionItem value="initialpost" id="initialpost" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                     <CardTitle className="text-lg flex items-center"><MessageSquareTextIcon className="mr-2 h-5 w-5 text-primary"/>Ausgangsposting (1. Chatbeitrag)</CardTitle>
@@ -934,8 +935,8 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-
-                <AccordionItem value="botconfig" id="botconfig" className="border-none scroll-mt-20">
+                {/* Bot-Konfiguration */}
+                <AccordionItem value="botconfig" id="botconfig" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                     <CardTitle className="text-lg flex items-center"><BotIconLucide className="mr-2 h-5 w-5 text-primary"/>Bot-Konfiguration ({editableBotsConfig.length})</CardTitle>
@@ -944,7 +945,7 @@ export default function EditScenarioPage() {
                     <CardHeader className="p-4 pb-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                         <div><CardDescription>Standard-Bots für dieses Szenario. Bearbeiten, hinzufügen oder aus Vorlagen wählen.</CardDescription></div>
                         <div className="flex gap-2 w-full sm:w-auto">
-                            <Select onValueChange={handleAddBotFromTemplate} disabled={isSaving || isLoadingTemplates}>
+                            <Select onValueChange={handleAddBotFromTemplate} value="" disabled={isSaving || isLoadingTemplates}>
                                 <SelectTrigger className="flex-1 sm:w-[230px] text-sm h-9">
                                     <SelectValue placeholder={isLoadingTemplates ? "Lade Vorlagen..." : "Bot aus Vorlage..."} />
                                 </SelectTrigger>
@@ -1038,7 +1039,8 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                <AccordionItem value="humanroles" id="humanroles" className="border-none scroll-mt-20">
+                {/* Menschliche Teilnehmerrollen */}
+                <AccordionItem value="humanroles" id="humanroles" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                     <CardTitle className="text-lg flex items-center"><UsersIconLucideReal className="mr-2 h-5 w-5 text-primary"/>Rollen für menschliche Teilnehmer ({editableHumanRoles.length})</CardTitle>
@@ -1047,7 +1049,7 @@ export default function EditScenarioPage() {
                         <CardHeader className="p-4 pb-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                             <div><CardDescription>Definition der Rollen, ihrer Ziele und Informationen.</CardDescription></div>
                             <div className="flex gap-2 w-full sm:w-auto">
-                                <Select onValueChange={handleAddHumanRoleFromTemplate} disabled={isSaving || isLoadingTemplates}>
+                                <Select onValueChange={handleAddHumanRoleFromTemplate} value="" disabled={isSaving || isLoadingTemplates}>
                                     <SelectTrigger className="flex-1 sm:w-[230px] text-sm h-9">
                                         <SelectValue placeholder={isLoadingTemplates ? "Lade Vorlagen..." : "Rolle aus Vorlage..."} />
                                     </SelectTrigger>
@@ -1111,10 +1113,11 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                <AccordionItem value="events" id="events" className="border-none scroll-mt-20">
+                 {/* Szenario-Ereignisse */}
+                <AccordionItem value="events" id="events" className="border-none scroll-mt-32">
                   <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
-                      <CardTitle className="text-lg flex items-center"><Sparkles className="mr-2 h-5 w-5 text-primary"/>Szenario-Ereignisse definieren ({editableEvents.length})</CardTitle>
+                      <CardTitle className="text-lg flex items-center"><Sparkles className="mr-2 h-5 w-5 text-primary"/>Szenario-Ereignisse ({editableEvents.length})</CardTitle>
                     </AccordionTrigger>
                     <AccordionContent className="accordion-content-wrapper">
                       <CardHeader className="p-4 pb-2">
@@ -1159,8 +1162,9 @@ export default function EditScenarioPage() {
                     </AccordionContent>
                   </Card>
                 </AccordionItem>
-
-                <AccordionItem value="metadaten" id="metadaten" className="border-none scroll-mt-20">
+                
+                {/* Szenario-Metadaten & Bild */}
+                <AccordionItem value="metadaten" id="metadaten" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                         <CardTitle className="text-lg flex items-center"><ImageIconReal className="mr-2 h-5 w-5 text-primary"/>Szenario-Metadaten & Bild</CardTitle>
@@ -1229,7 +1233,8 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
-                <AccordionItem value="tags" id="tags" className="border-none scroll-mt-20 w-full">
+                {/* Themen-Tags */}
+                <AccordionItem value="tags" id="tags" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                         <CardTitle className="text-lg flex items-center"><TagsIcon className="mr-2 h-5 w-5 text-primary"/>Themen-Tags ({selectedTags.length})</CardTitle>
@@ -1257,6 +1262,17 @@ export default function EditScenarioPage() {
                                     </Button>
                                 </div>
                             </div>
+                            <div className="mb-4">
+                                <Label htmlFor="filterTagTaxonomyInput">Tag-Taxonomie filtern/suchen:</Label>
+                                <Input 
+                                    id="filterTagTaxonomyInput"
+                                    placeholder="Taxonomie durchsuchen..."
+                                    value={tagSearchTerm}
+                                    onChange={(e) => setTagSearchTerm(e.target.value)}
+                                    className="mt-1 text-sm w-full"
+                                    disabled={isSaving}
+                                />
+                            </div>
                              <div className="mb-4">
                                 <Label>Ausgewählte Tags ({selectedTags.length}):</Label>
                                 {selectedTags && selectedTags.length > 0 ? (
@@ -1279,20 +1295,9 @@ export default function EditScenarioPage() {
                                 )}
                             </div>
                             <Separator className="my-4" />
-                            <div className="mb-4">
-                                <Label htmlFor="filterTagTaxonomyInput">Tag-Taxonomie filtern/suchen:</Label>
-                                <Input 
-                                    id="filterTagTaxonomyInput"
-                                    placeholder="Taxonomie durchsuchen..."
-                                    value={tagSearchTerm}
-                                    onChange={(e) => setTagSearchTerm(e.target.value)}
-                                    className="mt-1 text-sm w-full"
-                                    disabled={isSaving}
-                                />
-                            </div>
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen/Entfernen):</Label>
                              <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
-                                <Accordion type="multiple" className="w-full px-2" defaultValue={tagTaxonomy.map((_cat, idx) => `category-${idx}`)}>
+                                <Accordion type="multiple" className="w-full px-2" defaultValue={[]}> {/* Default to all collapsed */}
                                     {filteredTagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName} className="border-b-0">
                                             <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline text-left">
@@ -1340,14 +1345,14 @@ export default function EditScenarioPage() {
                 
 
             {(!isNewScenario && currentScenarioId && originalScenarioData) && (
-                <AccordionItem value="originaldaten" id="originaldaten" className="border-none scroll-mt-20">
+                <AccordionItem value="originaldaten" id="originaldaten" className="border-none scroll-mt-32">
                 <Card className="shadow-md w-full">
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                     <CardTitle className="text-lg flex items-center"><DatabaseIcon className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus Datenbank)</CardTitle>
                 </AccordionTrigger>
                 <AccordionContent className="accordion-content-wrapper"> 
                     <CardHeader className="p-4 pb-2">
-                    <CardDescription>Nur zur Referenz: So ist das Szenario aktuell in der Datenbank gespeichert.</CardDescription>
+                    <CardDescription>Nur zur Referenz während der Entwicklung: So ist das Szenario aktuell in der Datenbank gespeichert.</CardDescription>
                     </CardHeader>
                     <CardContent className="accordion-card-content p-4">
                     <ScrollArea className="w-[200px] h-[200px]" orientation="both">
@@ -1366,4 +1371,3 @@ export default function EditScenarioPage() {
     </form>
   );
 }
-
