@@ -1,26 +1,26 @@
 
 "use client";
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react'; // Added useMemo
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // Removed CardDescription
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from '@/lib/utils';
-import type { Scenario, DisplayParticipant, HumanRoleConfig } from "@/lib/types"; // Added HumanRoleConfig
+import type { Scenario, DisplayParticipant } from "@/lib/types";
 import type { ParticipantColor } from '@/lib/config';
 import { Bot as BotIcon, User, VolumeX, ShieldCheck, Crown, Loader2, Info } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"; // Removed DialogDescription
 import { Button } from '../ui/button';
 
 
 interface ChatSidebarProps {
   participants: DisplayParticipant[];
-  isLoadingParticipants: boolean; 
+  isLoadingParticipants: boolean;
   currentUserId: string | null;
-  userDisplayName: string | null; 
-  userRole: string | null; // This is the role NAME
+  userDisplayName: string | null;
+  userRole: string | null;
   userAvatarFallback: string;
   currentScenario: Scenario | undefined;
   isMuted: boolean;
@@ -32,7 +32,7 @@ const ChatSidebar = memo(function ChatSidebar({
   participants,
   isLoadingParticipants,
   currentUserId,
-  userDisplayName, 
+  userDisplayName,
   userRole,
   userAvatarFallback,
   currentScenario,
@@ -50,34 +50,33 @@ const ChatSidebar = memo(function ChatSidebar({
 
   return (
     <>
-      <h2 className="text-lg font-semibold">Teilnehmende ({isLoadingParticipants ? '...' : participants.filter(p => !p.isBot || isAdminView).length})</h2>
-      <ScrollArea className="flex-1 -mr-2"> 
+      <h2 className="text-lg font-semibold">Teilnehmende ({isLoadingParticipants ? '...' : participants.filter(p => p.isBot ? isAdminView : true).length})</h2>
+      <ScrollArea className="flex-1 -mr-2">
         <div className="space-y-3 py-2 pr-2">
           {isLoadingParticipants ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
               <p className="text-sm text-muted-foreground">Lade Teilnehmer...</p>
             </div>
-          ) : (!participants || participants.filter(p => !p.isBot || isAdminView).length === 0) ? (
+          ) : (!participants || participants.filter(p => p.isBot ? isAdminView : true).length === 0) ? (
             <p className="text-sm text-muted-foreground py-4 text-center">Noch keine Teilnehmer beigetreten.</p>
           ) : (
             participants.map((p) => {
-              if (p.isBot && !isAdminView) return null; // Do not show bots to regular users in sidebar
+              if (p.isBot && !isAdminView) return null;
 
               const pColor = getParticipantColorClasses(p.userId, p.isBot ? 'bot' : (p.userId === currentUserId && isAdminView ? 'admin' : 'user'));
               const isAdminParticipant = p.userId === currentUserId && isAdminView;
               const isCurrentParticipantMuted = p.isMuted ?? false;
-              const participantDisplayNameToShow = p.displayName || p.realName;
 
               return (
                 <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
                   <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
-                    <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={participantDisplayNameToShow} data-ai-hint="person user"/>
-                    <AvatarFallback className={cn("font-semibold",pColor.bg, pColor.text)}>{p.avatarFallback}</AvatarFallback>
+                    <AvatarImage src={`https://placehold.co/40x40.png?text=${p.avatarFallback}`} alt={p.displayName} data-ai-hint="person user"/>
+                    <AvatarFallback className={cn("font-semibold", pColor.bg, pColor.text)}>{p.avatarFallback}</AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="text-sm font-medium flex items-center">
-                      <span className="text-neutral-200">{participantDisplayNameToShow}</span> {/* Consistent light color for names */}
+                      <span className="text-neutral-200">{p.displayName}</span>
                       {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-purple-700 text-white border border-purple-900/50 shadow-sm flex items-center gap-1"><BotIcon className="h-3 w-3" />BOT</Badge>}
                       {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-red-700 text-white border border-red-900/50 shadow-sm flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
                       {p.userId === currentUserId && !isAdminView && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">Du</Badge>}
@@ -91,7 +90,7 @@ const ChatSidebar = memo(function ChatSidebar({
           )}
         </div>
       </ScrollArea>
-      {!isAdminView && userRole && currentScenario && userDisplayName && currentUserId && ( 
+      {!isAdminView && userRole && currentScenario && userDisplayName && currentUserId && (
         <>
           <Separator />
           <Card className="mt-auto bg-muted/30">
@@ -125,7 +124,6 @@ const ChatSidebar = memo(function ChatSidebar({
                 </div>
               </div>
             </CardHeader>
-            {/* Role description is now in the dialog */}
           </Card>
         </>
       )}
@@ -136,3 +134,4 @@ const ChatSidebar = memo(function ChatSidebar({
 ChatSidebar.displayName = "ChatSidebar";
 
 export { ChatSidebar };
+    
