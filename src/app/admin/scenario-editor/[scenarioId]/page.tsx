@@ -24,12 +24,13 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebas
 import Image from 'next/image';
 import { availableIcons, lucideIconMap } from '@/lib/config';
 
+// Helper function to create a default scenario structure
 export function createDefaultScenario(): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> {
   return {
     title: 'Neues Szenario',
     kurzbeschreibung: '',
     langbeschreibung: '',
-    lernziele: '',
+    lernziele: '', // Changed from array to string
     iconName: availableIcons[0]?.value || 'ImageIconReal',
     tags: [],
     previewImageUrl: '',
@@ -48,14 +49,13 @@ export function createDefaultScenario(): Omit<Scenario, 'id' | 'createdAt' | 'up
 }
 
 const editorSections = [
-  { id: "basisinfo", label: "Basisinfos", icon: <FileText className="mr-2 h-4 w-4" /> },
-  { id: "initialpost", label: "Ausgangsposting", icon: <MessageSquareTextIcon className="mr-2 h-4 w-4" /> },
-  { id: "botconfig", label: "Bot-Konfiguration", icon: <BotIconLucide className="mr-2 h-4 w-4" /> },
-  { id: "humanroles", label: "Menschliche Rollen", icon: <UsersIconLucideReal className="mr-2 h-4 w-4" /> },
-  { id: "events", label: "Szenario-Ereignisse", icon: <Sparkles className="mr-2 h-4 w-4" /> },
-  { id: "metadaten", label: "Metadaten & Bild", icon: <ImageIconReal className="mr-2 h-4 w-4" /> },
-  { id: "tags", label: "Themen-Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
-  { id: "theme", label: "Farbschema (Zukunft)", icon: <Palette className="mr-2 h-4 w-4" /> },
+  { id: "basisinfo", label: "Basis", icon: <FileText className="mr-2 h-4 w-4" /> },
+  { id: "initialpost", label: "Startpost", icon: <MessageSquareTextIcon className="mr-2 h-4 w-4" /> },
+  { id: "botconfig", label: "Bots", icon: <BotIconLucide className="mr-2 h-4 w-4" /> },
+  { id: "humanroles", label: "Rollen", icon: <UsersIconLucideReal className="mr-2 h-4 w-4" /> },
+  { id: "events", label: "Events", icon: <Sparkles className="mr-2 h-4 w-4" /> },
+  { id: "metadaten", label: "Meta", icon: <ImageIconReal className="mr-2 h-4 w-4" /> },
+  { id: "tags", label: "Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
 ];
 
 
@@ -106,9 +106,8 @@ export default function EditScenarioPage() {
   const [originalScenarioData, setOriginalScenarioData] = useState<Scenario | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Load Templates (Bots & Roles)
+
   useEffect(() => {
-    console.log("EditScenarioPage: useEffect for templates triggered.");
     setIsLoadingTemplates(true);
     let botTemplatesLoaded = false;
     let roleTemplatesLoaded = false;
@@ -116,7 +115,6 @@ export default function EditScenarioPage() {
     const checkAndSetLoadingFalse = () => {
       if (botTemplatesLoaded && roleTemplatesLoaded) {
         setIsLoadingTemplates(false);
-        console.log("EditScenarioPage: Both bot and role templates loaded.");
       }
     };
 
@@ -129,12 +127,11 @@ export default function EditScenarioPage() {
       });
       setDbBotTemplates(fetchedBotTemplates);
       botTemplatesLoaded = true;
-      console.log("EditScenarioPage: Bot templates fetched:", fetchedBotTemplates.length);
       checkAndSetLoadingFalse();
     }, (err) => {
       console.error("Error fetching bot templates:", err);
       toast({ variant: "destructive", title: "Fehler", description: "Bot-Vorlagen konnten nicht geladen werden."});
-      botTemplatesLoaded = true; // Still mark as "loaded" to unblock scenario loading
+      botTemplatesLoaded = true; 
       checkAndSetLoadingFalse();
     });
 
@@ -147,26 +144,22 @@ export default function EditScenarioPage() {
       });
       setDbRoleTemplates(fetchedRoleTemplates);
       roleTemplatesLoaded = true;
-      console.log("EditScenarioPage: Role templates fetched:", fetchedRoleTemplates.length);
       checkAndSetLoadingFalse();
     }, (err) => {
       console.error("Error fetching role templates:", err);
       toast({ variant: "destructive", title: "Fehler", description: "Rollen-Vorlagen konnten nicht geladen werden."});
-      roleTemplatesLoaded = true; // Still mark as "loaded"
+      roleTemplatesLoaded = true; 
       checkAndSetLoadingFalse();
     });
 
     return () => {
-      console.log("EditScenarioPage: Unsubscribing from template listeners.");
       unsubscribeBots();
       unsubscribeRoles();
     };
   }, [toast]); 
 
   const loadScenario = useCallback(async () => {
-    console.log("EditScenarioPage: loadScenario called. isNewScenario:", isNewScenario, "currentScenarioId:", currentScenarioId);
     if (isNewScenario || !currentScenarioId) {
-      console.log("EditScenarioPage: Initializing new scenario form.");
       const newScenarioData = createDefaultScenario();
       setTitle(newScenarioData.title || '');
       setKurzbeschreibung(newScenarioData.kurzbeschreibung || '');
@@ -185,20 +178,17 @@ export default function EditScenarioPage() {
       setBotSaveAsTemplateFlags({});
       setRoleSaveAsTemplateFlags({});
       setIsLoading(false);
-      console.log("EditScenarioPage: New scenario form initialized.");
       return;
     }
 
     setIsLoading(true);
     setError(null);
-    console.log(`EditScenarioPage: Attempting to load scenario with ID: ${currentScenarioId}`);
     try {
       const scenarioDocRef = doc(db, "scenarios", currentScenarioId);
       const scenarioSnap = await getDoc(scenarioDocRef);
 
       if (scenarioSnap.exists()) {
         const foundScenario = { id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario;
-        console.log("EditScenarioPage: Scenario found in Firestore:", foundScenario.title);
         setOriginalScenarioData(JSON.parse(JSON.stringify(foundScenario))); 
         setTitle(foundScenario.title || '');
         setKurzbeschreibung(foundScenario.kurzbeschreibung || '');
@@ -230,11 +220,9 @@ export default function EditScenarioPage() {
              if (role && role.id) initialRoleFlags[role.id] = false;
         }); 
         setRoleSaveAsTemplateFlags(initialRoleFlags);
-        console.log("EditScenarioPage: Scenario data loaded into form states.");
       } else {
-        console.error(`EditScenarioPage: Scenario with ID "${currentScenarioId}" not found in Firestore.`);
         setError(`Szenario mit der ID "${currentScenarioId}" nicht in der Datenbank gefunden.`);
-         toast({
+        toast({
           variant: "destructive",
           title: "Fehler: Szenario nicht gefunden",
           description: `Das Szenario mit der ID "${currentScenarioId}" konnte nicht geladen werden. Sie werden zum Hub weitergeleitet.`,
@@ -247,14 +235,10 @@ export default function EditScenarioPage() {
       toast({ variant: "destructive", title: "Ladefehler", description: "Szenario konnte nicht geladen werden."});
     } finally {
       setIsLoading(false);
-      console.log("EditScenarioPage: loadScenario finished. isLoading:", false);
     }
   }, [currentScenarioId, isNewScenario, toast, router]);
 
   useEffect(() => {
-    console.log("EditScenarioPage: useEffect for loadScenario triggered. isLoadingTemplates:", isLoadingTemplates);
-    // Load scenario only after templates are loaded or if templates failed to load (to avoid blocking scenario load)
-    // OR if it's a new scenario, load it immediately
     if (!isLoadingTemplates || isNewScenario) { 
         loadScenario();
     }
@@ -301,7 +285,7 @@ export default function EditScenarioPage() {
   };
 
 
-  const handleBotConfigChange = (index: number, field: keyof BotConfig, value: any) => {
+  const handleBotConfigChange = (index: number, field: keyof Omit<BotConfig, 'id'>, value: any) => {
     const updatedBots = [...editableBotsConfig];
     if (updatedBots[index]) {
       const botToUpdate = { ...updatedBots[index] };
@@ -378,7 +362,7 @@ export default function EditScenarioPage() {
   };
 
 
-  const handleHumanRoleChange = (index: number, field: keyof HumanRoleConfig, value: string) => {
+  const handleHumanRoleChange = (index: number, field: keyof Omit<HumanRoleConfig, 'id'>, value: string) => {
     const updatedRoles = [...editableHumanRoles];
     if (updatedRoles[index]) {
         const roleToUpdate = { ...updatedRoles[index] };
@@ -516,18 +500,21 @@ export default function EditScenarioPage() {
     const lowerSearchTerm = tagSearchTerm.toLowerCase();
     return tagTaxonomy
       .map(category => {
+        const categoryMatches = category.categoryName.toLowerCase().includes(lowerSearchTerm);
         const filteredTags = category.tags.filter(tag =>
           tag.name.toLowerCase().includes(lowerSearchTerm) ||
           (tag.subTags && tag.subTags.some(subTag => subTag.name.toLowerCase().includes(lowerSearchTerm)))
         );
-        if (filteredTags.length > 0 || category.categoryName.toLowerCase().includes(lowerSearchTerm)) {
-          const tagsToReturn = category.categoryName.toLowerCase().includes(lowerSearchTerm) ? category.tags : filteredTags;
+        
+        if (categoryMatches || filteredTags.length > 0) {
           return { 
             ...category, 
-            tags: tagsToReturn.map(tag => ({
-              ...tag,
-              subTags: tag.subTags?.filter(subTag => subTag.name.toLowerCase().includes(lowerSearchTerm))
-            }))
+            tags: categoryMatches 
+              ? category.tags // If category name matches, show all its tags
+              : filteredTags.map(tag => ({ // Else, show only matching tags and their potentially filtered subTags
+                  ...tag,
+                  subTags: tag.subTags?.filter(subTag => subTag.name.toLowerCase().includes(lowerSearchTerm))
+                }))
           };
         }
         return null;
@@ -605,7 +592,6 @@ export default function EditScenarioPage() {
       updatedAt: Timestamp.now(),
     };    
 
-    // Ensure no undefined fields are passed to Firestore by providing defaults
     const ensureDefaults = (data: any) => {
         data.title = data.title || 'Unbenanntes Szenario';
         data.kurzbeschreibung = data.kurzbeschreibung || '';
@@ -1352,24 +1338,6 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
                 
-                <AccordionItem value="theme" id="theme" className="border-none scroll-mt-20">
-                    <Card className="shadow-md w-full">
-                        <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
-                            <CardTitle className="text-lg flex items-center"><Palette className="mr-2 h-5 w-5 text-primary"/>Farbschema der Simulation (Zukunft)</CardTitle>
-                        </AccordionTrigger>
-                        <AccordionContent className="accordion-content-wrapper">
-                            <CardHeader className="p-4 pb-2">
-                                <CardDescription>
-                                    Hier können Sie zukünftig das spezifische Farbschema (Hintergrund, Akzente) für dieses Szenario im Chat-Interface anpassen.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="p-4 accordion-card-content">
-                                <p className="text-sm text-muted-foreground">Dieses Feature ist für eine spätere Version geplant.</p>
-                            </CardContent>
-                        </AccordionContent>
-                    </Card>
-                </AccordionItem>
-
 
             {(!isNewScenario && currentScenarioId && originalScenarioData) && (
                 <AccordionItem value="originaldaten" id="originaldaten" className="border-none scroll-mt-20">
@@ -1398,3 +1366,4 @@ export default function EditScenarioPage() {
     </form>
   );
 }
+
