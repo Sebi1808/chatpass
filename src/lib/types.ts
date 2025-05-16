@@ -7,8 +7,7 @@ export interface InitialPostConfig {
   authorAvatarFallback: string; // z.B. "SYS" für System
   content: string;
   imageUrl?: string; // Optional, für direkte URL-Eingabe
-  platform?: 'Generic' | 'WhatsApp' | 'Instagram' | 'TikTok' | 'TwitterX'; // Neu
-  // imageFile?: File; // Für späteren Datei-Upload
+  platform?: 'Generic' | 'WhatsApp' | 'Instagram' | 'TikTok' | 'TwitterX';
 }
 
 export interface HumanRoleConfig {
@@ -18,37 +17,45 @@ export interface HumanRoleConfig {
   templateOriginId?: string; // Optional: ID of the template this role instance was created from
 }
 
+export interface ScenarioEvent {
+  id: string; // Eindeutige ID für das Ereignis
+  name: string; // Kurzer Name/Titel des Ereignisses
+  description: string; // Kurze Beschreibung, was passiert
+  // Weitere Felder für die Aktionsdefinition folgen später, z.B.
+  // actionType: 'BOT_POST' | 'SYSTEM_MESSAGE' | 'CHANGE_COOLDOWN';
+  // actionDetails: any;
+}
+
 export interface Scenario {
   id: string; // Firestore document ID for the scenario
   title: string;
   kurzbeschreibung: string;
   langbeschreibung: string;
-  lernziele?: string[];
+  lernziele: string; // Statt string[], da WYSIWYG HTML speichert oder Textarea mit Zeilenumbrüchen
   iconName: string; // Name of the Lucide icon
   tags: string[];
   previewImageUrl?: string;
   defaultBotsConfig?: BotConfig[];
   humanRolesConfig?: HumanRoleConfig[];
   initialPost?: InitialPostConfig;
-  status?: 'draft' | 'published'; // Neu für Veröffentlichungsstatus
+  status?: 'draft' | 'published';
+  events?: ScenarioEvent[]; // NEU
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
 
 export interface BotConfig {
-  id: string; // Unique ID for the bot instance within the scenario, or for the template
+  id: string; // Unique ID for the bot instance within the scenario
   name: string;
   personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
   avatarFallback?: string;
-  currentEscalation?: number;
-  isActive?: boolean;
+  currentEscalation?: number; // Wird im Szenario-Editor als "Initiale Eskalation" gesetzt
+  isActive?: boolean; // Wird im Szenario-Editor als "Standardmäßig aktiv" gesetzt
   autoTimerEnabled?: boolean;
   initialMission?: string;
-  templateOriginId?: string; // Optional: ID of the template this bot instance was created from
-  // templateId?: string; // Used if this BotConfig itself is a template in the botTemplates collection
+  templateOriginId?: string; // ID der Vorlage, falls davon erstellt
 }
 
-// Firestore document structure for Bot Templates
 export interface BotTemplate {
   templateId: string; // This will be the Firestore document ID
   name: string;
@@ -58,7 +65,6 @@ export interface BotTemplate {
   createdAt?: Timestamp;
 }
 
-// Firestore document structure for Role Templates
 export interface RoleTemplate {
   templateId: string; // This will be the Firestore document ID
   name: string;
@@ -69,7 +75,7 @@ export interface RoleTemplate {
 
 export interface SessionData {
   scenarioId: string;
-  createdAt: Timestamp | Date | any; // Allow any for serverTimestamp()
+  createdAt: Timestamp | Date | any;
   invitationLink: string;
   invitationToken?: string;
   status: "active" | "paused" | "ended";
@@ -77,45 +83,46 @@ export interface SessionData {
 }
 
 export interface Participant {
-  id: string; // Firestore document ID for this participant in the session
-  userId: string; // A unique identifier for the user/bot instance
+  id: string;
+  userId: string;
   name: string;
-  role: string; // The role name (e.g., "Zielperson der Angriffe", "Bot Provokateur")
+  role: string;
   avatarFallback: string;
   isBot: boolean;
-  joinedAt?: Timestamp | Date | any; // Allow any for serverTimestamp()
-  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten"; // For display in admin dashboard
+  joinedAt?: Timestamp | Date | any;
+  status?: "Aktiv" | "Inaktiv" | "Beigetreten" | "Nicht beigetreten";
   isMuted?: boolean;
-  botConfig?: { // Only if isBot is true, specific runtime config for this bot in this session
-    id: string; // The original ID from the scenario's defaultBotsConfig
+  botConfig?: {
+    id: string; // Original ID from scenario's defaultBotsConfig
     personality: 'provokateur' | 'verteidiger' | 'informant' | 'standard';
     currentEscalation: number;
     isActive: boolean;
     autoTimerEnabled: boolean;
     initialMission?: string;
-    currentMission?: string; // Mission for the next post, can be set by admin
+    currentMission?: string; // Mission for next post, set by admin
     templateOriginId?: string;
   };
   botScenarioId?: string; // ID linking back to the BotConfig in the Scenario document
 }
 
-export interface DisplayParticipant extends Participant {} // For client-side display, might include additional temporary fields
+export interface DisplayParticipant extends Participant {}
 
 export interface Message {
-  id: string; // Firestore document ID
+  id: string;
   senderUserId: string;
   senderName: string;
   senderType: 'admin' | 'user' | 'bot' | 'system';
   avatarFallback: string;
   content: string;
-  timestamp: Timestamp | Date | null | any; // Allow any for serverTimestamp() before it's converted
+  timestamp: Timestamp | Date | null | any;
   replyToMessageId?: string;
   replyToMessageContentSnippet?: string;
   replyToMessageSenderName?: string;
   botFlag?: boolean;
   imageUrl?: string;
   imageFileName?: string;
-  reactions?: { [emoji: string]: string[] }; // emoji: array of userIds
+  reactions?: { [emoji: string]: string[] };
+  platform?: 'Generic' | 'WhatsApp' | 'Instagram' | 'TikTok' | 'TwitterX';
 }
 
 export interface DisplayMessage extends Message {

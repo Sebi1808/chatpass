@@ -5,7 +5,7 @@ import type { ChangeEvent, FormEvent, RefObject } from 'react';
 import { memo } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Paperclip, Send, Smile, Mic, XCircle, ImageIcon, Trash2, PauseCircle, AlertTriangle, VolumeX } from "lucide-react";
+import { Paperclip, Send, Smile, Mic, XCircle, ImageIcon as ImageIconLucide, Trash2, PauseCircle, AlertTriangle, VolumeX } from "lucide-react"; // Changed ImageIcon to ImageIconLucide
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -15,6 +15,7 @@ import Image from 'next/image';
 import type { DisplayMessage } from '@/lib/types';
 import type { emojiCategories as EmojiCategoriesType } from '@/lib/config';
 import { cn } from '@/lib/utils';
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 
 interface MessageInputBarProps {
   newMessage: string;
@@ -72,6 +73,8 @@ const MessageInputBar = memo(function MessageInputBar({
   messageCooldownSeconds,
 }: MessageInputBarProps) {
 
+  const { toast } = useToast(); // Initialize toast
+
   let inputPlaceholderText = "Nachricht eingeben...";
   if (isSendingMessage && selectedImageFile && imageUploadProgress !== null) {
     inputPlaceholderText = `Bild wird hochgeladen (${imageUploadProgress.toFixed(0)}%)...`;
@@ -88,8 +91,8 @@ const MessageInputBar = memo(function MessageInputBar({
   }
 
   const isSendButtonDisabled = !canTryToSend || (!newMessage.trim() && !selectedImageFile) || isSendingMessage;
-  const isInputDisabled = !canTryToSend || isSendingMessage || (isAdminView && !sessionData && sessionStatus !== 'ended'); // sessionData check was missing
-  const showAttachmentAndEmojiButtons = canTryToSend && !isSendingMessage && !(isAdminView && !sessionData && sessionStatus !== 'ended');
+  const isInputDisabled = !canTryToSend || isSendingMessage;
+  const showAttachmentAndEmojiButtons = canTryToSend && !isSendingMessage;
 
 
   return (
@@ -152,10 +155,10 @@ const MessageInputBar = memo(function MessageInputBar({
               <AlertDescription>Sie wurden vom Administrator stummgeschaltet.</AlertDescription>
           </Alert>
       )}
-      <form className="flex items-center gap-2 md:gap-3" onSubmit={handleSendMessage}>
+      <form className="flex items-center gap-1 sm:gap-2 md:gap-3" onSubmit={handleSendMessage}>
         <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!showAttachmentAndEmojiButtons} />
         
-        { (!isAdminView || (isAdminView && showAttachmentAndEmojiButtons)) && (
+        {showAttachmentAndEmojiButtons && (
           <>
             <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Anhang" disabled={!showAttachmentAndEmojiButtons} onClick={() => fileInputRef.current?.click()}>
               <Paperclip className="h-5 w-5" />
@@ -185,7 +188,7 @@ const MessageInputBar = memo(function MessageInputBar({
                               key={emoji}
                               variant="ghost"
                               size="icon"
-                              className="text-xl p-0 h-8 w-8" // Smaller emoji text in picker
+                              className="text-xl p-0 h-8 w-8"
                               onClick={() => handleEmojiSelect(emoji)}
                             >
                               {emoji}
@@ -211,13 +214,21 @@ const MessageInputBar = memo(function MessageInputBar({
           onChange={(e) => setNewMessage(e.target.value)}
           disabled={isInputDisabled}
         />
-        { (!isAdminView || (isAdminView && showAttachmentAndEmojiButtons)) && (
-            <Button variant="ghost" size="icon" type="button" className="shrink-0" aria-label="Spracheingabe" disabled={!showAttachmentAndEmojiButtons} onClick={() => alert("Spracheingabe (noch nicht implementiert)")}>
+        {showAttachmentAndEmojiButtons && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              type="button" 
+              className="shrink-0" 
+              aria-label="Spracheingabe" 
+              disabled={!showAttachmentAndEmojiButtons} 
+              onClick={() => toast({ title: "Sprachnachrichten", description: "Dieses Feature ist bald verfügbar!"})}
+            >
             <Mic className="h-5 w-5" />
             </Button>
         )}
         <Button type="submit" size="icon" className="shrink-0 bg-primary hover:bg-primary/90" disabled={isSendButtonDisabled} aria-label="Senden">
-          {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 ? <ImageIcon className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
+          {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 ? <ImageIconLucide className="h-5 w-5 animate-pulse" /> : <Send className="h-5 w-5" />}
         </Button>
       </form>
       {cooldownRemainingSeconds > 0 && canTryToSend && !isAdminView && sessionStatus === "active" && !isMuted && (

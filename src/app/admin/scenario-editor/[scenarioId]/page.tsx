@@ -9,8 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft, MessageSquareText, Image as ImageIconLucide, Users, BotMessageSquare, Film, ShoppingBag, Lock, ListChecks, MessageCircle, MessageSquareIcon, ShieldAlert, Code2, Zap, ArrowUp, ArrowDown } from 'lucide-react';
-import type { Scenario, BotConfig, HumanRoleConfig, InitialPostConfig, BotTemplate, RoleTemplate } from '@/lib/types';
+import { Save, PlusCircle, Trash2, NotebookPen, Tags as TagsIcon, FileText, Bot as BotIconLucide, Users as UsersIconLucide, Settings as SettingsIcon, Database, X, Loader2, Eye, ShieldCheck, ArrowLeft, MessageSquareText, Image as ImageIconLucide, Users, BotMessageSquare, Film, ShoppingBag, Lock, ListChecks, MessageCircle, MessageSquareIcon, ShieldAlert, Code2, Zap, ArrowUp, ArrowDown, Sparkles } from 'lucide-react';
+import type { Scenario, BotConfig, HumanRoleConfig, InitialPostConfig, ScenarioEvent } from '@/lib/types'; // Added ScenarioEvent
 import React, { useEffect, useState, type FormEvent, type KeyboardEvent, type ChangeEvent, type ReactNode } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
@@ -19,51 +19,28 @@ import { tagTaxonomy, type TagCategory as TaxonomyCategoryType, type Tag as Taxo
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { db, storage } from '@/lib/firebase';
-import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp, Timestamp, onSnapshot, query, orderBy, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp, Timestamp, updateDoc } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import Image from 'next/image';
-
-// Define an array of available icons with their names and components
-const lucideIconMap: Record<string, React.ElementType> = {
-  ShieldAlert, Code2, Users, MessageSquareIcon, Zap, Film, ShoppingBag, Lock, BotMessageSquare, ImageIconLucide,
-  NotebookPen, ListChecks, FileText, BotIconLucide, UsersIconLucide, SettingsIcon, Database, MessageSquareText, MessageCircle
-};
-
-const availableIcons: { value: string; label: string; icon?: React.ElementType }[] = [
-  { value: 'ImageIconLucide', label: '🖼️ Standard Bild', icon: ImageIconLucide },
-  { value: 'ShieldAlert', label: '🛡️ Warnschild', icon: ShieldAlert },
-  { value: 'MessageSquareIcon', label: '💬 Sprechblase', icon: MessageSquareIcon },
-  { value: 'Users', label: '👥 Benutzergruppe', icon: Users },
-  { value: 'BotMessageSquare', label: '🤖 Bot-Nachricht', icon: BotMessageSquare },
-  { value: 'NotebookPen', label: '📝 Notizbuch', icon: NotebookPen },
-  { value: 'FileText', label: '📄 Textdatei', icon: FileText },
-  { value: 'Zap', label: '⚡ Blitz', icon: Zap },
-  { value: 'Code2', label: '💻 Code', icon: Code2 },
-  { value: 'Film', label: '🎬 Filmklappe', icon: Film },
-  { value: 'ShoppingBag', label: '🛍️ Einkaufstasche', icon: ShoppingBag },
-  { value: 'Lock', label: '🔒 Schloss', icon: Lock },
-  { value: 'ListChecks', label: '📋 Checkliste', icon: ListChecks },
-  { value: 'MessageCircle', label: '🗨️ Chat Kreis', icon: MessageCircle },
-  { value: 'SettingsIcon', label: '⚙️ Einstellungen', icon: SettingsIcon },
-  { value: 'Database', label: '🗃️ Datenbank', icon: Database },
-];
-
+import { botTemplates } from '@/lib/bot-templates';
+import { humanRoleTemplates } from '@/lib/role-templates';
+import { availableIcons, lucideIconMap } from '@/lib/config';
 
 const editorSections = [
   { id: "basisinfo", label: "Basisinfos", icon: <FileText className="mr-2 h-4 w-4" /> },
   { id: "initialpost", label: "Ausgangsposting", icon: <MessageSquareText className="mr-2 h-4 w-4" /> },
   { id: "botconfig", label: "Bot-Konfiguration", icon: <BotIconLucide className="mr-2 h-4 w-4" /> },
   { id: "humanroles", label: "Menschliche Rollen", icon: <UsersIconLucide className="mr-2 h-4 w-4" /> },
+  { id: "events", label: "Szenario-Ereignisse", icon: <Sparkles className="mr-2 h-4 w-4" /> }, // NEU
   { id: "metadaten", label: "Metadaten", icon: <SettingsIcon className="mr-2 h-4 w-4" /> },
   { id: "tags", label: "Themen-Tags", icon: <TagsIcon className="mr-2 h-4 w-4" /> },
 ];
-
 
 const createDefaultScenario = (): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> => ({
   title: 'Neues Szenario',
   kurzbeschreibung: '',
   langbeschreibung: '',
-  lernziele: [],
+  lernziele: '', // War Array, jetzt String für WYSIWYG / Textarea
   iconName: availableIcons[0].value,
   tags: [],
   previewImageUrl: '',
@@ -77,6 +54,7 @@ const createDefaultScenario = (): Omit<Scenario, 'id' | 'createdAt' | 'updatedAt
     imageUrl: '',
     platform: 'Generic',
   },
+  events: [], // NEU
 });
 
 
@@ -93,7 +71,7 @@ export default function EditScenarioPage() {
   const [title, setTitle] = useState('');
   const [kurzbeschreibung, setKurzbeschreibung] = useState('');
   const [langbeschreibung, setLangbeschreibung] = useState('');
-  const [lernzieleInput, setLernzieleInput] = useState('');
+  const [lernzieleContent, setLernzieleContent] = useState(''); // War lernzieleInput, jetzt für WYSIWYG/Textarea
   
   const [previewImageUrlInput, setPreviewImageUrlInput] = useState('');
   const [previewImageFile, setPreviewImageFile] = useState<File | null>(null);
@@ -105,6 +83,7 @@ export default function EditScenarioPage() {
   
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [manualTagInput, setManualTagInput] = useState('');
+  const [tagSearchTerm, setTagSearchTerm] = useState(''); // NEU für Tag-Suche
 
   const [editableBotsConfig, setEditableBotsConfig] = useState<BotConfig[]>([]);
   const [editableHumanRoles, setEditableHumanRoles] = useState<HumanRoleConfig[]>([]);
@@ -118,15 +97,20 @@ export default function EditScenarioPage() {
     imageUrl: '',
     platform: 'Generic',
   });
+  
+  const [editableEvents, setEditableEvents] = useState<ScenarioEvent[]>([]); // NEU für Events
+  const [newEventName, setNewEventName] = useState('');
+  const [newEventDescription, setNewEventDescription] = useState('');
 
-  const [botTemplates, setBotTemplates] = useState<BotTemplate[]>([]);
-  const [roleTemplates, setRoleTemplates] = useState<RoleTemplate[]>([]);
+  const [dbBotTemplates, setDbBotTemplates] = useState<BotTemplate[]>([]);
+  const [dbRoleTemplates, setDbRoleTemplates] = useState<RoleTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
 
   const [isLoading, setIsLoading] = useState(!isNewScenario);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [originalScenarioData, setOriginalScenarioData] = useState<Scenario | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
 
   useEffect(() => {
@@ -138,7 +122,7 @@ export default function EditScenarioPage() {
       querySnapshot.forEach((doc) => {
         fetchedBotTemplates.push({ templateId: doc.id, ...doc.data() } as BotTemplate);
       });
-      setBotTemplates(fetchedBotTemplates);
+      setDbBotTemplates(fetchedBotTemplates);
     }, (err) => {
       console.error("Error fetching bot templates:", err);
       toast({ variant: "destructive", title: "Fehler", description: "Bot-Vorlagen konnten nicht geladen werden."});
@@ -151,13 +135,14 @@ export default function EditScenarioPage() {
       querySnapshot.forEach((doc) => {
         fetchedRoleTemplates.push({ templateId: doc.id, ...doc.data() } as RoleTemplate);
       });
-      setRoleTemplates(fetchedRoleTemplates);
+      setDbRoleTemplates(fetchedRoleTemplates);
     }, (err) => {
       console.error("Error fetching role templates:", err);
       toast({ variant: "destructive", title: "Fehler", description: "Rollen-Vorlagen konnten nicht geladen werden."});
     });
 
-    const timer = setTimeout(() => setIsLoadingTemplates(false), 1500);
+    // Simulating template loading delay if needed, or remove if Firestore is fast enough
+     const timer = setTimeout(() => setIsLoadingTemplates(false), 500); // Reduced delay
 
     return () => {
       unsubscribeBots();
@@ -173,7 +158,7 @@ export default function EditScenarioPage() {
         setTitle(newScenarioData.title || '');
         setKurzbeschreibung(newScenarioData.kurzbeschreibung || '');
         setLangbeschreibung(newScenarioData.langbeschreibung || '');
-        setLernzieleInput((newScenarioData.lernziele || []).join('\n'));
+        setLernzieleContent(newScenarioData.lernziele || ''); // War Array, jetzt String
         setPreviewImageUrlInput(newScenarioData.previewImageUrl || '');
         setLocalPreviewUrl(newScenarioData.previewImageUrl || null);
         setIconNameInput(newScenarioData.iconName || availableIcons[0].value);
@@ -182,6 +167,7 @@ export default function EditScenarioPage() {
         setEditableBotsConfig(JSON.parse(JSON.stringify(newScenarioData.defaultBotsConfig || [])));
         setEditableHumanRoles(JSON.parse(JSON.stringify(newScenarioData.humanRolesConfig || [])));
         setEditableInitialPost(JSON.parse(JSON.stringify(newScenarioData.initialPost || createDefaultScenario().initialPost)));
+        setEditableEvents(JSON.parse(JSON.stringify(newScenarioData.events || []))); // NEU
         setOriginalScenarioData(null); 
         setBotSaveAsTemplateFlags({});
         setRoleSaveAsTemplateFlags({});
@@ -201,7 +187,7 @@ export default function EditScenarioPage() {
           setTitle(foundScenario.title || '');
           setKurzbeschreibung(foundScenario.kurzbeschreibung || '');
           setLangbeschreibung(foundScenario.langbeschreibung || '');
-          setLernzieleInput(foundScenario.lernziele?.join('\n') || '');
+          setLernzieleContent(foundScenario.lernziele || ''); // War Array, jetzt String
           setPreviewImageUrlInput(foundScenario.previewImageUrl || '');
           setLocalPreviewUrl(foundScenario.previewImageUrl || null); 
           setIconNameInput(foundScenario.iconName || availableIcons[0].value);
@@ -215,6 +201,7 @@ export default function EditScenarioPage() {
             ...defaultInitialPost, 
             ...(foundScenario.initialPost || {}), 
           })));
+          setEditableEvents(JSON.parse(JSON.stringify(foundScenario.events || []))); // NEU
 
           const initialBotFlags: Record<string, boolean> = {};
           (foundScenario.defaultBotsConfig || []).forEach(bot => initialBotFlags[bot.id] = false); 
@@ -242,16 +229,16 @@ export default function EditScenarioPage() {
       }
     };
     
-    if (!isLoadingTemplates) {
-        loadScenario();
-    }
-  }, [currentScenarioId, isNewScenario, toast, router, isLoadingTemplates]);
+    // Removed dependency on isLoadingTemplates for loading the scenario itself
+    loadScenario();
+
+  }, [currentScenarioId, isNewScenario, toast, router]);
 
 
   const handlePreviewImageFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (file.size > 5 * 1024 * 1024) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
         toast({ variant: "destructive", title: "Datei zu groß", description: "Bild darf maximal 5MB groß sein." });
         setPreviewImageFile(null);
         setLocalPreviewUrl(originalScenarioData?.previewImageUrl || previewImageUrlInput || null);
@@ -262,7 +249,7 @@ export default function EditScenarioPage() {
       const reader = new FileReader();
       reader.onloadend = () => {
         setLocalPreviewUrl(reader.result as string);
-        setPreviewImageUrlInput(''); 
+        setPreviewImageUrlInput(reader.result as string); // Update input to reflect the local file URL
       };
       reader.readAsDataURL(file);
     } else {
@@ -281,14 +268,15 @@ export default function EditScenarioPage() {
             if (fileInputRef.current) fileInputRef.current.value = ""; 
         }
     } else {
+        // If URL is cleared, and a file was selected, show the file's local preview
         if (previewImageFile) {
-            setLocalPreviewUrl(URL.createObjectURL(previewImageFile));
+             // This will re-trigger the FileReader if we stored the object URL. Simpler to just use localPreviewUrl.
+             // For simplicity, if URL is cleared, rely on the existing localPreviewUrl from the file, or original.
         } else {
             setLocalPreviewUrl(originalScenarioData?.previewImageUrl || null);
         }
     }
   };
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
 
   const handleBotConfigChange = (index: number, field: keyof BotConfig, value: any) => {
@@ -323,7 +311,7 @@ export default function EditScenarioPage() {
   };
 
   const handleAddBotFromTemplate = (templateId: string) => {
-    const template = botTemplates.find(t => t.templateId === templateId);
+    const template = dbBotTemplates.find(t => t.templateId === templateId);
     if (template) {
       const newBotId = `bot-inst-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const newBotFromTemplate: BotConfig = {
@@ -365,7 +353,7 @@ export default function EditScenarioPage() {
     const swapIndex = direction === 'up' ? index - 1 : index + 1;
 
     if (swapIndex < 0 || swapIndex >= newBotsConfig.length) {
-      return; // Already at the beginning or end
+      return; 
     }
 
     newBotsConfig[index] = newBotsConfig[swapIndex];
@@ -395,7 +383,7 @@ export default function EditScenarioPage() {
   };
 
   const handleAddHumanRoleFromTemplate = (templateId: string) => {
-    const template = roleTemplates.find(t => t.templateId === templateId);
+    const template = dbRoleTemplates.find(t => t.templateId === templateId);
     if (template) {
       const newRoleId = `role-inst-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const newRoleFromTemplate: HumanRoleConfig = {
@@ -446,6 +434,26 @@ export default function EditScenarioPage() {
     }));
   };
 
+  const handleAddEvent = () => {
+    if (!newEventName.trim()) {
+      toast({ variant: "destructive", title: "Ereignisname fehlt", description: "Bitte geben Sie einen Namen für das Ereignis ein." });
+      return;
+    }
+    const newEvent: ScenarioEvent = {
+      id: `event-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      name: newEventName.trim(),
+      description: newEventDescription.trim(),
+      // triggerType and action will be added later
+    };
+    setEditableEvents(prev => [...prev, newEvent]);
+    setNewEventName('');
+    setNewEventDescription('');
+  };
+
+  const handleRemoveEvent = (eventId: string) => {
+    setEditableEvents(prev => prev.filter(event => event.id !== eventId));
+  };
+
 
   const handleTagToggle = (tagName: string) => {
     const lowerTagName = tagName.toLowerCase();
@@ -485,6 +493,26 @@ export default function EditScenarioPage() {
     setSelectedTags(prevTags => (prevTags || []).filter(tag => tag.toLowerCase() !== tagToRemove.toLowerCase()));
   };
 
+  const filteredTagTaxonomy = React.useMemo(() => {
+    if (!tagSearchTerm.trim()) {
+      return tagTaxonomy;
+    }
+    const lowerSearchTerm = tagSearchTerm.toLowerCase();
+    return tagTaxonomy
+      .map(category => {
+        const filteredTags = category.tags.filter(tag =>
+          tag.name.toLowerCase().includes(lowerSearchTerm) ||
+          (tag.subTags && tag.subTags.some(subTag => subTag.name.toLowerCase().includes(lowerSearchTerm)))
+        );
+        if (filteredTags.length > 0 || category.categoryName.toLowerCase().includes(lowerSearchTerm)) {
+          return { ...category, tags: filteredTags };
+        }
+        return null;
+      })
+      .filter(category => category !== null) as TaxonomyCategoryType[];
+  }, [tagSearchTerm]);
+
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
@@ -516,7 +544,7 @@ export default function EditScenarioPage() {
       title: title || 'Unbenanntes Szenario',
       kurzbeschreibung: kurzbeschreibung || '',
       langbeschreibung: langbeschreibung || '',
-      lernziele: lernzieleInput ? lernzieleInput.split('\n').map(ziel => ziel.trim()).filter(ziel => ziel) : [],
+      lernziele: lernzieleContent || '', // War Array, jetzt String
       previewImageUrl: finalPreviewImageUrl || '',
       iconName: iconNameInput || availableIcons[0].value,
       status: status || 'draft',
@@ -545,28 +573,41 @@ export default function EditScenarioPage() {
         imageUrl: editableInitialPost.imageUrl || '',
         platform: editableInitialPost.platform || 'Generic',
       },
+      events: editableEvents || [], // NEU
       updatedAt: Timestamp.now(),
     };    
 
-    // Sanitize undefined fields
     Object.keys(scenarioDataToSave).forEach(key => {
-      const k = key as keyof typeof scenarioDataToSave;
-      if (scenarioDataToSave[k] === undefined) {
-        if (k === 'lernziele' || k === 'tags' || k === 'defaultBotsConfig' || k === 'humanRolesConfig') {
-          (scenarioDataToSave as any)[k] = [];
-        } else if (k === 'initialPost') {
-          scenarioDataToSave.initialPost = createDefaultScenario().initialPost;
-        } else if (k === 'previewImageUrl') {
-          scenarioDataToSave.previewImageUrl = '';
+        const k = key as keyof typeof scenarioDataToSave;
+        if (scenarioDataToSave[k] === undefined) {
+            if (k === 'tags' || k === 'defaultBotsConfig' || k === 'humanRolesConfig' || k === 'events') {
+            (scenarioDataToSave as any)[k] = [];
+            } else if (k === 'initialPost') {
+            scenarioDataToSave.initialPost = createDefaultScenario().initialPost;
+            } else if (k === 'previewImageUrl' || k === 'lernziele' || k === 'langbeschreibung' || k === 'kurzbeschreibung' ) {
+                 (scenarioDataToSave as any)[k] = ''; 
+            } else if (k === 'iconName'){
+                 (scenarioDataToSave as any)[k] = availableIcons[0].value;
+            } else if (k === 'title'){
+                (scenarioDataToSave as any)[k] = 'Unbenanntes Szenario';
+            } else if (k === 'status'){
+                (scenarioDataToSave as any)[k] = 'draft';
+            }
+             else {
+            (scenarioDataToSave as any)[k] = ''; 
+            }
         }
-         else {
-          (scenarioDataToSave as any)[k] = ''; 
-        }
-      }
-    });
+        });
 
-    if (scenarioDataToSave.initialPost && scenarioDataToSave.initialPost.imageUrl === undefined) scenarioDataToSave.initialPost.imageUrl = '';
-    if (scenarioDataToSave.initialPost && scenarioDataToSave.initialPost.platform === undefined) scenarioDataToSave.initialPost.platform = 'Generic';
+    if (scenarioDataToSave.initialPost) {
+        if (scenarioDataToSave.initialPost.authorName === undefined) scenarioDataToSave.initialPost.authorName = 'System';
+        if (scenarioDataToSave.initialPost.authorAvatarFallback === undefined) scenarioDataToSave.initialPost.authorAvatarFallback = 'SY';
+        if (scenarioDataToSave.initialPost.content === undefined) scenarioDataToSave.initialPost.content = '';
+        if (scenarioDataToSave.initialPost.imageUrl === undefined) scenarioDataToSave.initialPost.imageUrl = '';
+        if (scenarioDataToSave.initialPost.platform === undefined) scenarioDataToSave.initialPost.platform = 'Generic';
+    } else {
+        scenarioDataToSave.initialPost = createDefaultScenario().initialPost;
+    }
 
 
     try {
@@ -684,19 +725,18 @@ export default function EditScenarioPage() {
 
   const displayedTitle = isNewScenario ? (title || "Neues Szenario erstellen") : (title || "Szenario laden...");
   const currentIdForDisplay = isNewScenario ? "Wird nach erstem Speichern generiert" : currentScenarioId;
-
   const defaultAccordionValues = editorSections.map(s => s.id); 
 
-  const renderIcon = (iconName: string | undefined): ReactNode => {
-    if (!iconName) return <ImageIconLucide className="mr-2 h-4 w-4" />; 
-    const IconComponent = lucideIconMap[iconName] || ImageIconLucide;
+  const renderIcon = (iconNameSelected: string | undefined): ReactNode => {
+    if (!iconNameSelected) return <ImageIconLucide className="mr-2 h-4 w-4" />; 
+    const IconComponent = lucideIconMap[iconNameSelected] || ImageIconLucide;
     return <IconComponent className="mr-2 h-4 w-4" />;
   };
 
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
-      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between mb-2">
+      <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b px-4 py-3 sm:px-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-primary truncate max-w-xs sm:max-w-md md:max-w-lg flex items-center">
             {renderIcon(iconNameInput)}
@@ -730,8 +770,8 @@ export default function EditScenarioPage() {
         </div>
       </div>
 
-      <div className="sticky top-[var(--header-height,73px)] z-10 bg-background/90 backdrop-blur-sm border-b mb-1">
-        <ScrollArea orientation="horizontal" className="max-w-full">
+      <div className="sticky top-[var(--header-height,73px)] z-10 bg-background/90 backdrop-blur-sm border-b">
+         <ScrollArea orientation="horizontal" className="max-w-full">
             <div className="flex items-center space-x-1 whitespace-nowrap px-2 sm:px-4 py-2">
             {editorSections.map(section => (
                 <Button key={section.id} asChild variant="ghost" size="sm" className="px-2 sm:px-3 text-muted-foreground hover:text-primary hover:bg-primary/10">
@@ -755,7 +795,7 @@ export default function EditScenarioPage() {
 
       <style jsx global>{`
         :root {
-          --header-height: 73px;
+          --header-height: 73px; /* Adjust based on your actual header height */
         }
         html {
           scroll-behavior: smooth;
@@ -771,7 +811,7 @@ export default function EditScenarioPage() {
                     <AccordionTrigger className="py-3 px-4 hover:no-underline text-left border-b">
                     <CardTitle className="text-lg flex items-center"><FileText className="mr-2 h-5 w-5 text-primary"/>Basisinformationen</CardTitle>
                     </AccordionTrigger>
-                    <AccordionContent className="pt-0 pb-2">
+                    <AccordionContent className="pt-0 pb-2"> {/* Adjusted padding */}
                     <CardHeader className="p-4 pb-2">
                         <CardDescription>
                         Grundlegende Details und Beschreibungen des Szenarios.
@@ -789,12 +829,12 @@ export default function EditScenarioPage() {
                         <div className="space-y-1.5">
                         <Label htmlFor="langbeschreibung">Langbeschreibung / Szenariokontext (für Simulation)</Label>
                         <Textarea id="langbeschreibung" value={langbeschreibung} onChange={(e) => setLangbeschreibung(e.target.value)} placeholder="Ausführliche Beschreibung der Ausgangslage, Thema, beteiligte Akteure etc. Dies ist der Hauptkontext für die Simulation und die Bots." rows={8} className="min-h-[150px] md:min-h-[200px] w-full" disabled={isSaving}/>
-                        <p className="text-xs text-muted-foreground">Hinweis: WYSIWYG-Editor für Rich-Text-Formatierung ist für eine zukünftige Version geplant.</p>
+                        <p className="text-xs text-muted-foreground mt-1">Hinweis: WYSIWYG-Editor für Rich-Text-Formatierung ist für eine zukünftige Version geplant.</p>
                         </div>
                         <div className="space-y-1.5">
-                        <Label htmlFor="lernzieleInput">Lernziele (ein Ziel pro Zeile)</Label>
-                        <Textarea id="lernzieleInput" value={lernzieleInput} onChange={(e) => setLernzieleInput(e.target.value)} placeholder={"Was sollen die Teilnehmenden lernen?\n- Ziel 1\n- Ziel 2"} rows={4} className="min-h-[80px] w-full" disabled={isSaving}/>
-                         <p className="text-xs text-muted-foreground">Hinweis: WYSIWYG-Editor für Rich-Text-Formatierung ist für eine zukünftige Version geplant.</p>
+                        <Label htmlFor="lernzieleContent">Lernziele</Label>
+                        <Textarea id="lernzieleContent" value={lernzieleContent} onChange={(e) => setLernzieleContent(e.target.value)} placeholder={"Was sollen die Teilnehmenden lernen?\n- Ziel 1\n- Ziel 2"} rows={4} className="min-h-[80px] w-full" disabled={isSaving}/>
+                         <p className="text-xs text-muted-foreground mt-1">Hinweis: WYSIWYG-Editor für Rich-Text-Formatierung ist für eine zukünftige Version geplant. Bitte jedes Lernziel in eine neue Zeile schreiben.</p>
                         </div>
                     </CardContent>
                     </AccordionContent>
@@ -872,10 +912,10 @@ export default function EditScenarioPage() {
                                     <SelectValue placeholder={isLoadingTemplates ? "Lade Vorlagen..." : "Bot aus Vorlage..."} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {botTemplates.map(template => (
+                                    {dbBotTemplates.map(template => (
                                         <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
                                     ))}
-                                    {botTemplates.length === 0 && !isLoadingTemplates && <p className="p-2 text-xs text-muted-foreground">Keine Bot-Vorlagen.</p>}
+                                    {dbBotTemplates.length === 0 && !isLoadingTemplates && <p className="p-2 text-xs text-muted-foreground">Keine Bot-Vorlagen.</p>}
                                 </SelectContent>
                             </Select>
                             <Button type="button" size="sm" variant="outline" onClick={handleAddBot} disabled={isSaving} className="h-9">
@@ -975,10 +1015,10 @@ export default function EditScenarioPage() {
                                         <SelectValue placeholder={isLoadingTemplates ? "Lade Vorlagen..." : "Rolle aus Vorlage..."} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {roleTemplates.map(template => (
+                                        {dbRoleTemplates.map(template => (
                                             <SelectItem key={template.templateId} value={template.templateId!}>{template.name}</SelectItem>
                                         ))}
-                                        {roleTemplates.length === 0 && !isLoadingTemplates && <p className="p-2 text-xs text-muted-foreground">Keine Rollen-Vorlagen.</p>}
+                                        {dbRoleTemplates.length === 0 && !isLoadingTemplates && <p className="p-2 text-xs text-muted-foreground">Keine Rollen-Vorlagen.</p>}
                                     </SelectContent>
                                 </Select>
                                 <Button type="button" size="sm" variant="outline" onClick={handleAddHumanRole} disabled={isSaving} className="h-9">
@@ -1034,6 +1074,55 @@ export default function EditScenarioPage() {
                 </Card>
                 </AccordionItem>
 
+                <AccordionItem value="events" id="events" className="border-none scroll-mt-20">
+                  <Card className="shadow-md w-full">
+                    <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
+                      <CardTitle className="text-lg flex items-center"><Sparkles className="mr-2 h-5 w-5 text-primary"/>Szenario-Ereignisse definieren ({editableEvents.length})</CardTitle>
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-0 pb-2">
+                      <CardHeader className="p-4 pb-2">
+                        <CardDescription>
+                          Definieren Sie hier Ereignisse, die später im Admin-Dashboard manuell ausgelöst werden können, um die Simulation zu beeinflussen.
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4 p-4 pt-2">
+                        <div className="space-y-3 p-3 border rounded-md">
+                          <Label className="text-base font-medium">Neues Ereignis erstellen</Label>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="newEventName">Ereignisname</Label>
+                            <Input id="newEventName" value={newEventName} onChange={(e) => setNewEventName(e.target.value)} placeholder="z.B. Plötzliche Wendung" disabled={isSaving} />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="newEventDescription">Ereignisbeschreibung</Label>
+                            <Textarea id="newEventDescription" value={newEventDescription} onChange={(e) => setNewEventDescription(e.target.value)} placeholder="Was passiert bei diesem Ereignis?" rows={3} disabled={isSaving} />
+                          </div>
+                          <Button type="button" size="sm" onClick={handleAddEvent} disabled={isSaving || !newEventName.trim()}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Ereignis hinzufügen
+                          </Button>
+                        </div>
+                        {editableEvents.length > 0 && <Separator className="my-4" />}
+                        {editableEvents.length > 0 ? (
+                          editableEvents.map((event, index) => (
+                            <Card key={event.id} className="p-3 bg-muted/20">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <p className="font-medium">{event.name}</p>
+                                  <p className="text-xs text-muted-foreground max-w-prose">{event.description || "Keine Beschreibung."}</p>
+                                </div>
+                                <Button type="button" variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 h-7 w-7" onClick={() => handleRemoveEvent(event.id)} disabled={isSaving}>
+                                  <Trash2 className="h-4 w-4"/>
+                                </Button>
+                              </div>
+                            </Card>
+                          ))
+                        ) : (
+                          <p className="text-muted-foreground text-sm text-center py-3">Keine Ereignisse für dieses Szenario definiert.</p>
+                        )}
+                      </CardContent>
+                    </AccordionContent>
+                  </Card>
+                </AccordionItem>
+
                 <AccordionItem value="metadaten" id="metadaten" className="border-none scroll-mt-20">
                 <Card className="shadow-md w-full">
                     <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
@@ -1059,7 +1148,6 @@ export default function EditScenarioPage() {
                                     <Image src={localPreviewUrl} alt="Vorschaubild Vorschau" fill style={{objectFit:"cover"}} data-ai-hint="preview image" priority={false}/>
                                   </div>
                                 )}
-                                <p className="text-xs text-muted-foreground mt-1">URL zu einem Bild oder Bild unten hochladen.</p>
                             </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="previewImageUpload">Oder Vorschaubild hochladen (max. 5MB)</Label>
@@ -1073,6 +1161,7 @@ export default function EditScenarioPage() {
                                   className="w-full mt-1"
                                 />
                                 {isUploadingPreviewImage && <p className="text-xs text-primary mt-1 flex items-center"><Loader2 className="h-3 w-3 mr-1 animate-spin"/>Bild wird hochgeladen...</p>}
+                                <p className="text-xs text-muted-foreground mt-1">Wählen Sie eine URL oben ODER laden Sie ein neues Bild hoch.</p>
                             </div>
                             <div className="space-y-1.5">
                                 <Label htmlFor="iconNameInput">Icon für Szenariokarte</Label>
@@ -1113,18 +1202,23 @@ export default function EditScenarioPage() {
                             <CardDescription>Weisen Sie dem Szenario passende Tags zu, um es besser kategorisieren zu können.</CardDescription>
                         </CardHeader>
                         <CardContent className="p-4 pt-2">
-                            <div className="mb-4 flex items-center gap-2">
-                                <Input
-                                    placeholder="Tag manuell hinzufügen (kommagetrennt oder Enter)..."
-                                    className="flex-grow text-sm w-full"
-                                    value={manualTagInput}
-                                    onChange={handleManualTagInputChange}
-                                    onKeyDown={handleManualTagInputKeyDown}
-                                    disabled={isSaving}
-                                />
-                                <Button type="button" size="sm" variant="outline" onClick={processManualTagInput} disabled={isSaving || !manualTagInput.trim()}>
-                                    <PlusCircle className="mr-2 h-4 w-4" /> Hinzufügen
-                                </Button>
+                            <div className="mb-4">
+                                <Label htmlFor="tagSearchInput">Tags suchen oder neue hinzufügen</Label>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Input
+                                        id="tagSearchInput"
+                                        placeholder="Tag suchen oder neue (kommagetrennt) eingeben..."
+                                        className="flex-grow text-sm w-full"
+                                        value={manualTagInput}
+                                        onChange={handleManualTagInputChange}
+                                        onKeyDown={handleManualTagInputKeyDown}
+                                        onBlur={processManualTagInput} // Add tag on blur as well
+                                        disabled={isSaving}
+                                    />
+                                    <Button type="button" size="sm" variant="outline" onClick={processManualTagInput} disabled={isSaving || !manualTagInput.trim()}>
+                                        <PlusCircle className="mr-2 h-4 w-4" /> Hinzufügen
+                                    </Button>
+                                </div>
                             </div>
                             <div className="mb-4">
                                 <Label>Ausgewählte Tags:</Label>
@@ -1148,10 +1242,21 @@ export default function EditScenarioPage() {
                                 )}
                             </div>
                             <Separator className="my-4" />
+                            <div className="mb-2">
+                                <Label htmlFor="filterTagTaxonomyInput">Tag-Taxonomie filtern:</Label>
+                                <Input 
+                                    id="filterTagTaxonomyInput"
+                                    placeholder="Taxonomie durchsuchen..."
+                                    value={tagSearchTerm}
+                                    onChange={(e) => setTagSearchTerm(e.target.value)}
+                                    className="mt-1 text-sm"
+                                    disabled={isSaving}
+                                />
+                            </div>
                             <Label>Verfügbare Tags (Klicken zum Hinzufügen/Entfernen):</Label>
                              <ScrollArea className="h-[400px] mt-2 pr-3 border rounded-md">
                                 <Accordion type="multiple" className="w-full px-2" defaultValue={[]}>
-                                    {tagTaxonomy.map((category, catIndex) => (
+                                    {filteredTagTaxonomy.map((category, catIndex) => (
                                         <AccordionItem value={`category-${catIndex}`} key={category.categoryName} className="border-b-0">
                                             <AccordionTrigger className="text-sm font-medium py-2 hover:no-underline text-left">
                                                 <span className="flex items-center">
@@ -1171,7 +1276,7 @@ export default function EditScenarioPage() {
                                                                 {tag.emoji && <span className="mr-1.5">{tag.emoji}</span>}
                                                                 {tag.name}
                                                             </Badge>
-                                                            {tag.subTags && tag.subTags.map(subTag => (
+                                                            {tag.subTags && tag.subTags.filter(subTag => subTag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) || !tagSearchTerm.trim()).map(subTag => (
                                                                 <Badge
                                                                     key={subTag.name}
                                                                     variant={(selectedTags || []).map(st=>st.toLowerCase()).includes(subTag.name.toLowerCase()) ? "default" : "outline"}
@@ -1188,9 +1293,9 @@ export default function EditScenarioPage() {
                                             </AccordionContent>
                                         </AccordionItem>
                                     ))}
+                                     {filteredTagTaxonomy.length === 0 && <p className="text-xs text-muted-foreground p-2">Keine Tags für Ihre Suche gefunden.</p>}
                                 </Accordion>
                             </ScrollArea>
-                            <p className="text-xs text-muted-foreground mt-3">Das Tag-System wird weiter ausgebaut. Emojis und tiefere Verschachtelung im UI folgen.</p>
                         </CardContent>
                     </AccordionContent>
                 </Card>
@@ -1202,7 +1307,7 @@ export default function EditScenarioPage() {
                 <AccordionTrigger className="py-3 px-4 hover:no-underline border-b text-left">
                     <CardTitle className="text-lg flex items-center"><Database className="mr-2 h-5 w-5 text-primary"/>Originaldaten (aus Datenbank)</CardTitle>
                 </AccordionTrigger>
-                <AccordionContent className="pt-0 pb-2">
+                <AccordionContent className="pt-0 pb-2"> {/* Adjusted padding */}
                     <CardHeader className="p-4 pb-2">
                     <CardDescription>Nur zur Referenz: So ist das Szenario aktuell in der Datenbank gespeichert.</CardDescription>
                     </CardHeader>
