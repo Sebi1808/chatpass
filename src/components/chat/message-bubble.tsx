@@ -1,4 +1,3 @@
-
 "use client";
 
 import { type MouseEvent, memo, useState } from 'react';
@@ -6,13 +5,15 @@ import NextImage from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CornerDownLeft, Quote, SmilePlus, Bot as BotIcon, Crown, MessageSquare, ThumbsUp, Heart, Laugh, Angry, Check, ClappingHands, X } from "lucide-react";
+import { CornerDownLeft, Quote, SmilePlus, Bot as BotIcon, Crown, MessageSquare, ThumbsUp, Heart, Laugh, Angry, Check, X, Send as SendIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from '@/lib/utils';
-import type { DisplayMessage } from '@/lib/types';
+import type { DisplayMessage, Participant } from '@/lib/types';
 import type { ParticipantColor, emojiCategories as EmojiCategoriesType } from '@/lib/config';
+import { useToast } from "@/hooks/use-toast";
+import { Timestamp } from 'firebase/firestore';
 
 interface MessageBubbleProps {
   message: DisplayMessage;
@@ -27,6 +28,7 @@ interface MessageBubbleProps {
   emojiCategories: typeof EmojiCategoriesType;
   isAdminView?: boolean;
   onOpenImageModal: (imageUrl: string, imageFileName?: string) => void;
+  onOpenDm?: (recipient: Participant) => void;
 }
 
 const MessageBubble = memo(function MessageBubble({
@@ -42,10 +44,11 @@ const MessageBubble = memo(function MessageBubble({
   emojiCategories,
   isAdminView = false,
   onOpenImageModal,
+  onOpenDm,
 }: MessageBubbleProps) {
 
   const isOwn = message.senderUserId === currentUserId && (!isAdminView || (isAdminView && message.senderType === 'admin'));
-  const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType);
+  const bubbleColor = getParticipantColorClasses(message.senderUserId, message.senderType === 'system' ? undefined : message.senderType);
 
   // console.log(`MessageBubble for ${message.id} by ${message.senderName}, color:`, bubbleColor, "isOwn:", isOwn);
 
@@ -58,6 +61,32 @@ const MessageBubble = memo(function MessageBubble({
     e.stopPropagation();
     setReactingToMessageId(reactingToMessageId === message.id ? null : message.id);
   };
+
+  const handleDirectMessagePlaceholder = () => {
+    if (onOpenDm) {
+      const recipient: Participant = {
+        id: message.senderUserId,
+        userId: message.senderUserId,
+        displayName: message.senderName,
+        avatarFallback: message.avatarFallback,
+        role: "Teilnehmer",
+        realName: message.senderName,
+        joinedAt: Timestamp.now(),
+        status: 'Beigetreten',
+        isBot: message.senderType === 'bot',
+        roleId: "unknown",
+      };
+      if (message.senderType !== 'system' && message.senderUserId !== currentUserId) {
+         onOpenDm(recipient);
+      } else if (message.senderUserId === currentUserId) {
+        toast({title: "Hinweis", description: "Du kannst dir nicht selbst eine DM schreiben."});
+      }
+    } else {
+      toast({ title: "DM Funktion nicht verfügbar", description: "Setup für DMs ist nicht vollständig." });
+    }
+  };
+
+  const { toast } = useToast();
 
   return (
     <div
@@ -102,7 +131,20 @@ const MessageBubble = memo(function MessageBubble({
                 </Badge>
               )}
             </div>
-            <span className={cn("text-xs opacity-80", bubbleColor.nameText)}>{message.timestampDisplay}</span>
+            <div className="flex items-center gap-1">
+              <span className={cn("text-xs opacity-80", bubbleColor.nameText)}>{message.timestampDisplay}</span>
+              {!isOwn && message.senderType !== 'system' && message.senderType !== 'admin' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 p-0 opacity-60 hover:opacity-100 text-current/80 hover:text-current"
+                  onClick={handleDirectMessagePlaceholder}
+                  title={`Direktnachricht an ${message.senderName}`}
+                >
+                  <SendIcon className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
           </div>
 
           {message.replyToMessageId && message.replyToMessageSenderName && message.replyToMessageContentSnippet && (

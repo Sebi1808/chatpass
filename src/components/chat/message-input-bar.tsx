@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { ChangeEvent, FormEvent, RefObject } from 'react';
@@ -20,7 +19,7 @@ import { useToast } from "@/hooks/use-toast"; // Import useToast
 interface MessageInputBarProps {
   newMessage: string;
   setNewMessage: (value: string) => void;
-  handleSendMessage: (event?: FormEvent) => Promise<void>;
+  handleSendMessage: (event?: FormEvent<HTMLFormElement>) => Promise<void>;
   inputRef: RefObject<HTMLInputElement>;
   fileInputRef: RefObject<HTMLInputElement>;
   handleImageFileSelected: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -31,7 +30,7 @@ interface MessageInputBarProps {
   imageUploadProgress: number | null;
   canTryToSend: boolean;
   cooldownRemainingSeconds: number;
-  sessionStatus: "active" | "paused" | "ended" | null;
+  sessionStatus: "open" | "pending" | "active" | "paused" | "ended" | null;
   isMuted: boolean;
   isAdminView: boolean;
   replyingTo: DisplayMessage | null;

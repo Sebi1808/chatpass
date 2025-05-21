@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, type FormEvent, useMemo, useCallback, useRef } from "react";
@@ -93,6 +92,7 @@ export default function JoinSessionPage() {
   const [isLoadingParticipants, setIsLoadingParticipants] = useState(false); // Initial false
   const [isLoadingScenario, setIsLoadingScenario] = useState(true);
   const [currentParticipantDoc, setCurrentParticipantDoc] = useState<Participant | null>(null);
+  const [isLoadingParticipantDoc, setIsLoadingParticipantDoc] = useState(true); // New loading state
 
   const [isSubmittingName, setIsSubmittingName] = useState(false);
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
@@ -102,6 +102,7 @@ export default function JoinSessionPage() {
   const [showAdminMovedDialog, setShowAdminMovedDialog] = useState(false);
   const [adminMovedToRoleName, setAdminMovedToRoleName] = useState<string | null>(null);
   const previousRoleIdRef = useRef<string | null>(null);
+  const previousSessionStatusRef = useRef<SessionData["status"] | null>(null);
 
   // Initialize userId and load names from localStorage
   useEffect(() => {
@@ -116,6 +117,40 @@ export default function JoinSessionPage() {
     if (storedDisplayName) setDisplayName(storedDisplayName);
     // selectedRoleId will be set from Firestore participant doc or user interaction
   }, [sessionId]);
+
+  // Effect to clear localStorage for the current session if the session is reset by the admin
+  useEffect(() => {
+    if (sessionData && userId && sessionId) {
+      const currentStatus = sessionData.status;
+      const previousStatus = previousSessionStatusRef.current;
+
+      // Clear local storage if session transitions to 'pending'
+      // or from an active/ended/paused state back to 'open' (indicating a reset for rejoin)
+      const shouldClearStorage = 
+        currentStatus === "pending" || 
+        (currentStatus === "open" && 
+          (previousStatus === "active" || previousStatus === "ended" || previousStatus === "paused"));
+
+      if (shouldClearStorage) {
+        console.log(`JoinPage: Session status changed to '${currentStatus}' (from '${previousStatus}'), clearing localStorage for sessionId ${sessionId} and userId ${userId} to force fresh join.`);
+        localStorage.removeItem(`chatUser_${sessionId}_${userId}_realName`);
+        localStorage.removeItem(`chatUser_${sessionId}_${userId}_displayName`);
+        localStorage.removeItem(`chatUser_${sessionId}_${userId}_roleId`);
+        localStorage.removeItem(`chatUser_${sessionId}_${userId}_roleName`);
+        localStorage.removeItem(`chatUser_${sessionId}_${userId}_avatarFallback`);
+        
+        // Reset relevant local component states as well to reflect the cleared storage
+        setRealName("");
+        setDisplayName("");
+        setSelectedRoleId(null);
+        // This will naturally lead Effect 3 to set joinStep to 'nameInput'
+      }
+    }
+    // Update the ref for the next render AFTER all other logic in this effect
+    if (sessionData) {
+      previousSessionStatusRef.current = sessionData.status;
+    }
+  }, [sessionData, userId, sessionId]);
 
   // Effect 1: Validate sessionData, token, and overall access
   useEffect(() => {
@@ -135,17 +170,53 @@ export default function JoinSessionPage() {
       return;
     }
 
-    if (!urlToken || sessionData.invitationToken !== urlToken) {
-      setAccessError("Ungültiger oder abgelaufener Einladungslink. Bitte fordern Sie einen neuen Link vom Administrator an.");
-      return;
+    console.log("JoinPage: Effect 1 - DETAILED CHECK: urlToken:", urlToken, "sessionData.invitationToken:", sessionData.invitationToken, "Comparison result (should be true for access):", sessionData.invitationToken === urlToken);
+
+    // If session is 'pending', token MUST be present and match
+    if (sessionData.status === "pending") {
+      if (!urlToken || sessionData.invitationToken !== urlToken) {
+        console.error("JoinPage: Effect 1 - TOKEN MISMATCH OR MISSING TOKEN for 'pending' session! urlToken:", urlToken, "sessionData.invitationToken:", sessionData.invitationToken);
+        setAccessError("Ungültiger oder abgelaufener Einladungslink. Bitte fordern Sie einen neuen Link vom Administrator an.");
+        return;
+      }
+    } else if (sessionData.status === "active" || sessionData.status === "open") {
+      // For 'active' or 'open' sessions, allow joining if EITHER token matches OR if no urlToken is provided (direct access without token)
+      // BUT, if a urlToken IS provided, it MUST match.
+      if (urlToken && sessionData.invitationToken !== urlToken) {
+        console.error("JoinPage: Effect 1 - TOKEN MISMATCH for 'active'/'open' session with provided token! urlToken:", urlToken, "sessionData.invitationToken:", sessionData.invitationToken);
+        setAccessError("Der verwendete Einladungslink ist für diese Sitzung ungültig. Bitte aktuellen Link verwenden oder ohne Token beitreten, falls erlaubt.");
+        return;
+      }
+      // If urlToken is null (direct access without token parameter in URL) and session is active/open, we allow access here.
+      console.log("JoinPage: Effect 1 - Accessing active/open session. urlToken is:", urlToken);
+    } else if (sessionData.status !== "ended" && sessionData.status !== "paused") {
+      // For any other status that is not ended/paused, and a token is provided but doesn't match, or if no token is provided, deny access for safety.
+      if (!urlToken || (urlToken && sessionData.invitationToken !== urlToken)) {
+           console.error("JoinPage: Effect 1 - TOKEN MISMATCH OR MISSING TOKEN for session status '", sessionData.status, "'! urlToken:", urlToken, "sessionData.invitationToken:", sessionData.invitationToken);
+           setAccessError("Ungültiger oder abgelaufener Einladungslink für diesen Sitzungsstatus.");
+           return;
+      }
     }
     
-    // If token is valid, clear previous token/generic errors
-    if (accessError && (accessError.includes("Einladungslink") || accessError.includes("Sitzungsdaten konnten nicht geladen werden"))) {
-        setAccessError(null);
+    // If token is valid OR not strictly required for this session state (and not explicitly denied above),
+    // clear previous token/generic errors if they were related to token/loading issues that are now resolved.
+    if (accessError && 
+        (accessError.includes("Einladungslink") || 
+         accessError.includes("Sitzungsdaten konnten nicht geladen werden") ||
+         accessError.includes("Token konnte nicht überprüft werden") || // Example of another error to clear
+         accessError.includes("Szenario-Details für diese Sitzung nicht gefunden") // Clear if scenario is now loaded
+        )
+       ) {
+        // Check if scenario is actually loaded before clearing scenario-related error
+        if (accessError.includes("Szenario-Details") && !currentScenario) {
+            // Don't clear if scenario is still not loaded
+        } else {
+            setAccessError(null);
+            console.log("JoinPage: Effect 1 - Cleared previous accessError as token is now valid or not strictly required for this state.");
+        }
     }
 
-  }, [sessionId, sessionData, urlToken, isLoadingSessionDataHook, sessionErrorHook, accessError]);
+  }, [sessionId, sessionData, urlToken, isLoadingSessionDataHook, sessionErrorHook, accessError, currentScenario]); // Added currentScenario to dependency array
 
 
   // Effect 2: Load scenario details (depends on valid sessionData)
@@ -172,9 +243,18 @@ export default function JoinSessionPage() {
         } else {
           console.log("JoinPage: Scenario found:", scenarioSnap.data());
           setCurrentScenario({ id: scenarioSnap.id, ...scenarioSnap.data() } as Scenario);
-          if (accessError === "Szenario-Details für diese Sitzung nicht gefunden." || (accessError && accessError.includes("Keine Szenario-ID"))) {
-            setAccessError(null); 
-          }
+          // Use functional update to ensure we are checking against the latest state of accessError
+          setAccessError(currentErr => {
+            if (currentErr && 
+                (currentErr === "Szenario-Details für diese Sitzung nicht gefunden." || 
+                 currentErr.includes("Keine Szenario-ID") ||
+                 currentErr.includes("Wichtige Sitzungs- oder Szenariodaten fehlen") ||
+                 currentErr.includes("Szenario-Daten für diese Sitzung konnten nicht final geladen werden"))) {
+              console.log("JoinPage: Scenario loaded, clearing specific accessError (using functional update):", currentErr);
+              return null; // Clear the error
+            }
+            return currentErr; // No change to error state
+          });
         }
       })
       .catch(error => {
@@ -190,9 +270,9 @@ export default function JoinSessionPage() {
 
   // Effect 3: Manage joinStep based on session status and user progress (depends on scenario loaded)
   useEffect(() => {
-    console.log("JoinPage: Effect 3 - Managing joinStep. sessionData:", sessionData, "currentScenario:", currentScenario, "isLoadingScenario:", isLoadingScenario);
+    console.log("JoinPage: Effect 3 - Managing joinStep. sessionData:", sessionData, "currentScenario:", currentScenario, "isLoadingScenario:", isLoadingScenario, "isLoadingParticipantDoc:", isLoadingParticipantDoc, "currentParticipantDoc:", currentParticipantDoc);
 
-    if (isLoadingSessionDataHook || isLoadingScenario || accessError) { // Ensure critical data is loaded and no access error
+    if (isLoadingSessionDataHook || isLoadingScenario || isLoadingParticipantDoc || accessError) { // Added isLoadingParticipantDoc
       return;
     }
 
@@ -207,15 +287,32 @@ export default function JoinSessionPage() {
     if (sessionData.status === "pending") {
       setAccessError("Der Administrator bereitet die Sitzung vor. Bitte warte einen Moment.");
       setJoinStep("nameInput");
-    } else if (sessionData.status === "active") {
-        // If session is active, check if user has completed join process before.
-        // currentParticipantDoc will be updated by another effect.
-        // If user is already a participant (has roleId in their doc), redirect to chat.
-        // Otherwise, they cannot join an active session if they haven't picked a role.
-        if (currentParticipantDoc?.roleId) {
-            router.push(`/chat/${sessionId}`);
+    } else if (sessionData.status === "active" || sessionData.status === "open") {
+        // Clear any previous "session not open/paused/ended" errors if we are now in open/active
+        if (accessError && (accessError.includes("Vorbereitung") || accessError.includes("pausiert") || accessError.includes("beendet"))) {
+            setAccessError(null);
+        }
+        
+        if (localRealName && localDisplayName) {
+            if (currentParticipantDoc?.roleId) {
+                console.log("JoinPage: Effect 3 - User has names and Firestore roleId. Current joinStep:", joinStep, "Status:", sessionData.status);
+                // User has a role. If session is active or already in waiting room, stay/go to waiting room.
+                // If session is 'open' and role selection is NOT locked, they could technically change role, send to roleSelection.
+                if (sessionData.status === "active" || joinStep === "waitingRoom") {
+                    setJoinStep("waitingRoom");
+                } else if (sessionData.status === "open" && !sessionData.roleSelectionLocked) {
+                    setJoinStep("roleSelection");
+                } else { // Open but locked, and has a role - effectively waiting room
+                    setJoinStep("waitingRoom");
+                }
+            } else {
+                // Names exist, but no roleId in Firestore (new to this session or role was cleared).
+                // MUST go to role selection, even if locked, to get an initial role.
+                console.log("JoinPage: Effect 3 - User has names BUT NO Firestore roleId. Forcing roleSelection. Locked:", sessionData.roleSelectionLocked);
+                setJoinStep("roleSelection");
+            }
         } else {
-            setAccessError("Diese Simulation läuft bereits. Ein späterer Beitritt ist für neue Teilnehmer nicht möglich, wenn keine Rolle gewählt wurde.");
+            console.log("JoinPage: Effect 3 - No names in localStorage. Setting joinStep to nameInput.");
             setJoinStep("nameInput");
         }
     } else if (sessionData.status === "ended") {
@@ -224,29 +321,18 @@ export default function JoinSessionPage() {
     } else if (sessionData.status === "paused") {
       setAccessError("Diese Sitzung ist aktuell pausiert. Ein Beitritt ist momentan nicht möglich.");
       setJoinStep("nameInput");
-    } else if (sessionData.status === "open") {
-        if (accessError && (accessError.includes("Vorbereitung") || accessError.includes("pausiert") || accessError.includes("beendet") || accessError.includes("läuft bereits"))) {
-            setAccessError(null);
-        }
-      // If user has already entered names, move to role selection.
-      if (localRealName && localDisplayName) {
-        // If admin has triggered countdown, go to waiting room, otherwise role selection.
-        if (sessionData.simulationStartCountdownEndTime) {
-            setJoinStep("waitingRoom");
-        } else {
-            setJoinStep("roleSelection");
-        }
-      } else {
-        setJoinStep("nameInput");
-      }
     }
   }, [sessionId, sessionData, userId, currentScenario, isLoadingSessionDataHook, isLoadingScenario, router, accessError, currentParticipantDoc]);
 
   // Effect 4: Listener for current session participants (for role selection display)
   useEffect(() => {
-    console.log("JoinPage: Effect 4 - Setting up participants listener. joinStep:", joinStep, "currentScenario:", currentScenario, "accessError:", accessError);
-    if (!sessionId || !currentScenario || (joinStep !== 'roleSelection' && joinStep !== 'waitingRoom') || accessError) {
+    console.log("JoinPage: Effect 4 - Setting up participants listener. joinStep:", joinStep, "currentScenario:", currentScenario, "accessError:", accessError, "sessionData?.roleSelectionLocked:", sessionData?.roleSelectionLocked);
+    if (joinStep !== "roleSelection" || !currentScenario || !currentScenario.humanRolesConfig || accessError || sessionData?.roleSelectionLocked) {
+      // Only fetch all participants if user is in role selection, scenario loaded, no error, and role selection is NOT locked.
+      // If role selection is locked, the list is not needed for selection purposes by this user.
+      // If already in waitingRoom or nameInput, this list isn't directly needed by the join page itself.
       setIsLoadingParticipants(false);
+      setSessionParticipants([]); // Clear participants if not in role selection or if prerequisites fail
       return;
     }
 
@@ -271,60 +357,63 @@ export default function JoinSessionPage() {
     };
   }, [sessionId, toast, joinStep, currentScenario, accessError]);
 
-  // Effect 5: Listener for own participant document (for role updates by admin or self)
+  // Effect 5: Listen to own participant document (depends on userId)
   useEffect(() => {
     console.log("JoinPage: Effect 5 - Setting up own participant doc listener. userId:", userId, "accessError:", accessError);
-    if (!sessionId || !userId || accessError) {
+    if (!userId || accessError ) { // If no userId or there's an access error, don't try to listen
       setCurrentParticipantDoc(null);
+      setIsLoadingParticipantDoc(false); // Stop loading if prerequisites missing
       return;
     }
 
+    setIsLoadingParticipantDoc(true); // Start loading
     const participantDocRef = doc(db, "sessions", sessionId, "participants", userId);
+
     const unsubscribe = onSnapshot(participantDocRef, (docSnap) => {
       if (docSnap.exists()) {
-        const participantData = docSnap.data() as Participant;
+        const participantData = { id: docSnap.id, ...docSnap.data() } as Participant;
         console.log("JoinPage: Own participant data updated:", participantData);
         setCurrentParticipantDoc(participantData);
-        const currentRoleIdInDb = participantData.roleId || null;
-
-        // Auto-select role if it's already set in Firestore
-        if (selectedRoleId === null && currentRoleIdInDb && joinStep === 'roleSelection') {
-          setSelectedRoleId(currentRoleIdInDb);
+        // Update local state if Firestore data is different (e.g., admin changed role)
+        if (participantData.realName && realName !== participantData.realName) {
+          setRealName(participantData.realName);
+          localStorage.setItem(`chatUser_${sessionId}_${userId}_realName`, participantData.realName);
         }
-        
-        // Detect admin move IF user is currently in roleSelection phase
-        if (joinStep === 'roleSelection' &&
-            previousRoleIdRef.current !== null && 
-            currentRoleIdInDb !== null && 
-            previousRoleIdRef.current !== currentRoleIdInDb &&
-            currentRoleIdInDb !== selectedRoleId // Ensure it's not user's own immediate selection change reflecting back
-        ) {
-           const newRole = currentScenario?.humanRolesConfig?.find(r => r.id === currentRoleIdInDb);
-           if (newRole) {
-             console.log(`JoinPage: Admin moved user to role: ${newRole.name}`);
-             setAdminMovedToRoleName(newRole.name);
-             setShowAdminMovedDialog(true);
-             setSelectedRoleId(currentRoleIdInDb); // Reflect the admin's change in UI
-             localStorage.setItem(`chatUser_${sessionId}_${userId}_roleId`, newRole.id);
-             localStorage.setItem(`chatUser_${sessionId}_${userId}_roleName`, newRole.name);
-           }
+        if (participantData.displayName && displayName !== participantData.displayName) {
+          setDisplayName(participantData.displayName);
+          localStorage.setItem(`chatUser_${sessionId}_${userId}_displayName`, participantData.displayName);
         }
-        previousRoleIdRef.current = currentRoleIdInDb;
+        if (participantData.roleId && selectedRoleId !== participantData.roleId) {
+          setSelectedRoleId(participantData.roleId);
+          // Potentially show dialog if admin moved user
+          if (previousRoleIdRef.current && previousRoleIdRef.current !== participantData.roleId && currentScenario?.humanRolesConfig) {
+            const newRole = currentScenario.humanRolesConfig.find(r => r.id === participantData.roleId);
+            if (newRole) {
+              setAdminMovedToRoleName(newRole.name);
+              setShowAdminMovedDialog(true);
+            }
+          }
+        }
+        previousRoleIdRef.current = participantData.roleId; // Update ref for next comparison
 
       } else {
         console.log("JoinPage: Own participant document does not exist.");
         setCurrentParticipantDoc(null);
+        // Do not clear selectedRoleId here, as it might be set by user interaction before doc exists
       }
+      setIsLoadingParticipantDoc(false); // Finished loading/update
     }, (error) => {
-      console.error("JoinPage: Error listening to own participant data:", error);
-      toast({ variant: "destructive", title: "Verbindungsfehler", description: "Eigene Teilnehmerdaten konnten nicht synchronisiert werden."});
+      console.error("JoinPage: Error fetching own participant document:", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Eigene Teilnehmerdaten konnten nicht geladen werden." });
       setCurrentParticipantDoc(null);
+      setIsLoadingParticipantDoc(false); // Finished loading (with error)
     });
+
     return () => {
       console.log("JoinPage: Unsubscribing from own participant doc listener.");
       unsubscribe();
     };
-  }, [sessionId, userId, accessError, currentScenario, joinStep, selectedRoleId, toast]);
+  }, [userId, sessionId, accessError, toast, currentScenario, realName, displayName, selectedRoleId]); // Added dependencies
 
   // Effect 6: Countdown and redirection from waiting room
  useEffect(() => {
@@ -364,29 +453,56 @@ export default function JoinSessionPage() {
 
    // Effect 7: Listen for session status change to "active" to trigger redirect from roleSelection or waitingRoom
   useEffect(() => {
-    console.log("JoinPage: Effect 7 - Listening for session status active. sessionData.status:", sessionData?.status, "joinStep:", joinStep, "accessError:", accessError);
-    if (userId && sessionId && sessionData && !accessError) {
-      if (sessionData.status === "active") {
-        if (joinStep === "roleSelection" || joinStep === "waitingRoom") {
-            const storedRealName = localStorage.getItem(`chatUser_${sessionId}_${userId}_realName`);
-            const storedDisplayName = localStorage.getItem(`chatUser_${sessionId}_${userId}_displayName`);
-            const storedRoleId = localStorage.getItem(`chatUser_${sessionId}_${userId}_roleId`);
+    console.log("JoinPage: Effect 7 - Listening for session status active. sessionData.status:", sessionData?.status, "joinStep:", joinStep, "accessError:", accessError, "currentParticipantDoc?.roleId:", currentParticipantDoc?.roleId, "isLoadingParticipantDoc:", isLoadingParticipantDoc);
+    
+    if (isLoadingParticipantDoc) { // Wait for participant doc to be loaded/checked
+        console.log("JoinPage: Effect 7 - Waiting for participant doc to load before evaluating redirect.");
+        return;
+    }
 
-            if (storedRealName && storedDisplayName && storedRoleId && currentParticipantDoc) {
-                toast({title: "Simulation gestartet!", description: "Du wirst zum Chat weitergeleitet."});
-                router.push(`/chat/${sessionId}`);
-            } else {
-                console.error("JoinPage: Missing user details in localStorage/participantDoc before redirecting to chat.");
-                setAccessError("Fehler: Benutzerdetails nicht vollständig. Bitte versuche, Namen erneut einzugeben.");
-                setJoinStep("nameInput"); 
-            }
+    if (userId && sessionId && sessionData && !accessError) {
+      const storedRealName = localStorage.getItem(`chatUser_${sessionId}_${userId}_realName`);
+      const storedDisplayName = localStorage.getItem(`chatUser_${sessionId}_${userId}_displayName`);
+
+      // Condition for redirecting to chat - MODIFIED: RoleId IS NOW STRICTLY REQUIRED from currentParticipantDoc
+      const canRedirectToChat = 
+        storedRealName && 
+        storedDisplayName &&
+        currentParticipantDoc && // Ensure currentParticipantDoc is loaded
+        currentParticipantDoc.roleId; // Ensure roleId is set in the Firestore document
+
+      if (sessionData.status === "active") {
+        if (canRedirectToChat) {
+          if (joinStep === "roleSelection" || joinStep === "waitingRoom") {
+            console.log("JoinPage: Effect 7 - Session active, ALL details present (names, Firestore roleId). Attempting redirect to chat.");
+            toast({title: "Simulation gestartet!", description: "Du wirst zum Chat weitergeleitet."});
+            router.push(`/chat/${sessionId}`);
+          }
+        } else {
+          if (joinStep === "roleSelection" || joinStep === "waitingRoom") {
+            console.log("JoinPage: Effect 7 - Session active, user in roleSelection/waitingRoom, but NOT ALL details for chat redirect available yet. Waiting. Details:", 
+              { 
+                storedRealName: !!storedRealName, 
+                storedDisplayName: !!storedDisplayName, 
+                currentParticipantDocExists: !!currentParticipantDoc,
+                currentParticipantDocRoleId: currentParticipantDoc?.roleId 
+              });
+          }
         }
-      } else if (sessionData.status === "open" && joinStep === "waitingRoom" && !sessionData.simulationStartCountdownEndTime) {
-        setJoinStep("roleSelection");
-        toast({ title: "Sitzungsstart aktualisiert", description: "Du kannst deine Rolle erneut wählen oder warten."});
+      } else if (sessionData.status === "open" && joinStep === "waitingRoom" && !sessionData.simulationStartCountdownEndTime && !isLoadingParticipantDoc && currentParticipantDoc?.roleId) {
+        // If session is 'open', user is in waiting room, countdown is NOT active, and they HAVE a role, 
+        // it might mean admin unlocked role selection or something similar. Send back to role selection.
+        // This should ideally not happen if role selection is locked and they already have a role, but as a safeguard.
+        if (!sessionData.roleSelectionLocked) {
+            console.log("JoinPage: Effect 7 - Session 'open', in 'waitingRoom', no countdown, and role selection NOT locked. Moving to 'roleSelection'.");
+            setJoinStep("roleSelection");
+            // toast({ title: "Rollenauswahl aktualisiert", description: "Du kannst deine Rolle erneut wählen."});
+        } else {
+            console.log("JoinPage: Effect 7 - Session 'open', in 'waitingRoom', no countdown, but role selection IS locked. Staying in waiting room.");
+        }
       }
     }
-  }, [joinStep, sessionId, sessionData, router, toast, userId, accessError, currentParticipantDoc]);
+  }, [joinStep, sessionId, sessionData, router, toast, userId, accessError, currentParticipantDoc, isLoadingParticipantDoc]); // Ensure all dependencies are listed
 
 
   const handleNameSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -415,7 +531,7 @@ export default function JoinSessionPage() {
         roleId: currentParticipantDoc?.roleId || "", // Preserve existing roleId
         avatarFallback: (displayName.trim().substring(0,1) + (realName.trim().substring(0,1) || displayName.trim().substring(1,2) || 'U')).toUpperCase(),
         isBot: false,
-        status: "Wählt Rolle",
+        status: "Nicht beigetreten",
         joinedAt: currentParticipantDoc?.joinedAt || (serverTimestamp() as Timestamp),
         updatedAt: serverTimestamp() as Timestamp
       };
@@ -463,13 +579,18 @@ export default function JoinSessionPage() {
         return;
     }
 
-    if (sessionData?.roleSelectionLocked && currentParticipantDoc?.roleId && currentParticipantDoc.roleId !== newRoleId) {
-        toast({ variant: "default", title: "Rollenauswahl gesperrt", description: "Die Rollenauswahl wurde vom Administrator gesperrt.", className: "bg-yellow-500/10 border-yellow-500"});
+    // Allow role selection if: EITHER role selection is NOT locked OR if it IS locked BUT the user doesn't have a roleId yet for this session.
+    const canSelectRole = !sessionData?.roleSelectionLocked || (sessionData?.roleSelectionLocked && !currentParticipantDoc?.roleId);
+
+    if (!canSelectRole && currentParticipantDoc?.roleId && currentParticipantDoc.roleId !== newRoleId) {
+        toast({ variant: "default", title: "Rollenauswahl gesperrt", description: "Die Rollenauswahl wurde vom Administrator gesperrt und du hast bereits eine Rolle.", className: "bg-yellow-500/10 border-yellow-500"});
         return;
     }
     
     setIsUpdatingRole(true);
     setSelectedRoleId(newRoleId); // Optimistic UI update
+
+    console.log("JoinPage: handleRoleSelection - Attempting to set role. newRoleId:", newRoleId, "selectedRoleConfig:", selectedRoleConfig, "userId:", userId, "displayName:", displayName);
 
     try {
       const participantRef = doc(db, "sessions", sessionId, "participants", userId);
@@ -480,14 +601,16 @@ export default function JoinSessionPage() {
         roleId: selectedRoleConfig.id,
         displayName: displayName.trim(), 
         avatarFallback: currentAvatarFallback,
-        status: "Im Wartebereich", 
+        status: "Beigetreten", 
         updatedAt: serverTimestamp() as Timestamp
       };
       
-      await updateDoc(participantRef, updateData);
+      await setDoc(participantRef, updateData, { merge: true });
+      console.log("JoinPage: handleRoleSelection - Successfully set participantDoc in Firestore with data:", updateData);
       
       localStorage.setItem(`chatUser_${sessionId}_${userId}_roleId`, newRoleId);
       localStorage.setItem(`chatUser_${sessionId}_${userId}_roleName`, selectedRoleConfig.name);
+      console.log("JoinPage: handleRoleSelection - Successfully set roleId in localStorage:", newRoleId);
       
       previousRoleIdRef.current = newRoleId; 
       
@@ -757,7 +880,9 @@ export default function JoinSessionPage() {
           <CardContent className="space-y-3 text-center">
             {roleDescForWaitingRoom && (
                 <Card className="mt-1 p-3 bg-muted/30 text-sm text-left max-h-48">
-                    <CardHeader className="p-0 pb-1"><ShadcnDialogTitle className="text-xs font-medium text-muted-foreground">Deine Rollenbeschreibung:</ShadcnDialogTitle></CardHeader>
+                    <CardHeader className="p-0 pb-1">
+                        <p className="text-xs font-medium text-muted-foreground">Deine Rollenbeschreibung:</p>
+                    </CardHeader>
                     <CardContent className="p-0">
                         <ScrollArea className="max-h-[100px] sm:max-h-[120px] text-xs pr-2">
                             <pre className="whitespace-pre-wrap">{roleDescForWaitingRoom}</pre>

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { memo, useMemo } from 'react'; // Added useMemo
@@ -8,10 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from '@/lib/utils';
-import type { Scenario, DisplayParticipant } from "@/lib/types";
+import type { Scenario, DisplayParticipant, Participant } from "@/lib/types";
 import type { ParticipantColor } from '@/lib/config';
-import { Bot as BotIcon, User, VolumeX, ShieldCheck, Crown, Loader2, Info } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog"; // Removed DialogDescription
+import { Bot as BotIcon, User, VolumeX, ShieldCheck, Crown, Loader2, Info, Send } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogTrigger } from "@/components/ui/dialog"; // Removed DialogDescription, Added DialogTrigger
 import { Button } from '../ui/button';
 
 
@@ -19,40 +18,25 @@ interface ChatSidebarProps {
   participants: DisplayParticipant[];
   isLoadingParticipants: boolean;
   currentUserId: string | null;
-  userDisplayName: string | null;
-  userRole: string | null;
-  userAvatarFallback: string;
-  currentScenario: Scenario | undefined;
-  isMuted: boolean;
   getParticipantColorClasses: (pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot' | 'system') => ParticipantColor;
   isAdminView?: boolean;
+  onInitiateDm?: (participant: Participant) => void;
 }
 
 const ChatSidebar = memo(function ChatSidebar({
   participants,
   isLoadingParticipants,
   currentUserId,
-  userDisplayName,
-  userRole,
-  userAvatarFallback,
-  currentScenario,
-  isMuted,
   getParticipantColorClasses,
   isAdminView = false,
+  onInitiateDm
 }: ChatSidebarProps) {
-
-  const currentUserRoleDescription = useMemo(() => {
-    if (!currentScenario || !currentScenario.humanRolesConfig || !userRole) return "Keine Rollenbeschreibung verfügbar.";
-    const roleConfig = currentScenario.humanRolesConfig.find(r => r.name === userRole);
-    return roleConfig?.description || "Rollenbeschreibung nicht gefunden.";
-  }, [currentScenario, userRole]);
-
 
   return (
     <>
-      <h2 className="text-lg font-semibold">Teilnehmende ({isLoadingParticipants ? '...' : participants.filter(p => p.isBot ? isAdminView : true).length})</h2>
-      <ScrollArea className="flex-1 -mr-2">
-        <div className="space-y-3 py-2 pr-2">
+      <h2 className="text-lg font-semibold pl-2 pt-2">Teilnehmende ({isLoadingParticipants ? '...' : participants.filter(p => p.isBot ? isAdminView : true).length})</h2>
+      <ScrollArea className="flex-1 pb-2">
+        <div className="space-y-3 py-2 px-2">
           {isLoadingParticipants ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
@@ -84,49 +68,26 @@ const ChatSidebar = memo(function ChatSidebar({
                     </p>
                     <p className="text-xs text-muted-foreground">{p.role}</p>
                   </div>
+                  {p.userId !== currentUserId && onInitiateDm && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-7 w-7 p-1 text-muted-foreground hover:text-primary flex-shrink-0"
+                      onClick={(e) => { 
+                        e.stopPropagation();
+                        onInitiateDm(p as Participant);
+                      }}
+                      title={`Direktnachricht an ${p.displayName}`}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               );
             })
           )}
         </div>
       </ScrollArea>
-      {!isAdminView && userRole && currentScenario && userDisplayName && currentUserId && (
-        <>
-          <Separator />
-          <Card className="mt-auto bg-muted/30">
-            <CardHeader className="p-3">
-              <div className="flex items-center gap-2">
-                <Avatar className={cn("h-10 w-10 border-2", getParticipantColorClasses(currentUserId, 'user').ring)}>
-                  <AvatarImage src={`https://placehold.co/40x40.png?text=${userAvatarFallback}`} alt="My Avatar" data-ai-hint="person user"/>
-                  <AvatarFallback className={cn(getParticipantColorClasses(currentUserId, 'user').bg, getParticipantColorClasses(currentUserId, 'user').text)}>
-                    {userAvatarFallback}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <CardTitle className="text-base">Du als: {userDisplayName}</CardTitle>
-                  <div className="flex items-center">
-                    <p className="text-xs text-muted-foreground">Deine Rolle: {userRole}</p>
-                    <Dialog>
-                        <DialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-5 w-5 ml-1 p-0"><Info className="h-3.5 w-3.5 text-muted-foreground hover:text-primary"/></Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-lg">
-                            <DialogHeader>
-                                <DialogTitle>Rollenbeschreibung: {userRole}</DialogTitle>
-                            </DialogHeader>
-                            <ScrollArea className="max-h-[60vh] mt-2">
-                                <pre className="whitespace-pre-wrap text-sm text-muted-foreground p-1">{currentUserRoleDescription}</pre>
-                            </ScrollArea>
-                            <DialogClose asChild><Button type="button" variant="secondary" className="mt-3 w-full">Schließen</Button></DialogClose>
-                        </DialogContent>
-                    </Dialog>
-                  </div>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
-        </>
-      )}
     </>
   );
 });

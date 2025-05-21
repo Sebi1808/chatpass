@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -43,15 +42,41 @@ export function useMessages(
         const initialPostConfig = currentScenario.initialPost;
         let validInitialPostTimestamp: Timestamp;
 
-        if (sessionData.createdAt instanceof Timestamp) {
-          validInitialPostTimestamp = sessionData.createdAt;
-        } else if (sessionData.createdAt instanceof Date) {
-          validInitialPostTimestamp = Timestamp.fromDate(sessionData.createdAt);
-        } else if (typeof sessionData.createdAt === 'object' && sessionData.createdAt && 'seconds' in sessionData.createdAt && 'nanoseconds' in sessionData.createdAt) {
-           validInitialPostTimestamp = new Timestamp((sessionData.createdAt as any).seconds, (sessionData.createdAt as any).nanoseconds);
-        }
-         else {
-          // console.warn("useMessages: sessionData.createdAt is not a valid Firestore Timestamp or JS Date. Using current time for initial post.");
+        const createdAtVal = sessionData.createdAt;
+
+        if (createdAtVal instanceof Timestamp) {
+          validInitialPostTimestamp = createdAtVal;
+        } else if (typeof (createdAtVal as any)?.toDate === 'function') {
+          try {
+            validInitialPostTimestamp = Timestamp.fromDate((createdAtVal as any).toDate());
+          } catch (e) {
+            // If toDate exists but is not a valid Date for Timestamp.fromDate
+            // or if it IS a Date object but somehow invalid for Timestamp.fromDate,
+            // we try to handle it as a Firestore-like plain object or fall back to now().
+            if (typeof createdAtVal === 'object' && createdAtVal !== null && 
+                'seconds' in createdAtVal && 'nanoseconds' in createdAtVal && 
+                typeof (createdAtVal as any).seconds === 'number' && typeof (createdAtVal as any).nanoseconds === 'number') {
+              validInitialPostTimestamp = new Timestamp((createdAtVal as any).seconds, (createdAtVal as any).nanoseconds);
+            } else {
+              console.warn("useMessages: createdAtVal.toDate() failed and value is not a Firestore-like object. Falling back to Timestamp.now(). createdAtVal:", createdAtVal, "Error:", e);
+              validInitialPostTimestamp = Timestamp.now();
+            }
+          }
+        } else if (typeof createdAtVal === 'object' && createdAtVal !== null && 
+                   'seconds' in createdAtVal && 'nanoseconds' in createdAtVal && 
+                   typeof (createdAtVal as any).seconds === 'number' && typeof (createdAtVal as any).nanoseconds === 'number') {
+          // This handles Firestore-like plain objects if toDate() was not present
+          validInitialPostTimestamp = new Timestamp((createdAtVal as any).seconds, (createdAtVal as any).nanoseconds);
+        } else if (typeof createdAtVal === 'object' && createdAtVal !== null && createdAtVal instanceof Date) { 
+          // Explicit Date check as a further fallback.
+          try {
+            validInitialPostTimestamp = Timestamp.fromDate(createdAtVal);
+          } catch (e) {
+            console.warn("useMessages: createdAtVal instanceof Date but Timestamp.fromDate() failed. Falling back to Timestamp.now(). createdAtVal:", createdAtVal, "Error:", e);
+            validInitialPostTimestamp = Timestamp.now();
+          }
+        } else {
+          console.warn("useMessages: createdAtVal is not a recognized Timestamp, Date, or Firestore-like object. Falling back to Timestamp.now(). createdAtVal:", createdAtVal);
           validInitialPostTimestamp = Timestamp.now(); 
         }
         
@@ -75,6 +100,12 @@ export function useMessages(
       querySnapshot.forEach((docSn) => {
         const data = docSn.data() as Message;
         const timestamp = data.timestamp as Timestamp | null; // Assuming timestamp is already a Firestore Timestamp or null
+        
+        // Skip admin broadcast messages for the main chat feed
+        if (data.isAdminBroadcast) {
+          return; 
+        }
+
         newMessagesData.push({
           ...data,
           id: docSn.id,

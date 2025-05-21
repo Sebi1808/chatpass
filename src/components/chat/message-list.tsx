@@ -1,11 +1,10 @@
-
 "use client";
 
 import type { RefObject } from 'react';
 import { memo } from 'react';
 import { MessageSquare } from "lucide-react";
 import { MessageBubble } from './message-bubble';
-import type { DisplayMessage } from '@/lib/types';
+import type { DisplayMessage, Participant } from '@/lib/types';
 import type { ParticipantColor, emojiCategories as EmojiCategoriesType } from '@/lib/config';
 
 interface MessageListProps {
@@ -24,6 +23,7 @@ interface MessageListProps {
   isChatDataLoading: boolean;
   isAdminView?: boolean;
   onOpenImageModal: (imageUrl: string, imageFileName?: string) => void;
+  onOpenDm?: (recipient: Participant) => void;
 }
 
 const MessageList = memo(function MessageList({
@@ -42,6 +42,7 @@ const MessageList = memo(function MessageList({
   isChatDataLoading,
   isAdminView = false,
   onOpenImageModal,
+  onOpenDm,
 }: MessageListProps) {
   return (
     <div className="space-y-1"> {/* Reduced space-y for tighter packing */}
@@ -61,6 +62,7 @@ const MessageList = memo(function MessageList({
           emojiCategories={emojiCategories}
           isAdminView={isAdminView}
           onOpenImageModal={onOpenImageModal}
+          onOpenDm={onOpenDm}
         />
       ))}
       <div ref={messagesEndRef} />

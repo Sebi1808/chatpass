@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -7,14 +6,14 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle, CheckCircle, Users2, LogIn, PlayCircle as PlayCircleIcon, Clock, Lock, Unlock, UserPlus, Check, ArrowRightLeft, History, Info } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle, CheckCircle, Users2, LogIn, PlayCircle as PlayCircleIcon, Clock, Lock, Unlock, UserPlus, Check, ArrowRightLeft, History, Info, Ban, Undo2, MicOff, Send, Edit2, MessageSquarePlus, BarChart2, CircleDollarSign, EyeOff, Filter, Flame, HelpCircle, Link as LinkIcon, LogOut, Mail, Mic, MoreVertical, PauseCircle, PlayCircle, PlusCircle, Repeat, Search, ShieldAlert, ShieldCheck, TrendingUp, UserCog, UserMinus, X, Zap, Hand, Megaphone, MessageSquare as MessageSquareIconLucide } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData, ScenarioEvent, HumanRoleConfig } from "@/lib/types";
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
-import { db } from "@/lib/firebase";
+import { db, storage } from "@/lib/firebase";
 import { doc, setDoc, getDoc, serverTimestamp, collection, onSnapshot, query, orderBy, Timestamp, updateDoc, writeBatch, getDocs, where, deleteDoc, addDoc } from "firebase/firestore";
 import Link from 'next/link';
 import {
@@ -35,6 +34,11 @@ import { useRouter, useParams } from 'next/navigation'; // Added useParams
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 interface AdminSessionDashboardPageProps {
@@ -84,11 +88,48 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const [isRemovingAllParticipants, setIsRemovingAllParticipants] = useState(false);
   const [adminUiCountdown, setAdminUiCountdown] = useState<number | null>(null);
   const [isMovingParticipant, setIsMovingParticipant] = useState<string | null>(null);
+  const [isApplyingPenaltyOrMute, setIsApplyingPenaltyOrMute] = useState<string | null>(null);
 
+  const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("teilnehmer");
+
+  // State for Admin Direct Message Modal
+  const [showAdminDmModal, setShowAdminDmModal] = useState(false);
+  const [adminDmRecipient, setAdminDmRecipient] = useState<Participant | null>(null);
+  const [adminDmContent, setAdminDmContent] = useState("");
+  const [isSendingAdminDm, setIsSendingAdminDm] = useState(false);
+
+  // State for Admin Standard Direct Message Modal
+  const [showAdminStandardDmModal, setShowAdminStandardDmModal] = useState(false);
+  const [adminStandardDmRecipient, setAdminStandardDmRecipient] = useState<Participant | null>(null);
+  const [adminStandardDmContent, setAdminStandardDmContent] = useState("");
+  const [isSendingAdminStandardDm, setIsSendingAdminStandardDm] = useState(false);
+
+  // State for Global Broadcast Modal
+  const [showGlobalBroadcastModal, setShowGlobalBroadcastModal] = useState(false);
+  const [globalBroadcastType, setGlobalBroadcastType] = useState<'all' | 'role'>('all');
+  const [globalBroadcastTargetRoleId, setGlobalBroadcastTargetRoleId] = useState<string | null>(null);
+  const [globalBroadcastContent, setGlobalBroadcastContent] = useState("");
+  const [isSendingGlobalBroadcast, setIsSendingGlobalBroadcast] = useState(false);
 
   const adminCountdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
   const adminChatPreviewEndRef = useRef<null | HTMLDivElement>(null);
+
+  const getPenaltyTimeRemaining = (penalty: Participant['activePenalty']): string | null => {
+    if (!penalty || !penalty.startedAt || !(penalty.startedAt instanceof Timestamp)) return null;
+    const endTime = penalty.startedAt.toDate().getTime() + penalty.durationMinutes * 60 * 1000;
+    const now = Date.now();
+    const remainingMillis = endTime - now;
+
+    if (remainingMillis <= 0) return null; // Return null if expired
+
+    const remainingSeconds = Math.ceil(remainingMillis / 1000);
+    const minutes = Math.floor(remainingSeconds / 60);
+    const seconds = remainingSeconds % 60;
+
+    return `${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`;
+  };
 
   // Effect 1: Load Scenario Details
   useEffect(() => {
@@ -248,50 +289,38 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     setIsProcessingSessionAction(true);
     const scenarioBotsConfig = currentScenario.defaultBotsConfig || [];
     if (!Array.isArray(scenarioBotsConfig)) {
-        console.error("AdminDashboard: currentScenario.defaultBotsConfig is not an array or is undefined.", currentScenario.defaultBotsConfig);
-        toast({variant: "destructive", title: "Bot Fehler", description: "Bot-Konfiguration im Szenario ist fehlerhaft."});
+      console.error("AdminDashboard: scenarioBotsConfig is not an array!", scenarioBotsConfig);
+      toast({variant: "destructive", title: "Konfigurationsfehler", description: "Bot-Konfiguration im Szenario ist fehlerhaft."});
         setIsProcessingSessionAction(false);
         return;
     }
 
     const participantsColRef = collection(db, "sessions", sessionIdFromUrl, "participants");
+    const existingParticipantsSnap = await getDocs(query(participantsColRef, where("isBot", "==", true)));
+    const existingBotsData = existingParticipantsSnap.docs.map(d => ({docId: d.id, data: d.data() as Participant}));
+
     const batch = writeBatch(db);
     let operationsInBatch = 0;
-
-    try {
-        const existingBotsQuery = query(participantsColRef, where("isBot", "==", true));
-        const existingBotsSnap = await getDocs(existingBotsQuery);
-        const firestoreBotsMap = new Map(existingBotsSnap.docs.map(d => [d.data().botScenarioId, {docId: d.id, data: d.data() as Participant}]));
-        const configBotScenarioIds = new Set(scenarioBotsConfig.map(bc => bc.id).filter(id => !!id));
-
-        // Delete bots from Firestore that are no longer in the scenario config
-        firestoreBotsMap.forEach((botDetails, botScenarioIdInDb) => {
-            if (!configBotScenarioIds.has(botScenarioIdInDb)) {
-                batch.delete(doc(participantsColRef, botDetails.docId));
-                operationsInBatch++;
-                console.log(`AdminDashboard: Deleting bot ${botDetails.docId} (scenarioId: ${botScenarioIdInDb}) as it's no longer in config.`);
-            }
-        });
         
         for (const botConfig of scenarioBotsConfig) {
             const botScenarioId = botConfig.id;
             if (!botScenarioId) {
-                console.error("AdminDashboard: Bot config is missing a unique id:", botConfig);
+            console.warn("AdminDashboard: Bot config missing ID, skipping bot:", botConfig);
                 continue;
             }
             const botDisplayName = getBotDisplayName(botConfig);
-            const existingBotDetails = firestoreBotsMap.get(botScenarioId);
+        const existingBotDetails = existingBotsData.find(b => b.docId === `bot-${botScenarioId}`);
             
             const participantDataForBot: Omit<Participant, 'id' | 'joinedAt'> & { id?: string, joinedAt?: Timestamp, updatedAt?: Timestamp} = { 
                 userId: `bot-${botScenarioId}`, 
-                realName: botDisplayName, // Klarname ist Bot-Name
-                displayName: botDisplayName, // Nickname ist Bot-Name
-                role: `Bot (${botConfig.personality || 'standard'})`,
-                roleId: `bot-role-${botConfig.personality || 'standard'}`, // Eindeutige Role-ID für Bots
-                avatarFallback: botConfig.avatarFallback || (botConfig.name || botConfig.personality.substring(0,1) + (botConfig.id || 'X').substring(0,1)).substring(0, 2).toUpperCase() || "BT",
+            realName: "Bot",
+            displayName: botDisplayName, 
+            role: botConfig.name || "Bot", // Use botConfig.name as role, or default to "Bot"
+            roleId: botConfig.id || "bot-role", // Use botConfig.id as roleId
+            avatarFallback: botConfig.avatarFallback || botDisplayName.substring(0,1).toUpperCase() || "B",
                 isBot: true,
-                status: "Aktiv", 
-                botScenarioId: botScenarioId,
+            status: "Beigetreten", // Corrected status
+            updatedAt: serverTimestamp() as Timestamp,
                 botConfig: {
                     ...botConfig, 
                     name: botDisplayName, 
@@ -310,9 +339,9 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             
             if (!existingBotDetails) {
                 console.log(`AdminDashboard: Creating new bot ${botDocRef.id} with data:`, participantDataForBot);
-                batch.set(botDocRef, { ...participantDataForBot, id: botDocRef.id, joinedAt: serverTimestamp() as Timestamp });
+            batch.set(botDocRef, { ...participantDataForBot, id: botDocRef.id, status: "Beigetreten", joinedAt: serverTimestamp() as Timestamp });
             } else {
-                const updateData: Partial<Participant> = { ...participantDataForBot, updatedAt: serverTimestamp() as Timestamp };
+            const updateData: Partial<Participant> = { ...participantDataForBot, status: "Beigetreten", updatedAt: serverTimestamp() as Timestamp };
                 delete updateData.id; 
                 delete updateData.joinedAt;
                 console.log(`AdminDashboard: Updating existing bot ${botDocRef.id} with data:`, updateData);
@@ -326,12 +355,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             toast({ title: "Bots initialisiert/synchronisiert", description: `${operationsInBatch} Bot-Operationen durchgeführt.`});
         } else {
             toast({ title: "Bots", description: "Keine Änderungen an den Bots erforderlich."});
-        }
-    } catch (e: any) {
-        console.error("AdminDashboard: Error in initializeBotsForSession batch commit:", e);
-        toast({ variant: "destructive", title: "Bot Fehler", description: `Bots konnten nicht initialisiert/synchronisiert werden: ${e.message}`});
-    } finally {
-        setIsProcessingSessionAction(false);
     }
   }, [sessionIdFromUrl, currentScenario, sessionData, getBotDisplayName, toast, botMissions]);
 
@@ -681,17 +704,24 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   }, [sessionIdFromUrl, sessionData, toast]);
 
-  const handleToggleMuteParticipant = useCallback(async (participantId: string, currentMuteStatus: boolean | undefined) => {
-    if (!sessionIdFromUrl || !sessionData || sessionData.status === "ended") return;
-    const participantDocRef = doc(db, "sessions", sessionIdFromUrl, "participants", participantId);
+  const handleToggleMuteParticipant = useCallback(async (participantId: string, currentMuteStatus: boolean) => {
+    if (!sessionIdFromUrl) return;
+    setIsApplyingPenaltyOrMute(participantId); // Indicate loading for this specific participant
+    console.log(`AdminDashboard: Toggling mute for participant ${participantId} from ${currentMuteStatus} to ${!currentMuteStatus}`);
     try {
-      await updateDoc(participantDocRef, { isMuted: !currentMuteStatus });
-      toast({ title: `Teilnehmer ${!currentMuteStatus ? 'stummgeschaltet' : 'freigeschaltet'}` });
+      const participantRef = doc(db, "sessions", sessionIdFromUrl, "participants", participantId);
+      await updateDoc(participantRef, { 
+        isMuted: !currentMuteStatus,
+        updatedAt: serverTimestamp() 
+      });
+      toast({ title: "Teilnehmer Stummschaltung geändert", description: `Teilnehmer ${participantId} ist jetzt ${!currentMuteStatus ? "stummgeschaltet" : "nicht mehr stummgeschaltet"}.` });
     } catch (error: any) {
-      console.error(`AdminDashboard: Error toggling mute for participant ${participantId} in session ${sessionIdFromUrl}:`, error);
+      console.error("Error toggling participant mute status:", error);
       toast({ variant: "destructive", title: "Fehler", description: `Stummschaltung konnte nicht geändert werden: ${error.message}` });
+    } finally {
+      setIsApplyingPenaltyOrMute(null);
     }
-  }, [sessionIdFromUrl, sessionData, toast]);
+  }, [sessionIdFromUrl, toast]);
 
   const handleToggleBotActive = useCallback(async (botParticipantId: string, currentActiveStatus: boolean | undefined) => {
     if (!sessionIdFromUrl || !sessionData || sessionData.status === "ended" || typeof currentActiveStatus === 'undefined') return;
@@ -796,15 +826,16 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         avatarFallback: botParticipant.avatarFallback,
         content: botResponse.message,
         timestamp: serverTimestamp() as Timestamp,
-        botFlag: !!botResponse.bot_flag, 
+        // botFlag: !!botResponse.bot_flag, // Removed botFlag
       };
       await addDoc(messagesColRef, {...newMessageData, reactions: {}}); 
 
-      if (typeof botResponse.escalationLevel === 'number' && botResponse.escalationLevel !== botParticipant.botConfig.currentEscalation) {
+      if (typeof botResponse.escalationLevel === 'number' && botParticipant.botConfig && botResponse.escalationLevel !== botParticipant.botConfig.currentEscalation) {
         const botDocRef = doc(db, "sessions", sessionIdFromUrl, "participants", botParticipant.id);
-        const updatedBotConfig = botParticipant.botConfig 
-            ? { ...botParticipant.botConfig, currentEscalation: botResponse.escalationLevel }
-            : { currentEscalation: botResponse.escalationLevel, id: botParticipant.botScenarioId || "", name: botParticipant.displayName, personality: 'standard', isActive: true }; 
+        const updatedBotConfig = {
+          ...botParticipant.botConfig, // Spread the existing, defined botConfig
+          currentEscalation: botResponse.escalationLevel
+        };
         await updateDoc(botDocRef, { "botConfig": updatedBotConfig });
       }
       toast({ title: `Nachricht von ${botParticipant.displayName} gesendet.`});
@@ -870,11 +901,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       "Message ID", "Timestamp", "Sender UserID", "Sender Klarname", "Sender Nickname", "Sender Rolle", "Sender Typ",
       "Content", "Image URL", "Image File Name",
       "ReplyToMessageID", "ReplyToMessageSenderName", "ReplyToMessageContentSnippet",
-      "Reactions", "Bot Flag"
+      "Reactions" // Removed "Bot Flag"
     ];
 
     const rows = chatMessages.map(msg => {
-      const sender = participantMap.get(msg.senderUserId);
+      const sender = msg.senderUserId ? participantMap.get(msg.senderUserId) : undefined;
       const senderRole = sender ? sender.role : (msg.senderType === 'system' ? "System" : "Unbekannt");
       const senderRealName = sender ? sender.realName : (msg.senderType === 'system' ? msg.senderName : "Unbekannt");
       const senderDisplayName = sender ? sender.displayName : msg.senderName;
@@ -906,7 +937,6 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         escapeCsvField(msg.replyToMessageSenderName || ""),
         escapeCsvField(msg.replyToMessageContentSnippet || ""),
         escapeCsvField(reactionsString),
-        escapeCsvField(msg.botFlag ? "Ja" : "Nein")
       ].join(',');
     });
 
@@ -1011,8 +1041,178 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   };
 
+  const handleToggleMuteRole = useCallback(async (roleId: string) => {
+    if (!sessionIdFromUrl || !sessionData || !currentScenario?.humanRolesConfig) return;
+    setIsApplyingPenaltyOrMute(roleId); // Use roleId to indicate this role is being processed
+    const sessionDocRef = doc(db, "sessions", sessionIdFromUrl);
+    const participantsColRef = collection(db, "sessions", sessionIdFromUrl, "participants");
 
-  const scenarioTitle = currentScenario?.title || (isLoadingScenario ? "Szenario lädt..." : "Szenario nicht gefunden");
+    const roleToToggle = currentScenario.humanRolesConfig.find(r => r.id === roleId);
+    if (!roleToToggle) {
+      toast({ variant: "destructive", title: "Fehler", description: "Rolle nicht gefunden." });
+      setIsApplyingPenaltyOrMute(null);
+      return;
+    }
+
+    const currentMutedRoleIds = sessionData.mutedRoleIds || [];
+    const isCurrentlyMuted = currentMutedRoleIds.includes(roleId);
+    const newMutedRoleIds = isCurrentlyMuted
+      ? currentMutedRoleIds.filter(id => id !== roleId)
+      : [...currentMutedRoleIds, roleId];
+
+    try {
+      await updateDoc(sessionDocRef, { mutedRoleIds: newMutedRoleIds, updatedAt: serverTimestamp() });
+
+      // Update all participants of this role
+      const q = query(participantsColRef, where("roleId", "==", roleId), where("isBot", "==", false));
+      const participantsSnapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      participantsSnapshot.forEach(participantDoc => {
+        batch.update(participantDoc.ref, { isMuted: !isCurrentlyMuted });
+      });
+      await batch.commit();
+
+      toast({ title: `Rolle "${roleToToggle.name}" ${!isCurrentlyMuted ? "stummgeschaltet" : "Stummschaltung aufgehoben"}.`, description: `${participantsSnapshot.size} Teilnehmer aktualisiert.` });
+    } catch (error: any) {
+      console.error("Error toggling role mute state:", error);
+      toast({ variant: "destructive", title: "Fehler", description: `Stummschaltung für Rolle konnte nicht geändert werden: ${error.message}` });
+    }
+    setIsApplyingPenaltyOrMute(null);
+  }, [sessionIdFromUrl, sessionData, currentScenario, toast]);
+
+  const handleApplyPenaltyToParticipant = useCallback(async (participantId: string, penaltyType: 'yellow' | 'red') => {
+    if (!sessionIdFromUrl) return;
+    setIsApplyingPenaltyOrMute(participantId); // Indicate loading for this participant
+
+    const durationMinutes = penaltyType === 'yellow' ? 1 : 3;
+    const description = penaltyType === 'yellow' ? "Gelbe Karte" : "Rote Karte";
+
+    try {
+      const participantRef = doc(db, "sessions", sessionIdFromUrl, "participants", participantId);
+      await updateDoc(participantRef, {
+        activePenalty: {
+          type: penaltyType,
+          startedAt: serverTimestamp(),
+          durationMinutes: durationMinutes,
+          description: description,
+        },
+        isMuted: true, // Mute participant when penalty is applied
+        updatedAt: serverTimestamp()
+      });
+      toast({ title: `${description} für Teilnehmer ${participantId} angewendet.`, description: `Dauer: ${durationMinutes} Minute(n). Teilnehmer ist stummgeschaltet.` });
+    } catch (error: any) {
+      console.error(`Error applying penalty to participant ${participantId}:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Strafe konnte nicht angewendet werden: ${error.message}` });
+    } finally {
+      setIsApplyingPenaltyOrMute(null);
+    }
+  }, [sessionIdFromUrl, sessionData, currentScenario, toast]);
+
+  const handleClearPenaltyForParticipant = useCallback(async (participantId: string) => {
+    if (!sessionIdFromUrl) return;
+    setIsApplyingPenaltyOrMute(participantId); // Indicate loading for this participant
+    try {
+      const participantRef = doc(db, "sessions", sessionIdFromUrl, "participants", participantId);
+      await updateDoc(participantRef, {
+        activePenalty: null,
+        isMuted: false, // Unmute participant when penalty is cleared, consider if this is always desired
+        updatedAt: serverTimestamp()
+      });
+      toast({ title: `Strafe für Teilnehmer ${participantId} aufgehoben.`, description: "Teilnehmer ist wieder freigeschaltet." });
+    } catch (error: any) {
+      console.error(`Error clearing penalty for participant ${participantId}:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Strafe konnte nicht aufgehoben werden: ${error.message}` });
+    } finally {
+      setIsApplyingPenaltyOrMute(null);
+    }
+  }, [sessionIdFromUrl, toast]);
+
+  const handleApplyPenaltyToRole = useCallback(async (roleId: string, penaltyType: 'yellow' | 'red') => {
+    if (!sessionIdFromUrl || !sessionData || !currentScenario?.humanRolesConfig) return;
+    setIsApplyingPenaltyOrMute(roleId); // Use roleId to indicate this role is being processed
+
+    const durationMinutes = penaltyType === 'yellow' ? 1 : 3;
+    const description = penaltyType === 'yellow' ? "Gelbe Karte (Rolle)" : "Rote Karte (Rolle)";
+    const roleToPenalize = currentScenario.humanRolesConfig.find(r => r.id === roleId);
+
+    if (!roleToPenalize) {
+      toast({ variant: "destructive", title: "Fehler", description: "Rolle nicht gefunden." });
+      setIsApplyingPenaltyOrMute(null);
+      return;
+    }
+
+    const participantsColRef = collection(db, "sessions", sessionIdFromUrl, "participants");
+    const sessionDocRef = doc(db, "sessions", sessionIdFromUrl);
+
+    try {
+      const currentMutedRoleIds = sessionData.mutedRoleIds || [];
+      const newMutedRoleIds = currentMutedRoleIds.includes(roleId) ? currentMutedRoleIds : [...currentMutedRoleIds, roleId];
+      await updateDoc(sessionDocRef, { mutedRoleIds: newMutedRoleIds, updatedAt: serverTimestamp() });
+
+      const q = query(participantsColRef, where("roleId", "==", roleId), where("isBot", "==", false));
+      const participantsSnapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      participantsSnapshot.forEach(participantDoc => {
+        batch.update(participantDoc.ref, {
+          activePenalty: {
+            type: penaltyType,
+            startedAt: serverTimestamp(),
+            durationMinutes: durationMinutes,
+            description: description,
+          },
+          isMuted: true,
+          updatedAt: serverTimestamp()
+        });
+      });
+      await batch.commit();
+
+      toast({ title: `${description} für Rolle "${roleToPenalize.name}" angewendet.`, description: `${participantsSnapshot.size} Teilnehmer aktualisiert und stummgeschaltet.` });
+    } catch (error: any) {
+      console.error(`Error applying penalty to role ${roleId}:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Strafe konnte nicht auf Rolle angewendet werden: ${error.message}` });
+    }
+    setIsApplyingPenaltyOrMute(null);
+  }, [sessionIdFromUrl, sessionData, currentScenario, toast]);
+
+  const handleClearPenaltyFromRole = useCallback(async (roleId: string) => {
+    if (!sessionIdFromUrl || !sessionData || !currentScenario?.humanRolesConfig) return;
+    setIsApplyingPenaltyOrMute(roleId);
+
+    const roleToClear = currentScenario.humanRolesConfig.find(r => r.id === roleId);
+    if (!roleToClear) {
+      toast({ variant: "destructive", title: "Fehler", description: "Rolle nicht gefunden." });
+      setIsApplyingPenaltyOrMute(null);
+      return;
+    }
+
+    const participantsColRef = collection(db, "sessions", sessionIdFromUrl, "participants");
+    const sessionDocRef = doc(db, "sessions", sessionIdFromUrl);
+
+    try {
+      const currentMutedRoleIds = sessionData.mutedRoleIds || [];
+      const newMutedRoleIds = currentMutedRoleIds.filter(id => id !== roleId);
+      await updateDoc(sessionDocRef, { mutedRoleIds: newMutedRoleIds, updatedAt: serverTimestamp() });
+
+      const q = query(participantsColRef, where("roleId", "==", roleId), where("isBot", "==", false));
+      const participantsSnapshot = await getDocs(q);
+      const batch = writeBatch(db);
+      participantsSnapshot.forEach(participantDoc => {
+        batch.update(participantDoc.ref, {
+          activePenalty: null,
+          isMuted: false,
+          updatedAt: serverTimestamp()
+        });
+      });
+      await batch.commit();
+
+      toast({ title: `Strafe für Rolle "${roleToClear.name}" aufgehoben.`, description: `${participantsSnapshot.size} Teilnehmer aktualisiert und freigeschaltet.` });
+    } catch (error: any) {
+      console.error(`Error clearing penalty from role ${roleId}:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Strafe konnte von Rolle nicht aufgehoben werden: ${error.message}` });
+    }
+    setIsApplyingPenaltyOrMute(null);
+  }, [sessionIdFromUrl, sessionData, currentScenario, toast]);
+
   const humanParticipantsCount = sessionParticipants.filter(p => !p.isBot).length;
   
   const isSessionEffectivelyEnded = sessionData?.status === "ended";
@@ -1022,6 +1222,201 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const isChatActive = sessionData?.status === "active";
   
   const combinedLoadingState = isLoadingScenario || isLoadingSessionData;
+
+  const adminUserId = "ADMIN_USER_ID_FIXED"; // Placeholder for actual admin user ID, if you have auth
+  const adminDisplayName = "Admin";
+  const adminAvatarFallback = "AD";
+
+  // Handler to open the Admin DM Modal
+  const handleOpenAdminDmModal = (participant: Participant) => {
+    setAdminDmRecipient(participant);
+    setShowAdminDmModal(true);
+    setAdminDmContent(""); // Clear previous message
+  };
+
+  // Handler to send the Admin DM
+  const handleSendAdminDm = async () => {
+    if (!sessionIdFromUrl || !adminDmRecipient || !adminDmContent.trim()) {
+      toast({ variant: "destructive", title: "Fehler", description: "Empfänger oder Nachrichteninhalt fehlt." });
+      return;
+    }
+    setIsSendingAdminDm(true);
+    console.log("[Admin DM Send] Recipient:", adminDmRecipient);
+    console.log("[Admin DM Send] Content:", adminDmContent.trim());
+    try {
+      const messageData: Partial<MessageType> = {
+        senderUserId: adminUserId, 
+        senderName: adminDisplayName,
+        senderType: 'admin',
+        avatarFallback: adminAvatarFallback,
+        recipientId: adminDmRecipient.userId,
+        content: adminDmContent.trim(),
+        timestamp: serverTimestamp(),
+        isRead: false, // Mark as unread initially
+        isAdminBroadcast: true, // Crucial flag for special handling
+      };
+      console.log("[Admin DM Send] Data to Firestore:", JSON.parse(JSON.stringify(messageData))); // Log data before sending
+      await addDoc(collection(db, "sessions", sessionIdFromUrl, "messages"), messageData);
+      console.log("[Admin DM Send] Message successfully added to Firestore.");
+      toast({ title: "Admin-Nachricht gesendet", description: `Nachricht an ${adminDmRecipient.displayName} wurde übermittelt.` });
+      setShowAdminDmModal(false);
+      setAdminDmContent("");
+      setAdminDmRecipient(null);
+    } catch (error: any) {
+      console.error("Error sending admin DM:", error);
+      toast({ variant: "destructive", title: "Admin-DM Senden Fehlgeschlagen", description: error.message });
+    } finally {
+      setIsSendingAdminDm(false);
+    }
+  };
+
+  // Effect to automatically clear expired participant penalties
+  useEffect(() => {
+    if (!sessionIdFromUrl || sessionParticipants.length === 0 || isProcessingSessionAction) return;
+
+    const now = Date.now();
+    const participantsToClear: string[] = [];
+    sessionParticipants.forEach(participant => {
+      if (participant.activePenalty && participant.activePenalty.startedAt instanceof Timestamp) {
+        const endTime = participant.activePenalty.startedAt.toDate().getTime() + participant.activePenalty.durationMinutes * 60 * 1000;
+        if (now >= endTime) {
+          participantsToClear.push(participant.id);
+        }
+      }
+    });
+    
+    if (participantsToClear.length > 0) {
+        participantsToClear.forEach(id => {
+            if (isApplyingPenaltyOrMute !== id) { 
+                console.log(`AdminDashboard: Penalty for participant ${id} has expired. Clearing...`);
+                handleClearPenaltyForParticipant(id);
+            }
+        });
+    }
+  }, [sessionParticipants, sessionIdFromUrl, handleClearPenaltyForParticipant, isProcessingSessionAction, isApplyingPenaltyOrMute]);
+
+  // Effect to automatically clear expired role penalties
+  useEffect(() => {
+    if (!sessionIdFromUrl || !sessionData?.activeRolePenalties || sessionData.activeRolePenalties.length === 0 || isProcessingSessionAction) return;
+
+    const now = Date.now();
+    const rolesToClear: string[] = [];
+    sessionData.activeRolePenalties.forEach(rolePenalty => {
+      if (rolePenalty.startedAt instanceof Timestamp) {
+        const endTime = rolePenalty.startedAt.toDate().getTime() + rolePenalty.durationMinutes * 60 * 1000;
+        if (now >= endTime) {
+          rolesToClear.push(rolePenalty.roleId);
+        }
+      }
+    });
+
+    if (rolesToClear.length > 0) {
+        rolesToClear.forEach(id => {
+            if (isApplyingPenaltyOrMute !== id) { 
+                console.log(`AdminDashboard: Penalty for role ${id} has expired. Clearing...`);
+                handleClearPenaltyFromRole(id);
+            }
+        });
+    }
+  }, [sessionData?.activeRolePenalties, sessionIdFromUrl, handleClearPenaltyFromRole, sessionData?.status, isProcessingSessionAction, isApplyingPenaltyOrMute]);
+
+  const handleOpenAdminStandardDmModal = (participant: Participant) => {
+    setAdminStandardDmRecipient(participant);
+    setAdminStandardDmContent("");
+    setShowAdminStandardDmModal(true);
+  };
+
+  const handleSendAdminStandardDm = async () => {
+    if (!adminStandardDmRecipient || !adminStandardDmContent.trim() || !sessionIdFromUrl) {
+      toast({ variant: "destructive", title: "Fehler", description: "Empfänger oder Nachrichteninhalt fehlt." });
+      return;
+    }
+    setIsSendingAdminStandardDm(true);
+    try {
+      const dmData: Partial<MessageType> = {
+        senderUserId: `admin_user_for_session_${sessionIdFromUrl}`, // Or a more persistent admin ID if available
+        senderName: "Admin-Team",
+        avatarFallback: "AT",
+        recipientId: adminStandardDmRecipient.userId,
+        content: adminStandardDmContent.trim(),
+        timestamp: serverTimestamp(),
+        isRead: false,
+        isAdminBroadcast: false, // Explicitly false for standard DMs
+      };
+      await addDoc(collection(db, "sessions", sessionIdFromUrl, "directMessages"), dmData);
+      toast({ title: "DM gesendet", description: `Nachricht an ${adminStandardDmRecipient.displayName} wurde gesendet.` });
+      setAdminStandardDmContent("");
+      setShowAdminStandardDmModal(false);
+      setAdminStandardDmRecipient(null);
+    } catch (error: any) {      
+      console.error("Error sending admin standard DM:", error);
+      toast({ variant: "destructive", title: "Fehler beim Senden der DM", description: error.message });
+    } finally {
+      setIsSendingAdminStandardDm(false);
+    }
+  };
+
+  const handleOpenGlobalBroadcastModal = (type: 'all' | 'role', roleId?: string) => {
+    setGlobalBroadcastType(type);
+    setGlobalBroadcastTargetRoleId(roleId || null);
+    setGlobalBroadcastContent("");
+    setShowGlobalBroadcastModal(true);
+  };
+
+  const handleSendGlobalBroadcast = async () => {
+    if (!globalBroadcastContent.trim() || !sessionIdFromUrl) {
+      toast({ variant: "destructive", title: "Fehler", description: "Nachrichteninhalt fehlt." });
+      return;
+    }
+    setIsSendingGlobalBroadcast(true);
+    try {
+      const batch = writeBatch(db);
+      let targetParticipants: Participant[] = [];
+
+      if (globalBroadcastType === 'all') {
+        targetParticipants = sessionParticipants.filter(p => !p.isBot); // Filter out bots
+      } else if (globalBroadcastType === 'role' && globalBroadcastTargetRoleId) {
+        targetParticipants = sessionParticipants.filter(p => p.roleId === globalBroadcastTargetRoleId && !p.isBot); // Filter out bots
+      }
+
+      if (targetParticipants.length === 0) {
+        toast({ variant: "default", title: "Hinweis: Keine Ziele", description: "Keine passenden Teilnehmer für diesen Broadcast gefunden." });
+        setIsSendingGlobalBroadcast(false);
+        return;
+      }
+
+      const messageData: Partial<MessageType> = {
+        senderUserId: `admin_global_broadcast_${sessionIdFromUrl}`,
+        senderName: "Admin System-Nachricht",
+        avatarFallback: "📢", 
+        senderType: "system", // To differentiate from admin DMs
+        content: globalBroadcastContent.trim(),
+        timestamp: serverTimestamp(),
+        isRead: false,
+        isAdminBroadcast: true,
+      };
+      
+      if (globalBroadcastType === 'role' && globalBroadcastTargetRoleId) {
+        messageData.targetRoleIds = [globalBroadcastTargetRoleId];
+      }
+
+      targetParticipants.forEach(p => {
+        const messageDocRef = doc(collection(db, "sessions", sessionIdFromUrl, "messages"));
+        batch.set(messageDocRef, { ...messageData, recipientId: p.userId });
+      });
+
+      await batch.commit();
+      toast({ title: "Globaler Broadcast gesendet", description: `Nachricht an ${targetParticipants.length} Teilnehmer gesendet.` });
+      setGlobalBroadcastContent("");
+      setShowGlobalBroadcastModal(false);
+      setGlobalBroadcastTargetRoleId(null);
+    } catch (error: any) {
+      console.error("Error sending global broadcast:", error);
+      toast({ variant: "destructive", title: "Fehler beim Senden des Broadcasts", description: error.message });
+    } finally {
+      setIsSendingGlobalBroadcast(false);
+    }
+  };
 
   if (combinedLoadingState) {
     return (
@@ -1083,11 +1478,13 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   }
 
   return (
-    <div className="space-y-6 p-1 md:p-2 lg:p-4">
+    <TooltipProvider>
+      <div className="flex flex-col h-screen bg-muted/40 p-4 md:p-6 lg:p-8 gap-4 md:gap-6 lg:gap-8 overflow-y-auto relative">
+        {/* Header Row */}
        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-primary">
-            Dashboard: <span className="text-foreground">{scenarioTitle}</span>
+              Dashboard: <span className="text-foreground">{currentScenario?.title || "Szenario nicht gefunden"}</span>
           </h1>
           <p className="text-muted-foreground text-xs md:text-sm">Sitzungs-ID: {sessionIdFromUrl}</p>
         </div>
@@ -1129,7 +1526,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         </div>
       </div>
 
-      {/* Top row for control cards */}
+        {/* Main Content Area */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <Card className="w-full shadow-lg"> {/* Sitzungs-Steuerung Card */}
             <CardHeader>
@@ -1267,47 +1664,289 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <CardTitle className="flex items-center"><Users2 className="mr-2 h-5 w-5 text-primary" /> Teilnehmer & Rollenzuordnung (Live)</CardTitle>
+                  <div className="flex flex-wrap gap-2 items-center">
+                      {/* Global Broadcast Buttons */}
+                      <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleOpenGlobalBroadcastModal('all')}
+                          disabled={isProcessingSessionAction || isLoadingParticipants || sessionParticipants.filter(p => !p.isBot).length === 0}
+                          title="Sendet eine Broadcast-Nachricht an alle menschlichen Teilnehmer."
+                          className="border-orange-500 text-orange-600 hover:bg-orange-500/10 hover:text-orange-700"
+                      >
+                          <Megaphone className="mr-1.5 h-4 w-4"/> Broadcast an Alle
+                      </Button>
+
+                      {sessionParticipants.filter(p => !p.isBot).length > 0 && (
+                          <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={handleMuteAllUsers} 
+                              disabled={isProcessingSessionAction || isSessionEffectivelyEnded || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                              title="Schaltet alle aktuell anwesenden menschlichen Teilnehmer stumm."
+                              className="border-orange-500 text-orange-600 hover:bg-orange-500/10 hover:text-orange-700"
+                          >
+                              <VolumeX className="mr-1.5 h-4 w-4"/> Alle Stumm
+                          </Button>
+                      )}
+                      {sessionParticipants.filter(p => !p.isBot).length > 0 && (
+                          <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                  <Button 
+                                      variant="destructive" 
+                                      size="sm"
+                                      disabled={isRemovingAllParticipants || isProcessingSessionAction || isSessionEffectivelyEnded || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                      className="bg-destructive hover:bg-destructive/90"
+                                      title="Entfernt alle menschlichen Teilnehmer unwiderruflich aus der Sitzung."
+                                  >
+                                      {isRemovingAllParticipants ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin"/> : <UserX className="mr-1.5 h-4 w-4"/>}
+                                      Alle Entfernen
+                                  </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                      <AlertDialogTitle>Alle Teilnehmer wirklich entfernen?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                          Alle menschlichen Teilnehmer werden aus dieser Sitzung entfernt. Bots bleiben bestehen. Diese Aktion kann nicht rückgängig gemacht werden.
+                                      </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                      <AlertDialogCancel disabled={isRemovingAllParticipants}>Abbrechen</AlertDialogCancel>
+                                      <AlertDialogAction onClick={handleRemoveAllParticipants} disabled={isRemovingAllParticipants} className="bg-destructive hover:bg-destructive/90">
+                                          {isRemovingAllParticipants ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, alle entfernen"}
+                                      </AlertDialogAction>
+                                  </AlertDialogFooter>
+                              </AlertDialogContent>
+                          </AlertDialog>
+                      )}
                 <Button
                     onClick={handleToggleRoleLock}
                     variant={sessionData?.roleSelectionLocked ? "secondary" : "default"}
+                          size="sm"
                     className={cn(
-                        "w-full sm:w-auto transition-colors", 
+                              "transition-colors", 
                         sessionData?.roleSelectionLocked ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"
                     )}
                     disabled={isProcessingSessionAction || !sessionData || isSessionPending || isSessionEffectivelyEnded || isChatActive}
                 >
-                    {sessionData?.roleSelectionLocked ? <Lock className="mr-2 h-4 w-4"/> : <Unlock className="mr-2 h-4 w-4"/>}
+                          {sessionData?.roleSelectionLocked ? <Lock className="mr-1.5 h-4 w-4"/> : <Unlock className="mr-1.5 h-4 w-4"/>}
                     {sessionData?.roleSelectionLocked ? 'Rollenauswahl gesperrt' : 'Rollenauswahl offen'}
                 </Button>
+                  </div>
             </div>
         </CardHeader>
         <CardContent className="space-y-4">
             {isLoadingParticipants && <div className="text-sm text-muted-foreground flex items-center"><Loader2 className="h-4 w-4 animate-spin mr-2"/> Lade Rollenzuordnungen...</div>}
             {!isLoadingParticipants && currentScenario?.humanRolesConfig && currentScenario.humanRolesConfig.length > 0 ? (
-                <ScrollArea className="max-h-96 border rounded-md p-1 md:p-2">
+                  <ScrollArea className="border rounded-md p-1 md:p-2"> {/* Removed max-h-96 */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                     {currentScenario.humanRolesConfig.map(roleConfig => {
                         const assignedParticipantsToThisRole = sessionParticipants.filter(p => !p.isBot && p.roleId === roleConfig.id);
+                          const isRoleCurrentlyMuted = sessionData?.mutedRoleIds?.includes(roleConfig.id) ?? false;
+                          const activeRolePenalty = sessionData?.activeRolePenalties?.find(p => p.roleId === roleConfig.id);
+
+                          let rolePenaltyTimeRemaining: string | null = null;
+                          if (activeRolePenalty && activeRolePenalty.startedAt instanceof Timestamp) {
+                            const endTime = activeRolePenalty.startedAt.toDate().getTime() + activeRolePenalty.durationMinutes * 60 * 1000;
+                            const now = Date.now();
+                            const remainingMillis = endTime - now;
+                            if (remainingMillis <= 0) {
+                              rolePenaltyTimeRemaining = "(Abgelaufen)";
+                            } else {
+                              const remainingSecondsTotal = Math.ceil(remainingMillis / 1000);
+                              const minutes = Math.floor(remainingSecondsTotal / 60);
+                              const seconds = remainingSecondsTotal % 60;
+                              rolePenaltyTimeRemaining = `(${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s)`;
+                            }
+                          }
+
                         return (
                             <Card key={roleConfig.id} className="flex flex-col bg-muted/30">
                                 <CardHeader className="pb-2 pt-3 px-3 md:px-4">
-                                    <CardTitle className="text-base font-semibold text-primary">{roleConfig.name} <Badge variant="outline" className="ml-1 text-xs">({assignedParticipantsToThisRole.length})</Badge></CardTitle>
+                                      <div className="flex justify-between items-center gap-2">
+                                          <CardTitle className="text-base font-semibold text-primary truncate flex-grow">{roleConfig.name} <Badge variant="outline" className="ml-1 text-xs align-middle">({assignedParticipantsToThisRole.length})</Badge></CardTitle>
+                                          <div className="flex items-center shrink-0 gap-1">
+                                              {/* Role Broadcast Button - NOW ORANGE */}
+                                              <Button
+                                                  variant="outline"
+                                                  size="icon"
+                                                  onClick={() => handleOpenGlobalBroadcastModal('role', roleConfig.id)}
+                                                  disabled={isApplyingPenaltyOrMute === roleConfig.id || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                  title={`Broadcast an Rolle "${roleConfig.name}" senden`}
+                                                  className="h-7 w-7 border-orange-500 text-orange-600 hover:bg-orange-500/10 hover:text-orange-700"
+                                              >
+                                                  <Megaphone className="h-4 w-4" />
+                                              </Button>
+                                              {/* Role Penalty Icons & Countdown */}
+                                              {activeRolePenalty && (
+                                                  <div className="flex items-center gap-1 mr-1">
+                                                      <Badge 
+                                                          variant={activeRolePenalty.penaltyType === 'red' ? "destructive" : "default"} 
+                                                          className={cn(
+                                                              "text-xs h-7 px-2 py-1", 
+                                                              activeRolePenalty.penaltyType === 'yellow' && "bg-yellow-500 text-black hover:bg-yellow-600"
+                                                          )}
+                                                          title={`${activeRolePenalty.penaltyType === 'yellow' ? "Gelbe Karte (Rolle)" : "Rote Karte (Rolle)"} aktiv`}
+                                                      >
+                                                          <Ban className="h-3 w-3 mr-1"/> {rolePenaltyTimeRemaining}
+                                                      </Badge>
+                                                      <Button
+                                                          variant="outline"
+                                                          size="icon"
+                                                          onClick={() => handleClearPenaltyFromRole(roleConfig.id)}
+                                                          disabled={isApplyingPenaltyOrMute === roleConfig.id || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                          title="Strafe für Rolle aufheben"
+                                                          className="h-7 w-7 border-blue-500 text-blue-600 hover:bg-blue-500/10 hover:text-blue-700"
+                                                      >
+                                                          {isApplyingPenaltyOrMute === roleConfig.id && activeRolePenalty ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                                                      </Button>
+                                                  </div>
+                                              )}
+                                              {!activeRolePenalty && (assignedParticipantsToThisRole.length > 0 || (roleConfig.allowBotsToJoin && sessionParticipants.some(p => p.isBot && p.roleId === roleConfig.id))) && (
+                                                  <>
+                                                      <Button
+                                                          variant="outline"
+                                                          size="icon"
+                                                          onClick={() => handleApplyPenaltyToRole(roleConfig.id, 'yellow')}
+                                                          disabled={isApplyingPenaltyOrMute === roleConfig.id || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                          title="Gelbe Karte für ganze Rolle (1 Min. Pause + Stumm)"
+                                                          className="h-7 w-7 border-yellow-500 text-yellow-600 hover:bg-yellow-500/10 hover:text-yellow-700"
+                                                      >
+                                                          {isApplyingPenaltyOrMute === roleConfig.id && !activeRolePenalty ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                                                      </Button>
+                                                      <Button
+                                                          variant="outline"
+                                                          size="icon"
+                                                          onClick={() => handleApplyPenaltyToRole(roleConfig.id, 'red')}
+                                                          disabled={isApplyingPenaltyOrMute === roleConfig.id || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                          title="Rote Karte für ganze Rolle (3 Min. Pause + Stumm)"
+                                                          className="h-7 w-7 border-red-500 text-red-600 hover:bg-red-500/10 hover:text-red-700"
+                                                      >
+                                                          {isApplyingPenaltyOrMute === roleConfig.id && !activeRolePenalty ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                                                      </Button>
+                                                  </>
+                                              )}
+                                              {/* Mute Button */} 
+                                              <Button
+                                                  variant={isRoleCurrentlyMuted ? "destructive" : "outline"} 
+                                                  size="icon" 
+                                                  onClick={() => handleToggleMuteRole(roleConfig.id)}
+                                                  disabled={isApplyingPenaltyOrMute === roleConfig.id || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                  title={isRoleCurrentlyMuted ? "Stummschaltung für Rolle aufheben" : "Rolle stummschalten"}
+                                                  className={cn(
+                                                      "h-7 w-7",
+                                                      isRoleCurrentlyMuted ? "hover:bg-red-700" : "hover:bg-green-500/10 hover:text-green-600 border-green-500 text-green-500"
+                                                  )}
+                                              >
+                                                  {isApplyingPenaltyOrMute === roleConfig.id && (isRoleCurrentlyMuted || !isRoleCurrentlyMuted) ? <Loader2 className="h-4 w-4 animate-spin" /> : (isRoleCurrentlyMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />)}
+                                              </Button>
+                                          </div>
+                                      </div>
                                 </CardHeader>
+                                  {/* REMOVED Penalty Controls for Roles that were below Header */}
                                 <CardContent className="text-xs text-muted-foreground space-y-1 flex-grow px-3 md:px-4 pb-3">
                                     {assignedParticipantsToThisRole.length > 0 ? (
-                                        <ul className="list-none pl-0 space-y-1.5">
-                                            {assignedParticipantsToThisRole.map(p => (
-                                                <li key={p.id} className="text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 p-1.5 rounded bg-card shadow-sm">
-                                                    <span className="truncate flex-grow" title={`${p.displayName} (${p.realName})`}>
-                                                      <span className="font-medium text-foreground">{p.displayName}</span> ({p.realName})
+                                          <ul className="space-y-2 pt-1">
+                                              {assignedParticipantsToThisRole.map(p => {
+                                                  const penaltyTimeRemaining = getPenaltyTimeRemaining(p.activePenalty);
+                                                  const isLoadingThisParticipant = isApplyingPenaltyOrMute === p.id || isRemovingParticipant === p.id || isMovingParticipant === p.id;
+                                                  
+                                                  return (
+                                                      <li key={p.id} className="text-xs flex flex-col gap-1.5 p-2 rounded bg-card shadow-sm border">
+                                                          {/* Row 1: Name, Status, Badges & Action Icons aligned to the right */}
+                                                          <div className="flex justify-between items-center">
+                                                              <div className="flex-grow truncate mr-2">
+                                                                  <span className="font-medium text-foreground truncate block" title={`${p.displayName} (${p.realName})`}>
+                                                                      {p.displayName} <span className="text-xs text-muted-foreground">({p.realName || "N/A"})</span>
                                                     </span>
+                                                                  <span className={cn(
+                                                                      "text-xs",
+                                                                      p.status === "Nicht beigetreten" ? "italic text-orange-500" :
+                                                                      p.status === "Wählt Rolle" || p.status === "Im Wartebereich" ? "text-blue-500" :
+                                                                      p.status === "Beigetreten" ? "text-green-500" : "text-gray-500"
+                                                                  )}>
+                                                                      {p.status ? (p.status.charAt(0).toUpperCase() + p.status.slice(1)) : "Unbekannt"}
+                                                                  </span>
+                                                              </div>
+                                                              <div className="flex items-center gap-1 shrink-0">
+                                                                  {/* Participant Standard DM Button */}
+                                                                  {!p.isBot && (
+                                                                      <Button
+                                                                          variant="outline"
+                                                                          size="icon"
+                                                                          onClick={() => handleOpenAdminStandardDmModal(p)} 
+                                                                          disabled={isLoadingThisParticipant || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                                          title={`Direktnachricht an ${p.displayName} senden`}
+                                                                          className="h-7 w-7 text-foreground hover:bg-muted border-neutral-400"
+                                                                      >
+                                                                          <Send className="h-3.5 w-3.5" />
+                                                                      </Button>
+                                                                  )}
+                                                                  {/* Admin Broadcast DM Button (Megaphone) */}
+                                                                  {!p.isBot && (
+                                                                      <Button
+                                                                          variant="outline"
+                                                                          size="icon"
+                                                                          onClick={() => handleOpenAdminDmModal(p)}
+                                                                          disabled={isLoadingThisParticipant || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                                          title={`Admin-Nachricht an ${p.displayName} senden (öffnet Overlay)`}
+                                                                          className="h-7 w-7 text-orange-500 hover:bg-orange-500/10 border-orange-500"
+                                                                      >
+                                                                          <Megaphone className="h-3.5 w-3.5" />
+                                                                      </Button>
+                                                                  )}
+                                                                  {/* Mute/Unmute Button */}
+                                                                  <Button
+                                                                      variant={(p.isMuted && !p.activePenalty) ? "destructive" : "outline"}
+                                                                      size="icon"
+                                                                      onClick={() => handleToggleMuteParticipant(p.id, p.isMuted || false)}
+                                                                      disabled={isLoadingThisParticipant || !!p.activePenalty || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                                      className={cn(
+                                                                          "h-7 w-7",
+                                                                          !(p.isMuted && !p.activePenalty) && "border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-600"
+                                                                      )}
+                                                                      title={p.isMuted ? "Freischalten" : "Stummschalten"}
+                                                                  >
+                                                                      {isApplyingPenaltyOrMute === p.id && (p.isMuted || !p.isMuted) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : ((p.isMuted && !p.activePenalty) ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />)}
+                                                                  </Button>
+
+                                                                  {/* Penalty Buttons (Yellow/Red or Clear) */}
+                                                                  {!p.activePenalty && (
+                                                                      <>
+                                                                          <Button size="icon" variant="outline" className="h-7 w-7 border-yellow-500 text-yellow-600 hover:bg-yellow-500/10 hover:text-yellow-700"
+                                                                              onClick={() => handleApplyPenaltyToParticipant(p.id, 'yellow')}
+                                                                              disabled={isLoadingThisParticipant || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                                              title="Gelbe Karte (1 Min. Pause + Stumm)"
+                                                                          >
+                                                                              {isApplyingPenaltyOrMute === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                                                                          </Button>
+                                                                          <Button size="icon" variant="outline" className="h-7 w-7 border-red-500 text-red-600 hover:bg-red-500/10 hover:text-red-700"
+                                                                              onClick={() => handleApplyPenaltyToParticipant(p.id, 'red')}
+                                                                              disabled={isLoadingThisParticipant || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                                              title="Rote Karte (3 Min. Pause + Stumm)"
+                                                                          >
+                                                                              {isApplyingPenaltyOrMute === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+                                                                          </Button>
+                                                                      </>
+                                                                  )}
+                                                                  {p.activePenalty && (
+                                                                      <Button size="icon" variant="outline" className="h-7 w-7 border-blue-500 text-blue-600 hover:bg-blue-500/10 hover:text-blue-700"
+                                                                          onClick={() => handleClearPenaltyForParticipant(p.id)}
+                                                                          disabled={isLoadingThisParticipant || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
+                                                                          title="Strafe vorzeitig aufheben"
+                                                                      >
+                                                                          {isApplyingPenaltyOrMute === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                                                                      </Button>
+                                                                  )}
+                                                                  {/* Role Change Select - Placed here for better alignment */}
+                                                                  <div className="min-w-[100px] max-w-[150px]"> {/* Adjusted width constraints */}
                                                     <Select 
                                                         value={p.roleId || ""} 
                                                         onValueChange={(newRoleId) => handleMoveParticipant(p.id, newRoleId)}
-                                                        disabled={isMovingParticipant === p.id || isProcessingSessionAction || isSessionEffectivelyEnded || (!isSessionOpenForJoin && !isChatActive && !isSessionEffectivelyPaused)}
+                                                                          disabled={isMovingParticipant === p.id || isLoadingThisParticipant || isProcessingSessionAction || isSessionEffectivelyEnded || (!isSessionOpenForJoin && !isChatActive && !isSessionEffectivelyPaused)}
                                                     >
-                                                        <SelectTrigger className="h-7 text-xs w-full sm:w-[160px] shrink-0 mt-1 sm:mt-0">
-                                                            <SelectValue placeholder="Rolle ändern..." />
+                                                                          <SelectTrigger className="h-7 text-xs w-full truncate border-dashed hover:border-primary hover:text-primary">
+                                                                              <SelectValue placeholder="Rolle..." />
                                                         </SelectTrigger>
                                                         <SelectContent>
                                                             {currentScenario?.humanRolesConfig?.map(rOption => (
@@ -1317,13 +1956,52 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
+                                                          </div>
+                                                          
+                                                          {/* Remove Participant Button */}
+                                                          <AlertDialog>
+                                                              <AlertDialogTrigger asChild>
+                                                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                                                                      disabled={isLoadingThisParticipant || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}>
+                                                                      {isRemovingParticipant === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                                                  </Button>
+                                                              </AlertDialogTrigger>
+                                                              <AlertDialogContent>
+                                                                  <AlertDialogHeader>
+                                                                      <AlertDialogTitle>Teilnehmer "{p.displayName}" wirklich entfernen?</AlertDialogTitle>
+                                                                      <AlertDialogDescription>
+                                                                          Diese Aktion kann nicht rückgängig gemacht werden. Der Teilnehmer wird aus der Sitzung entfernt.
+                                                                      </AlertDialogDescription>
+                                                                  </AlertDialogHeader>
+                                                                  <AlertDialogFooter>
+                                                                      <AlertDialogCancel disabled={isRemovingParticipant === p.id}>Abbrechen</AlertDialogCancel>
+                                                                      <AlertDialogAction onClick={() => handleRemoveParticipant(p.id, p.displayName || "Teilnehmer")} disabled={isRemovingParticipant === p.id} className="bg-destructive hover:bg-destructive/90">
+                                                                          {isRemovingParticipant === p.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Ja, entfernen"}
+                                                                      </AlertDialogAction>
+                                                                  </AlertDialogFooter>
+                                                              </AlertDialogContent>
+                                                          </AlertDialog>
+                                                      </div> {/* End of action icons div */}
+                                                  </div>
+
+                                                  {/* Row 2: Badges (Mute/Penalty) - shown below name/status if active */}
+                                                  <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                                      {p.isMuted && !p.activePenalty && <Badge variant="destructive" className="text-xs px-1.5 py-0.5">🔇 Stumm</Badge>}
+                                                      {p.activePenalty && (
+                                                          <Badge variant={p.activePenalty.type === 'red' ? "destructive" : "default"} className={cn("text-xs px-1.5 py-0.5", p.activePenalty.type === 'yellow' && "bg-yellow-500 text-black hover:bg-yellow-600")}>
+                                                              {p.activePenalty.description} {penaltyTimeRemaining && `(${penaltyTimeRemaining})`}
+                                                          </Badge>
+                                                      )}
+                                                  </div>
                                                 </li>
-                                            ))}
+                                          );
+                                      })} 
                                         </ul>
                                     ) : (
                                         <p className="text-xs text-muted-foreground italic py-2">Diese Rolle ist noch nicht besetzt.</p>
                                     )}
                                 </CardContent>
+                          {/* REMOVED Penalty Buttons from CardFooter */}
                             </Card>
                         );
                     })}
@@ -1368,98 +2046,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
               </CardContent>
           </Card>
 
-          <Card className="lg:col-span-1 xl:col-span-1"> {/* Teilnehmer-Aktionen */}
-              <CardHeader>
-              <CardTitle className="flex items-center">
-                  <Users className="mr-2 h-5 w-5 text-primary" />
-                  Teilnehmer-Steuerung ({humanParticipantsCount} Menschliche)
-              </CardTitle>
-              </CardHeader>
-              <CardContent className="max-h-96 overflow-y-auto space-y-3">
-              {isLoadingParticipants && <div className="flex items-center justify-center h-full text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mr-2"/> <p>Lade Teilnehmer...</p></div>}
-              {!isLoadingParticipants && sessionParticipants.filter(p => !p.isBot).map(p => (
-                  <div key={p.id || p.userId} className="flex items-center justify-between p-2 bg-muted/20 rounded-md">
-                  <div>
-                      <p className="font-medium">{p.displayName} <span className="text-sm text-muted-foreground">({p.realName || 'N/A'})</span></p>
-                      <p className="text-xs text-muted-foreground">
-                          {p.role} -
-                          <span className={cn(
-                              "ml-1",
-                              p.status === "Nicht beigetreten" ? "italic text-orange-500" : (p.status === "Wählt Rolle" || p.status === "Im Wartebereich" ? "text-blue-500" : "text-green-500")
-                          )}>
-                              {p.status || "Beigetreten"}
-                          </span>
-                          {p.isMuted && <Badge variant="destructive" className="ml-2 text-xs">🔇 Stumm</Badge>}
-                      </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                      <Button
-                          variant={p.isMuted ? "secondary" : "outline"}
-                          size="sm"
-                          onClick={() => handleToggleMuteParticipant(p.id, p.isMuted)}
-                          disabled={isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
-                      >
-                          {p.isMuted ? <Volume2 className="mr-1 h-4 w-4" /> : <VolumeX className="mr-1 h-4 w-4" />}
-                          {p.isMuted ? "Frei" : "Stumm"}
-                      </Button>
-                      <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8"
-                              disabled={isSessionEffectivelyEnded || isRemovingParticipant === p.id || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused) }>
-                                  {isRemovingParticipant === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                              </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                              <AlertDialogHeader>
-                                  <AlertDialogTitle>Teilnehmer "{p.displayName}" wirklich entfernen?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                      Diese Aktion kann nicht rückgängig gemacht werden. Der Teilnehmer wird aus der Sitzung entfernt.
-                                  </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                  <AlertDialogCancel disabled={isRemovingParticipant === p.id}>Abbrechen</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => handleRemoveParticipant(p.id, p.displayName)} disabled={isRemovingParticipant === p.id} className="bg-destructive hover:bg-destructive/90">
-                                      {isRemovingParticipant === p.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, entfernen"}
-                                  </AlertDialogAction>
-                              </AlertDialogFooter>
-                          </AlertDialogContent>
-                      </AlertDialog>
-                  </div>
-                  </div>
-              ))}
-              {!isLoadingParticipants && humanParticipantsCount === 0 && (
-                  <p className="text-sm text-muted-foreground">Noch keine menschlichen Teilnehmer beigetreten.</p>
-              )}
-              {!isLoadingParticipants && (
-                  <div className="flex items-center space-x-2 pt-4 border-t mt-4">
-                      <Button variant="outline" onClick={handleMuteAllUsers} disabled={isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused) || humanParticipantsCount === 0}>
-                          <VolumeX className="mr-2 h-4 w-4" /> Alle Stumm
-                      </Button>
-                      <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                              <Button variant="destructive" className="bg-orange-600 hover:bg-orange-700" disabled={isSessionEffectivelyEnded || isRemovingAllParticipants || isLoadingParticipants || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused) || humanParticipantsCount === 0}>
-                                  {isRemovingAllParticipants ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <UserX className="mr-2 h-4 w-4" />} Alle entfernen
-                              </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                              <AlertDialogHeader>
-                                  <AlertDialogTitle>Alle Teilnehmer wirklich entfernen?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                      Alle menschlichen Teilnehmer werden aus dieser Sitzung entfernt. Bots bleiben bestehen. Diese Aktion kann nicht rückgängig gemacht werden.
-                                  </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                  <AlertDialogCancel disabled={isRemovingAllParticipants}>Abbrechen</AlertDialogCancel>
-                                  <AlertDialogAction onClick={handleRemoveAllParticipants} disabled={isRemovingAllParticipants} className="bg-destructive hover:bg-destructive/90">
-                                      {isRemovingAllParticipants ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : "Ja, alle entfernen"}
-                                  </AlertDialogAction>
-                              </AlertDialogFooter>
-                          </AlertDialogContent>
-                      </AlertDialog>
-                  </div>
-              )}
-              </CardContent>
-          </Card>
+          {/* THIS ENTIRE CARD and its content (Teilnehmer-Aktionen) SHOULD BE DELETED if it still exists
+             If the card starting with <Card className="lg:col-span-1 xl:col-span-1"> and containing 
+             <CardTitle className="flex items-center"><Users className="mr-2 h-5 w-5 text-primary" /> Teilnehmer-Steuerung ... </CardTitle> 
+             is present here, it will be removed. 
+          */}
           
           <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-1 xl:col-span-1"> {/* Bot-Steuerung */}
@@ -1481,7 +2072,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                     return (
                     <div key={botParticipant.id} className="p-3 border rounded-lg space-y-3 bg-muted/20">
                         <div className="flex items-center justify-between">
-                        <p className="font-semibold">{botName} <Badge variant={botIsActive ? "default" : "outline"} className={cn("ml-2", botIsActive ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-400 hover:bg-gray-500 text-white')}>{botIsActive ? "Aktiv" : "Inaktiv"}</Badge> <span className="text-xs text-muted-foreground">(ID: {botParticipant.botScenarioId || 'N/A'})</span></p>
+                        <p className="font-semibold">{botName} <Badge variant={botIsActive ? "default" : "outline"} className={cn("ml-2", botIsActive ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-400 hover:bg-gray-500 text-white')}>{botIsActive ? "Aktiv" : "Inaktiv"}</Badge> <span className="text-xs text-muted-foreground">(ID: {botConfig.id || 'N/A'})</span></p>
                         <Switch
                             checked={botIsActive}
                             onCheckedChange={() => handleToggleBotActive(botParticipant.id, botIsActive)}
@@ -1611,7 +2202,144 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           </CardContent>
         </Card>
       )}
+
+      {/* MODALS & DIALOGS should be grouped here at the end of the main layout structure */}
+
+      {/* Global Settings Dialog */}
+      {/* ... (Global Settings Dialog JSX) ... */}
+      
+      {/* Participant Mirror View Dialog */}
+      {/* ... (Participant Mirror View Dialog JSX) ... */}
+
+      {/* Confirmation Dialog for Ending Session */}
+      {/* ... (End Session Dialog JSX) ... */}
+
+      {/* Confirmation Dialog for Resetting Session */}
+      {/* ... (Reset Session Dialog JSX) ... */}
+
+      {/* Confirmation Dialog for Removing ALL Participants */}
+      {/* ... (Remove All Participants Dialog JSX) ... */}
+
+      {/* Admin Standard DM Modal - MOVED HERE */}
+      {adminStandardDmRecipient && (
+        <Dialog open={showAdminStandardDmModal} onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setAdminStandardDmRecipient(null);
+            setAdminStandardDmContent("");
+          }
+          setShowAdminStandardDmModal(isOpen);
+        }}>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <MessageSquareIconLucide className="mr-2 h-5 w-5" /> Direktnachricht an {adminStandardDmRecipient.displayName}
+              </DialogTitle>
+              <DialogDescription>
+                Verfassen Sie eine private Nachricht an {adminStandardDmRecipient.realName || adminStandardDmRecipient.displayName}.
+                Diese Nachricht erscheint nur in der Inbox des Teilnehmers und nicht im Hauptchat.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Textarea
+                id="adminStandardDmContent"
+                placeholder={`Deine Nachricht an ${adminStandardDmRecipient.displayName}...`}
+                value={adminStandardDmContent}
+                onChange={(e) => setAdminStandardDmContent(e.target.value)}
+                className="min-h-[100px]"
+                disabled={isSendingAdminStandardDm}
+              />
     </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" disabled={isSendingAdminStandardDm}>Abbrechen</Button>
+              </DialogClose>
+              <Button onClick={handleSendAdminStandardDm} disabled={isSendingAdminStandardDm || !adminStandardDmContent.trim()}>
+                {isSendingAdminStandardDm ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Senden
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Admin Broadcast DM Modal */}
+      {adminDmRecipient && (
+        <Dialog open={showAdminDmModal} onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setAdminDmRecipient(null);
+            setAdminDmContent("");
+          }
+          setShowAdminDmModal(isOpen);
+        }}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Admin-Nachricht an {adminDmRecipient?.displayName || "Teilnehmer"}</DialogTitle>
+              <DialogDescription>
+                Verfassen Sie eine wichtige Nachricht, die dem Teilnehmer direkt als Overlay angezeigt wird.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Textarea
+                id="admin-dm-content"
+                value={adminDmContent}
+                onChange={(e) => setAdminDmContent(e.target.value)}
+                placeholder={`Ihre Nachricht an ${adminDmRecipient?.displayName}...`}
+                className="min-h-[100px]"
+                disabled={isSendingAdminDm}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAdminDmModal(false)} disabled={isSendingAdminDm}>Abbrechen</Button>
+              <Button type="submit" onClick={handleSendAdminDm} disabled={!adminDmContent.trim() || isSendingAdminDm}>
+                {isSendingAdminDm ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Senden
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Global Broadcast Modal */}
+      {showGlobalBroadcastModal && (
+        <Dialog open={showGlobalBroadcastModal} onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setGlobalBroadcastTargetRoleId(null);
+            setGlobalBroadcastContent("");
+          }
+          setShowGlobalBroadcastModal(isOpen);
+        }}>
+          <DialogContent className="sm:max-w-[525px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Megaphone className="mr-2 h-5 w-5 text-orange-500" />
+                Globaler Broadcast an {globalBroadcastType === 'all' ? 'alle Teilnehmer' : 
+                  `Teilnehmer der Rolle "${currentScenario?.humanRolesConfig?.find(r => r.id === globalBroadcastTargetRoleId)?.name || globalBroadcastTargetRoleId}"`}
+              </DialogTitle>
+              <DialogDescription>
+                Diese Nachricht wird allen ausgewählten Teilnehmern als Overlay angezeigt und in ihrer Inbox hervorgehoben.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <Textarea
+                id="globalBroadcastContent"
+                placeholder={`Deine Broadcast-Nachricht...`}
+                value={globalBroadcastContent}
+                onChange={(e) => setGlobalBroadcastContent(e.target.value)}
+                className="min-h-[100px]"
+                disabled={isSendingGlobalBroadcast}
+              />
+            </div>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline" disabled={isSendingGlobalBroadcast}>Abbrechen</Button>
+              </DialogClose>
+              <Button onClick={handleSendGlobalBroadcast} disabled={isSendingGlobalBroadcast || !globalBroadcastContent.trim()}>
+                {isSendingGlobalBroadcast ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}Broadcast Senden
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  </TooltipProvider>
   );
 }
 
