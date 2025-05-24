@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -10,10 +9,10 @@ import { Logo } from "@/components/icons/logo";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Mail, User, ArrowLeft, ShieldAlert } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import { useToast } from "@/hooks/use-toast";
 
-export default function LoginPage() {
+function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
@@ -48,7 +47,6 @@ export default function LoginPage() {
     // for now, a placeholder redirect or message.
     // router.push("/chat/some-session-id"); // Example redirect
   };
-
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
@@ -117,5 +115,13 @@ export default function LoginPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Laden...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

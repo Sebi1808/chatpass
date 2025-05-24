@@ -6,10 +6,10 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle, CheckCircle, Users2, LogIn, PlayCircle as PlayCircleIcon, Clock, Lock, Unlock, UserPlus, Check, ArrowRightLeft, History, Info, Ban, Undo2, MicOff, Send, Edit2, MessageSquarePlus, BarChart2, CircleDollarSign, EyeOff, Filter, Flame, HelpCircle, Link as LinkIcon, LogOut, Mail, Mic, MoreVertical, PauseCircle, PlayCircle, PlusCircle, Repeat, Search, ShieldAlert, ShieldCheck, TrendingUp, UserCog, UserMinus, X, Zap, Hand, Megaphone, MessageSquare as MessageSquareIconLucide } from "lucide-react";
+import { AlertCircle, Bot, ChevronDown, ChevronUp, Download, MessageSquare, Play, Pause, QrCode, Users, Settings, Volume2, VolumeX, Copy, MessageCircle as MessageCircleIcon, Power, RotateCcw, RefreshCw, Eye, Brain, NotebookPen, Trash2, UserX, Loader2, ArrowLeft, Wand2, LayoutDashboard, Sparkles, AlertTriangle, CheckCircle, Users2, LogIn, PlayCircle as PlayCircleIcon, Clock, Lock, Unlock, UserPlus, Check, ArrowRightLeft, History, Info, Ban, Undo2, MicOff, Send, Edit2, MessageSquarePlus, BarChart2, CircleDollarSign, EyeOff, Filter, Flame, HelpCircle, Link as LinkIcon, LogOut, Mail, Mic, MoreVertical, PauseCircle, PlayCircle, PlusCircle, Repeat, Save, Search, ShieldAlert, ShieldCheck, TrendingUp, UserCog, UserMinus, X, Zap, Hand, Megaphone, MessageSquare as MessageSquareIconLucide, MessagesSquare } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData, ScenarioEvent, HumanRoleConfig } from "@/lib/types";
+import type { Scenario, BotConfig, Participant, Message as MessageType, SessionData, ScenarioEvent, HumanRoleConfig, RolePenalty } from "@/lib/types";
 import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import PenaltyCountdownCircle from "@/components/admin/PenaltyCountdownCircle"; // Import der neuen Komponente
 
 
 interface AdminSessionDashboardPageProps {
@@ -89,6 +90,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const [adminUiCountdown, setAdminUiCountdown] = useState<number | null>(null);
   const [isMovingParticipant, setIsMovingParticipant] = useState<string | null>(null);
   const [isApplyingPenaltyOrMute, setIsApplyingPenaltyOrMute] = useState<string | null>(null);
+  const [isAssigningBadge, setIsAssigningBadge] = useState<string | null>(null); // NEU für Badge-Vergabe Ladezustand
 
   const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("teilnehmer");
@@ -116,7 +118,117 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
   const [paceValue, setPaceValue] = useState<number>(DEFAULT_COOLDOWN);
   const adminChatPreviewEndRef = useRef<null | HTMLDivElement>(null);
 
-  const getPenaltyTimeRemaining = (penalty: Participant['activePenalty']): string | null => {
+  // NEU: Feature Toggles
+  const [isUpdatingFeatureToggles, setIsUpdatingFeatureToggles] = useState(false);
+  const [reportingEnabled, setReportingEnabled] = useState(false);
+  const [blockingEnabled, setBlockingEnabled] = useState(false);
+  const [directMessagesEnabled, setDirectMessagesEnabled] = useState(false);
+
+  const clearPenalty = async (participantId: string) => {
+    if (!sessionIdFromUrl) return;
+    const participantRef = doc(db, "sessions", sessionIdFromUrl, "participants", participantId);
+    try {
+      await updateDoc(participantRef, {
+        activePenalty: null,
+        isMuted: false,
+        updatedAt: serverTimestamp()
+      });
+      toast({ title: "Strafe abgelaufen", description: `Strafe für Teilnehmer ${participantId} wurde automatisch entfernt.` });
+    } catch (error: any) {
+      console.error(`Error clearing penalty for participant ${participantId}:`, error);
+      // Optional: toast({ variant: "destructive", title: "Fehler", description: `Strafe für ${participantId} konnte nicht automatisch entfernt werden.` });
+    }
+  };
+
+  const clearRolePenalty = async (roleId: string) => {
+    if (!sessionIdFromUrl || !sessionData || !sessionData.activeRolePenalties) return;
+    const sessionDocRef = doc(db, "sessions", sessionIdFromUrl);
+    try {
+      const updatedRolePenalties = sessionData.activeRolePenalties.filter(penalty => penalty.roleId !== roleId);
+
+      await updateDoc(sessionDocRef, {
+        activeRolePenalties: updatedRolePenalties,
+        updatedAt: serverTimestamp()
+      });
+      // Optional: Mute-Status für Teilnehmer der Rolle anpassen, falls die Rolle selbst gemuted war.
+      // Dies erfordert Logik, um zu prüfen, ob die Rolle gemuted war und dies ggf. aufzuheben.
+      // Und dann ggf. alle Teilnehmer dieser Rolle zu entmuten, falls deren Mute-Status von der Rollenstrafe abhing.
+      toast({ title: "Rollenstrafe abgelaufen", description: `Strafe für Rolle ${roleId} wurde automatisch entfernt.` });
+    } catch (error: any) {
+      console.error(`Error clearing role penalty for role ${roleId}:`, error);
+    }
+  };
+
+
+  // Effect to automatically clear expired participant penalties
+  useEffect(() => {
+    if (!sessionIdFromUrl || sessionParticipants.length === 0 || isProcessingSessionAction) return;
+
+    const now = Date.now();
+    const participantsToClear: string[] = [];
+    sessionParticipants.forEach(participant => {
+      if (participant.activePenalty && participant.activePenalty.startedAt instanceof Timestamp) {
+        const endTime = participant.activePenalty.startedAt.toDate().getTime() + participant.activePenalty.durationMinutes * 60 * 1000;
+        if (now >= endTime) {
+          participantsToClear.push(participant.id);
+        }
+      }
+    });
+    
+    if (participantsToClear.length > 0) {
+        participantsToClear.forEach(id => {
+            if (isApplyingPenaltyOrMute !== id) { 
+                console.log(`AdminDashboard: Penalty for participant ${id} has expired. Clearing...`);
+                clearPenalty(id); // Verwende clearPenalty statt handleClearPenaltyForParticipant
+            }
+        });
+    }
+  }, [sessionParticipants, sessionIdFromUrl, isProcessingSessionAction, isApplyingPenaltyOrMute, clearPenalty]);
+
+  // Effect to automatically clear expired role penalties
+  useEffect(() => {
+    if (!sessionIdFromUrl || !sessionData?.activeRolePenalties || sessionData.activeRolePenalties.length === 0 || isProcessingSessionAction) return;
+
+    const now = Date.now();
+    const rolesToClear: string[] = [];
+    sessionData.activeRolePenalties.forEach(rolePenalty => {
+      if (rolePenalty.startedAt instanceof Timestamp) {
+        const endTime = rolePenalty.startedAt.toDate().getTime() + rolePenalty.durationMinutes * 60 * 1000;
+        if (now >= endTime) {
+          rolesToClear.push(rolePenalty.roleId);
+        }
+      }
+    });
+
+    if (rolesToClear.length > 0) {
+        rolesToClear.forEach(id => {
+            if (isApplyingPenaltyOrMute !== id) { 
+                console.log(`AdminDashboard: Penalty for role ${id} has expired. Clearing...`);
+                clearRolePenalty(id); // Verwende clearRolePenalty statt handleClearPenaltyFromRole
+            }
+        });
+    }
+  }, [sessionData?.activeRolePenalties, sessionIdFromUrl, sessionData?.status, isProcessingSessionAction, isApplyingPenaltyOrMute, clearRolePenalty]);
+
+  // NEU: Sekündliche Timer-Aktualisierung für Live-Countdowns im Admin-Dashboard
+  const [timerTickValue, setTimerTickValue] = useState<number>(0);
+
+  useEffect(() => {
+    // Nur Timer starten, wenn mindestens eine aktive Strafe vorhanden ist
+    const hasActiveRolePenalties = sessionData?.activeRolePenalties && sessionData.activeRolePenalties.length > 0;
+    const hasActiveParticipantPenalties = sessionParticipants.some(p => p.activePenalty);
+
+    if (hasActiveRolePenalties || hasActiveParticipantPenalties) {
+      // Timer jede Sekunde aktualisieren
+      const intervalId = setInterval(() => {
+        setTimerTickValue(prev => prev + 1);
+      }, 1000);
+
+      return () => clearInterval(intervalId);
+    }
+  }, [sessionData?.activeRolePenalties, sessionParticipants]);
+
+  const getPenaltyTimeRemaining = useCallback((penalty: Participant['activePenalty'] | RolePenalty | undefined): string | null => {
     if (!penalty || !penalty.startedAt || !(penalty.startedAt instanceof Timestamp)) return null;
     const endTime = penalty.startedAt.toDate().getTime() + penalty.durationMinutes * 60 * 1000;
     const now = Date.now();
@@ -129,6 +241,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     const seconds = remainingSeconds % 60;
 
     return `${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`;
+  }, [timerTickValue]); // Wichtig: timerTickValue als Abhängigkeit hinzugefügt, damit die Zeit jede Sekunde neu berechnet wird
+
+  // Helper to get active penalty for a role
+  const getActiveRolePenalty = (roleId: string): RolePenalty | undefined => {
+    return sessionData?.activeRolePenalties?.find(p => p.roleId === roleId);
   };
 
   // Effect 1: Load Scenario Details
@@ -958,8 +1075,8 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     }
   }, [chatMessages, sessionParticipants, sessionIdFromUrl, toast]);
 
-  const handleTriggerScenarioEvent = useCallback(async (event: ScenarioEvent) => {
-    if (!currentScenario || !sessionIdFromUrl) return;
+  const handleTriggerScenarioEvent = useCallback(async (event: ScenarioEvent | undefined) => { // Parameter als optional markiert
+    if (!event || !currentScenario || !sessionIdFromUrl) return; // Prüfung auf undefined event hinzugefügt
 
     toast({
       title: `Ereignis "${event.name}" ausgelöst.`,
@@ -1289,11 +1406,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         participantsToClear.forEach(id => {
             if (isApplyingPenaltyOrMute !== id) { 
                 console.log(`AdminDashboard: Penalty for participant ${id} has expired. Clearing...`);
-                handleClearPenaltyForParticipant(id);
+                clearPenalty(id); // Verwende clearPenalty statt handleClearPenaltyForParticipant
             }
         });
     }
-  }, [sessionParticipants, sessionIdFromUrl, handleClearPenaltyForParticipant, isProcessingSessionAction, isApplyingPenaltyOrMute]);
+  }, [sessionParticipants, sessionIdFromUrl, isProcessingSessionAction, isApplyingPenaltyOrMute, clearPenalty]);
 
   // Effect to automatically clear expired role penalties
   useEffect(() => {
@@ -1314,11 +1431,11 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
         rolesToClear.forEach(id => {
             if (isApplyingPenaltyOrMute !== id) { 
                 console.log(`AdminDashboard: Penalty for role ${id} has expired. Clearing...`);
-                handleClearPenaltyFromRole(id);
+                clearRolePenalty(id); // Verwende clearRolePenalty statt handleClearPenaltyFromRole
             }
         });
     }
-  }, [sessionData?.activeRolePenalties, sessionIdFromUrl, handleClearPenaltyFromRole, sessionData?.status, isProcessingSessionAction, isApplyingPenaltyOrMute]);
+  }, [sessionData?.activeRolePenalties, sessionIdFromUrl, sessionData?.status, isProcessingSessionAction, isApplyingPenaltyOrMute, clearRolePenalty]);
 
   const handleOpenAdminStandardDmModal = (participant: Participant) => {
     setAdminStandardDmRecipient(participant);
@@ -1334,17 +1451,17 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
     setIsSendingAdminStandardDm(true);
     try {
       const dmData: Partial<MessageType> = {
-        senderUserId: `admin_user_for_session_${sessionIdFromUrl}`, // Or a more persistent admin ID if available
+        senderUserId: `admin_user_for_session_${sessionIdFromUrl}`, 
         senderName: "Admin-Team",
         avatarFallback: "AT",
-        recipientId: adminStandardDmRecipient.userId,
+        recipientId: adminStandardDmRecipient.userId, // adminStandardDmRecipient ist hier sicher nicht null wegen der Prüfung oben
         content: adminStandardDmContent.trim(),
         timestamp: serverTimestamp(),
         isRead: false,
-        isAdminBroadcast: false, // Explicitly false for standard DMs
+        isAdminBroadcast: false, 
       };
       await addDoc(collection(db, "sessions", sessionIdFromUrl, "directMessages"), dmData);
-      toast({ title: "DM gesendet", description: `Nachricht an ${adminStandardDmRecipient.displayName} wurde gesendet.` });
+      toast({ title: "DM gesendet", description: `Nachricht an ${adminStandardDmRecipient.displayName} wurde gesendet.` }); // adminStandardDmRecipient ist hier sicher nicht null
       setAdminStandardDmContent("");
       setShowAdminStandardDmModal(false);
       setAdminStandardDmRecipient(null);
@@ -1415,6 +1532,95 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
       toast({ variant: "destructive", title: "Fehler beim Senden des Broadcasts", description: error.message });
     } finally {
       setIsSendingGlobalBroadcast(false);
+    }
+  };
+
+  // NEU: Badge-Verwaltungsfunktionen
+  const assignBadgeToParticipant = async (participantId: string, badgeType: 'admin' | 'moderator') => {
+    if (!sessionIdFromUrl) return;
+    setIsAssigningBadge(participantId);
+    const participantRef = doc(db, "sessions", sessionIdFromUrl, "participants", participantId);
+    try {
+      const participantDoc = await getDoc(participantRef);
+      if (participantDoc.exists()) {
+        const participantData = participantDoc.data() as Participant;
+        const currentBadges = participantData.assignedBadges || [];
+        if (!currentBadges.includes(badgeType)) {
+          const updatedBadges = [...currentBadges, badgeType];
+          await updateDoc(participantRef, { assignedBadges: updatedBadges, updatedAt: serverTimestamp() });
+          toast({ title: "Badge zugewiesen", description: `${badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}-Badge für ${participantData.displayName} zugewiesen.` });
+        } else {
+          toast({ title: "Info", description: "Teilnehmer hat dieses Badge bereits." });
+        }
+      }
+    } catch (error: any) {
+      console.error(`Error assigning badge to participant ${participantId}:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Badge konnte nicht zugewiesen werden: ${error.message}` });
+    } finally {
+      setIsAssigningBadge(null);
+    }
+  };
+
+  const removeBadgeFromParticipant = async (participantId: string, badgeType: 'admin' | 'moderator') => {
+    if (!sessionIdFromUrl) return;
+    setIsAssigningBadge(participantId);
+    const participantRef = doc(db, "sessions", sessionIdFromUrl, "participants", participantId);
+    try {
+      const participantDoc = await getDoc(participantRef);
+      if (participantDoc.exists()) {
+        const participantData = participantDoc.data() as Participant;
+        const currentBadges = participantData.assignedBadges || [];
+        if (currentBadges.includes(badgeType)) {
+          const updatedBadges = currentBadges.filter(b => b !== badgeType);
+          await updateDoc(participantRef, { assignedBadges: updatedBadges, updatedAt: serverTimestamp() });
+          toast({ title: "Badge entfernt", description: `${badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}-Badge von ${participantData.displayName} entfernt.` });
+        } else {
+          toast({ title: "Info", description: "Teilnehmer hat dieses Badge nicht." });
+        }
+      }
+    } catch (error: any) {
+      console.error(`Error removing badge from participant ${participantId}:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Badge konnte nicht entfernt werden: ${error.message}` });
+    } finally {
+      setIsAssigningBadge(null);
+    }
+  };
+
+  useEffect(() => {
+    if (sessionData) {
+      setReportingEnabled(sessionData.enableReporting || false);
+      setBlockingEnabled(sessionData.enableBlocking || false);
+      setDirectMessagesEnabled(sessionData.enableDirectMessages || false);
+    }
+  }, [sessionData]);
+
+  // NEU: Feature Toggles updaten
+  const updateFeatureToggles = async () => {
+    if (!sessionIdFromUrl) return;
+    setIsUpdatingFeatureToggles(true);
+    const sessionDocRef = doc(db, "sessions", sessionIdFromUrl);
+    
+    try {
+      await updateDoc(sessionDocRef, {
+        enableReporting: reportingEnabled,
+        enableBlocking: blockingEnabled,
+        enableDirectMessages: directMessagesEnabled,
+        updatedAt: serverTimestamp()
+      });
+      
+      toast({ 
+        title: "Funktionen aktualisiert", 
+        description: "Die Einstellungen wurden erfolgreich gespeichert."
+      });
+    } catch (error: any) {
+      console.error("Fehler beim Aktualisieren der Feature-Toggles:", error);
+      toast({ 
+        variant: "destructive", 
+        title: "Fehler", 
+        description: `Einstellungen konnten nicht gespeichert werden: ${error.message}`
+      });
+    } finally {
+      setIsUpdatingFeatureToggles(false);
     }
   };
 
@@ -1633,6 +1839,147 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
             </CardContent>
         </Card>
 
+        {/* NEU: Chat-Funktionen Card */}
+        <Card className="w-full shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <MessageSquare className="mr-2 h-5 w-5 text-primary" /> 
+              Chat-Funktionen
+            </CardTitle>
+            <CardDescription>
+              Hier können Sie erweiterte Funktionen für die Chat-Teilnehmer aktivieren oder deaktivieren.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3 flex flex-col">
+              
+              {/* Melden-Funktion Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="toggle-reporting" className="flex items-center cursor-pointer">
+                          <AlertTriangle className="h-5 w-5 text-amber-500 mr-2" />
+                          <span>Meldefunktion</span>
+                        </Label>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-sm">
+                      <p>Ermöglicht Teilnehmern, problematische Nachrichten zu melden. Moderatoren und Admins können diese Meldungen einsehen und bearbeiten.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="toggle-reporting"
+                    checked={reportingEnabled}
+                    onCheckedChange={setReportingEnabled}
+                    disabled={isUpdatingFeatureToggles}
+                  />
+                  <span className={cn(
+                    "text-xs font-medium px-2 py-1 rounded",
+                    reportingEnabled ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : 
+                    "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                  )}>
+                    {reportingEnabled ? "Aktiviert" : "Deaktiviert"}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Blockieren-Funktion Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="toggle-blocking" className="flex items-center cursor-pointer">
+                          <Ban className="h-5 w-5 text-red-500 mr-2" />
+                          <span>Blockieren von Nutzern</span>
+                        </Label>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-sm">
+                      <p>Erlaubt Teilnehmern, andere Nutzer zu blockieren. Blockierte Nutzer sind nur für die Person unsichtbar, die sie blockiert hat.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="toggle-blocking"
+                    checked={blockingEnabled}
+                    onCheckedChange={setBlockingEnabled}
+                    disabled={isUpdatingFeatureToggles}
+                  />
+                  <span className={cn(
+                    "text-xs font-medium px-2 py-1 rounded",
+                    blockingEnabled ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : 
+                    "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                  )}>
+                    {blockingEnabled ? "Aktiviert" : "Deaktiviert"}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Direktnachrichten-Funktion Toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="toggle-dm" className="flex items-center cursor-pointer">
+                          <MessagesSquare className="h-5 w-5 text-blue-500 mr-2" />
+                          <span>Direktnachrichten</span>
+                        </Label>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-sm">
+                      <p>Erlaubt Teilnehmern, private Nachrichten an andere Teilnehmer zu senden.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="toggle-dm"
+                    checked={directMessagesEnabled}
+                    onCheckedChange={setDirectMessagesEnabled}
+                    disabled={isUpdatingFeatureToggles}
+                  />
+                  <span className={cn(
+                    "text-xs font-medium px-2 py-1 rounded",
+                    directMessagesEnabled ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : 
+                    "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                  )}>
+                    {directMessagesEnabled ? "Aktiviert" : "Deaktiviert"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Speichern Button */}
+            <Button 
+              onClick={updateFeatureToggles} 
+              disabled={isUpdatingFeatureToggles || isSessionEffectivelyEnded}
+              className="w-full mt-4"
+            >
+              {isUpdatingFeatureToggles ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Speichere Einstellungen...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Einstellungen speichern
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
         <Card className="w-full shadow-lg"> {/* Sitzungseinladung Card */}
             <CardHeader>
             <CardTitle className="flex items-center"><LayoutDashboard className="mr-2 h-5 w-5 text-primary" /> Sitzungseinladung & Infos</CardTitle>
@@ -1742,23 +2089,23 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                     {currentScenario.humanRolesConfig.map(roleConfig => {
                         const assignedParticipantsToThisRole = sessionParticipants.filter(p => !p.isBot && p.roleId === roleConfig.id);
-                          const isRoleCurrentlyMuted = sessionData?.mutedRoleIds?.includes(roleConfig.id) ?? false;
-                          const activeRolePenalty = sessionData?.activeRolePenalties?.find(p => p.roleId === roleConfig.id);
+                        const activeRolePenalty = getActiveRolePenalty(roleConfig.id);
+                        // let rolePenaltyTimeRemaining: string | null = null;
+                        // if (activeRolePenalty && activeRolePenalty.startedAt instanceof Timestamp) {
+                        //   const endTime = activeRolePenalty.startedAt.toDate().getTime() + activeRolePenalty.durationMinutes * 60 * 1000;
+                        //   const now = Date.now();
+                        //   const remainingMillis = endTime - now;
+                        //   if (remainingMillis <= 0) {
+                        //     // Penalty expired, handled by useEffect now
+                        //   } else {
+                        //     const remainingSecondsTotal = Math.ceil(remainingMillis / 1000);
+                        //     const minutes = Math.floor(remainingSecondsTotal / 60);
+                        //     const seconds = remainingSecondsTotal % 60;
+                        //     rolePenaltyTimeRemaining = `(${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s)`;
+                        //   }
+                        // }
 
-                          let rolePenaltyTimeRemaining: string | null = null;
-                          if (activeRolePenalty && activeRolePenalty.startedAt instanceof Timestamp) {
-                            const endTime = activeRolePenalty.startedAt.toDate().getTime() + activeRolePenalty.durationMinutes * 60 * 1000;
-                            const now = Date.now();
-                            const remainingMillis = endTime - now;
-                            if (remainingMillis <= 0) {
-                              rolePenaltyTimeRemaining = "(Abgelaufen)";
-                            } else {
-                              const remainingSecondsTotal = Math.ceil(remainingMillis / 1000);
-                              const minutes = Math.floor(remainingSecondsTotal / 60);
-                              const seconds = remainingSecondsTotal % 60;
-                              rolePenaltyTimeRemaining = `(${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s)`;
-                            }
-                          }
+                        const isRoleEffectivelyMuted = sessionData?.mutedRoleIds?.includes(roleConfig.id) || !!activeRolePenalty;
 
                         return (
                             <Card key={roleConfig.id} className="flex flex-col bg-muted/30">
@@ -1778,7 +2125,7 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                                   <Megaphone className="h-4 w-4" />
                                               </Button>
                                               {/* Role Penalty Icons & Countdown */}
-                                              {activeRolePenalty && (
+                                              {activeRolePenalty && activeRolePenalty.startedAt instanceof Timestamp && (
                                                   <div className="flex items-center gap-1 mr-1">
                                                       <Badge 
                                                           variant={activeRolePenalty.penaltyType === 'red' ? "destructive" : "default"} 
@@ -1788,8 +2135,10 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                                           )}
                                                           title={`${activeRolePenalty.penaltyType === 'yellow' ? "Gelbe Karte (Rolle)" : "Rote Karte (Rolle)"} aktiv`}
                                                       >
-                                                          <Ban className="h-3 w-3 mr-1"/> {rolePenaltyTimeRemaining}
+                                                          <Ban className="h-3 w-3 mr-1"/>
+                                                          {activeRolePenalty.penaltyType === 'yellow' ? "Gelbe Karte" : "Rote Karte"} <span className="ml-1.5 flex items-center"><Loader2 className="h-3 w-3 animate-spin mr-1" />{getPenaltyTimeRemaining(activeRolePenalty)}</span>
                                                       </Badge>
+                                                      {/* PenaltyCountdownCircle wurde entfernt und durch Textanzeige im Badge ersetzt */}
                                                       <Button
                                                           variant="outline"
                                                           size="icon"
@@ -1828,17 +2177,17 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                               )}
                                               {/* Mute Button */} 
                                               <Button
-                                                  variant={isRoleCurrentlyMuted ? "destructive" : "outline"} 
+                                                  variant={isRoleEffectivelyMuted ? "destructive" : "outline"} 
                                                   size="icon" 
                                                   onClick={() => handleToggleMuteRole(roleConfig.id)}
                                                   disabled={isApplyingPenaltyOrMute === roleConfig.id || isSessionEffectivelyEnded || isProcessingSessionAction || (!isChatActive && !isSessionOpenForJoin && !isSessionEffectivelyPaused)}
-                                                  title={isRoleCurrentlyMuted ? "Stummschaltung für Rolle aufheben" : "Rolle stummschalten"}
+                                                  title={isRoleEffectivelyMuted ? "Stummschaltung für Rolle aufheben" : "Rolle stummschalten"}
                                                   className={cn(
                                                       "h-7 w-7",
-                                                      isRoleCurrentlyMuted ? "hover:bg-red-700" : "hover:bg-green-500/10 hover:text-green-600 border-green-500 text-green-500"
+                                                      isRoleEffectivelyMuted ? "hover:bg-red-700" : "hover:bg-green-500/10 hover:text-green-600 border-green-500 text-green-500"
                                                   )}
                                               >
-                                                  {isApplyingPenaltyOrMute === roleConfig.id && (isRoleCurrentlyMuted || !isRoleCurrentlyMuted) ? <Loader2 className="h-4 w-4 animate-spin" /> : (isRoleCurrentlyMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />)}
+                                                  {isApplyingPenaltyOrMute === roleConfig.id && (isRoleEffectivelyMuted || !isRoleEffectivelyMuted) ? <Loader2 className="h-4 w-4 animate-spin" /> : (isRoleEffectivelyMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />)}
                                               </Button>
                                           </div>
                                       </div>
@@ -1858,7 +2207,22 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                                               <div className="flex-grow truncate mr-2">
                                                                   <span className="font-medium text-foreground truncate block" title={`${p.displayName} (${p.realName})`}>
                                                                       {p.displayName} <span className="text-xs text-muted-foreground">({p.realName || "N/A"})</span>
-                                                    </span>
+                                                                      {/* NEU: Badges anzeigen */}
+                                                                      {p.assignedBadges?.map(badge => (
+                                                                        <Badge
+                                                                          key={badge}
+                                                                          variant="default"
+                                                                          className={cn(
+                                                                            "ml-1.5 text-xs px-1.5 py-0.5 align-middle",
+                                                                            badge === 'admin' && "bg-pink-500 hover:bg-pink-600 text-white", // Neonpink
+                                                                            badge === 'moderator' && "bg-yellow-400 hover:bg-yellow-500 text-black" // Neongelb
+                                                                          )}
+                                                                          title={`${badge.charAt(0).toUpperCase() + badge.slice(1)}-Badge`}
+                                                                        >
+                                                                          {badge === 'admin' ? 'ADMIN' : 'MOD'}
+                                                                        </Badge>
+                                                                      ))}
+                                                                  </span>
                                                                   <span className={cn(
                                                                       "text-xs",
                                                                       p.status === "Nicht beigetreten" ? "italic text-orange-500" :
@@ -1958,6 +2322,39 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                                     </Select>
                                                           </div>
                                                           
+                                                          {/* NEU: Badge Vergabe/Entzug Buttons */}
+                                                          {!p.isBot && (
+                                                            <>
+                                                              <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                  <Button variant="outline" size="icon" className="h-7 w-7 text-purple-600 border-purple-500 hover:bg-purple-500/10" title="Badges verwalten" disabled={isLoadingThisParticipant || isAssigningBadge === p.id}>
+                                                                    {isAssigningBadge === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <ShieldCheck className="h-3.5 w-3.5"/>}
+                                                                  </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-auto p-2 space-y-1">
+                                                                  <Button
+                                                                    variant={p.assignedBadges?.includes('admin') ? "destructive" : "default"}
+                                                                    size="sm"
+                                                                    className="w-full text-xs justify-start"
+                                                                    onClick={() => p.assignedBadges?.includes('admin') ? removeBadgeFromParticipant(p.id, 'admin') : assignBadgeToParticipant(p.id, 'admin')}
+                                                                    disabled={isAssigningBadge === p.id}
+                                                                  >
+                                                                    <ShieldCheck className="mr-2 h-3.5 w-3.5" /> {p.assignedBadges?.includes('admin') ? 'Admin-Badge entziehen' : 'Admin-Badge geben'}
+                                                                  </Button>
+                                                                  <Button
+                                                                    variant={p.assignedBadges?.includes('moderator') ? "destructive" : "default"}
+                                                                    size="sm"
+                                                                    className="w-full text-xs justify-start"
+                                                                    onClick={() => p.assignedBadges?.includes('moderator') ? removeBadgeFromParticipant(p.id, 'moderator') : assignBadgeToParticipant(p.id, 'moderator')}
+                                                                    disabled={isAssigningBadge === p.id}
+                                                                  >
+                                                                    <UserCog className="mr-2 h-3.5 w-3.5" /> {p.assignedBadges?.includes('moderator') ? 'Mod-Badge entziehen' : 'Mod-Badge geben'}
+                                                                  </Button>
+                                                                </PopoverContent>
+                                                              </Popover>
+                                                            </>
+                                                          )}
+
                                                           {/* Remove Participant Button */}
                                                           <AlertDialog>
                                                               <AlertDialogTrigger asChild>
@@ -1987,10 +2384,21 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
                                                   {/* Row 2: Badges (Mute/Penalty) - shown below name/status if active */}
                                                   <div className="flex flex-wrap items-center gap-1 mt-0.5">
                                                       {p.isMuted && !p.activePenalty && <Badge variant="destructive" className="text-xs px-1.5 py-0.5">🔇 Stumm</Badge>}
-                                                      {p.activePenalty && (
-                                                          <Badge variant={p.activePenalty.type === 'red' ? "destructive" : "default"} className={cn("text-xs px-1.5 py-0.5", p.activePenalty.type === 'yellow' && "bg-yellow-500 text-black hover:bg-yellow-600")}>
-                                                              {p.activePenalty.description} {penaltyTimeRemaining && `(${penaltyTimeRemaining})`}
-                                                          </Badge>
+                                                      {p.activePenalty && p.activePenalty.startedAt instanceof Timestamp && (
+                                                          <div className="flex items-center gap-1.5">
+                                                              <Badge
+                                                                  variant={p.activePenalty.type === 'red' ? "destructive" : "default"}
+                                                                  className={cn(
+                                                                      "text-xs h-7 px-1.5 py-0.5", // Angepasste Höhe für Konsistenz
+                                                                      p.activePenalty.type === 'yellow' && "bg-yellow-500 text-black hover:bg-yellow-600"
+                                                                  )}
+                                                                  title={`${p.activePenalty.type === 'yellow' ? "Gelbe Karte" : "Rote Karte"} aktiv`}
+                                                              >
+                                                                  <Ban className="h-3 w-3 mr-1"/>
+                                                                  {p.activePenalty.type === 'yellow' ? "Gelbe Karte" : "Rote Karte"} <span className="ml-1.5 flex items-center"><Loader2 className="h-3 w-3 animate-spin mr-1"/>{penaltyTimeRemaining}</span>
+                                                              </Badge>
+                                                              {/* PenaltyCountdownCircle entfernt, Badge mit Textanzeige verwendet */}
+                                                          </div>
                                                       )}
                                                   </div>
                                                 </li>
@@ -2338,6 +2746,17 @@ export default function AdminSessionDashboardPage(props: AdminSessionDashboardPa
           </DialogContent>
         </Dialog>
       )}
+
+      <Card className="col-span-3 lg:col-span-3">
+        <CardHeader className="border-b">
+          <div className="flex justify-between items-center">
+            <CardTitle>Einstellungen</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6 space-y-6">
+          {/* Andere Einstellungen hier */}
+        </CardContent>
+      </Card>
     </div>
   </TooltipProvider>
   );

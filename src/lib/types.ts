@@ -90,37 +90,47 @@ export interface SessionData {
   simulationStartCountdownEndTime: Timestamp | null;
   currentAdmin?: string; // UID of the admin who last interacted
   mutedRoleIds?: string[]; // IDs of roles that are currently muted by admin
-  activeRolePenalties?: { 
-    roleId: string; 
-    penaltyType: 'yellow' | 'red'; 
-    startedAt: Timestamp; 
-    durationMinutes: number; 
-    description?: string; 
-  }[];
+  activeRolePenalties?: RolePenalty[];
+  // NEU: Feature-Toggles für Admin-Dashboard
+  enableReporting?: boolean; // Meldefunktion aktivieren/deaktivieren
+  enableBlocking?: boolean; // Blockieren aktivieren/deaktivieren
+  enableDirectMessages?: boolean; // Direktnachrichten aktivieren/deaktivieren
+}
+
+export interface RolePenalty {
+  roleId: string;
+  penaltyType: 'yellow' | 'red';
+  startedAt: Timestamp;
+  durationMinutes: number;
+  description?: string;
 }
 
 export interface Participant {
-  id: string; 
-  userId: string; 
-  realName: string;
+  id: string;
+  userId: string; // Firebase Auth UID or unique ID for bots/anon
+  realName?: string | null; // Real name, optional
   displayName: string;
-  role: string; 
-  roleId: string;
-  avatarUrl?: string;
+  role: string;
+  roleId: string; // ID of the role from ScenarioConfig
+  avatarUrl?: string | null;
   avatarFallback: string;
   isBot?: boolean;
-  status: 'Nicht beigetreten' | 'Wählt Rolle' | 'Im Wartebereich' | 'Beigetreten' | 'Verlassen' | 'Entfernt';
+  botConfig?: BotConfig; // Only if isBot is true
   joinedAt: Timestamp;
+  updatedAt?: Timestamp;
+  status: "Nicht beigetreten" | "Wählt Rolle" | "Im Wartebereich" | "Beigetreten" | "Verlassen";
   isMuted?: boolean;
   activePenalty?: {
     type: 'yellow' | 'red';
     startedAt: Timestamp;
     durationMinutes: number;
-    description: string;
+    description?: string;
   } | null;
-  updatedAt?: Timestamp;
-  colorSeed?: number;
-  botConfig?: BotConfig; 
+  assignedBadges?: ('admin' | 'moderator')[]; // NEU: Für Admin/Moderator-Badges
+  lastInteractionTimestamp?: Timestamp; // For AFK checks or other timings
+  currentEmoji?: string | null; // Currently selected emoji reaction for user
+  blockedUserIds?: string[]; // NEU: Array von User-IDs, die dieser Teilnehmer blockiert hat
+  colorSeed?: number; // NEU: Für konsistente Farbzuweisung
 }
 
 export interface DisplayParticipant extends Participant {}
@@ -138,6 +148,9 @@ export interface Message {
   content: string;
   imageUrl?: string;
   imageFileName?: string;
+  voiceMessageUrl?: string; // NEU: URL zur Sprachnachricht in Firebase Storage
+  voiceMessageFileName?: string; // NEU: Dateiname der Sprachnachricht
+  voiceMessageDuration?: number; // NEU: Dauer der Sprachnachricht in Sekunden
   timestamp: Timestamp | FieldValue; // Firestore Timestamp oder ServerTimestamp
   platform?: string; // z.B. 'Twitter', 'Instagram'
   reactions?: { [emoji: string]: string[] }; // Emoji -> Array von UserIDs
@@ -147,11 +160,19 @@ export interface Message {
   replyToMessageSenderName?: string;
   isRead?: boolean; // Für DMs: Wurde die Nachricht vom Empfänger gelesen?
   isAdminBroadcast?: boolean; // Ist dies eine spezielle Admin-Nachricht, die ein Overlay triggern soll?
+  blurredBy?: string | null; // NEU: UserId des Moderators/Admins, der die Nachricht geblurrt hat
+  isBlurred?: boolean; // NEU: Gibt an, ob die Nachricht aktuell geblurrt ist
+  reportedBy?: {
+    userId: string;
+    reason: string;
+    timestamp: Timestamp;
+  }[]; // NEU: Meldungen von Nutzern
 }
 
 export interface DisplayMessage extends Message {
   isOwn: boolean;
   timestampDisplay: string;
+  isFromBlockedUser?: boolean; // NEU: Kennzeichnung, dass die Nachricht von einem blockierten Benutzer stammt
 }
 
 export interface DirectMessage {

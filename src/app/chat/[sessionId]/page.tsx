@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { db, storage } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, Timestamp, doc, getDoc, where, getDocs, updateDoc, runTransaction, limit } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from '@/lib/utils';
@@ -30,6 +30,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DialogFooter } from "@/components/ui/dialog";
+import { ModerationOverview } from "@/components/chat/moderation-overview";
 
 interface ChatPageUrlParams {
   sessionId: string;
@@ -162,6 +163,668 @@ export function ChatPageContent({
 
   // NEU: State für das Modal, das alle Admin Broadcasts anzeigt
   const [showAdminBroadcastInboxModal, setShowAdminBroadcastInboxModal] = useState(false);
+
+  // NEU: Moderations-States
+  const [assignedBadges, setAssignedBadges] = useState<('admin' | 'moderator')[]>([]);
+  const [reportingEnabled, setReportingEnabled] = useState(false);
+  const [blockingEnabled, setBlockingEnabled] = useState(false);
+  const [directMessagesEnabled, setDirectMessagesEnabled] = useState(true);
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const [isBlockingUser, setIsBlockingUser] = useState<string | null>(null);
+  const [isReportingMessage, setIsReportingMessage] = useState<string | null>(null);
+  
+  // NEU: Moderationsübersicht States
+  const [showModeratorOverviewDialog, setShowModeratorOverviewDialog] = useState(false);
+  const [reportedMessages, setReportedMessages] = useState<DisplayMessage[]>([]);
+  const [isLoadingReportedMessages, setIsLoadingReportedMessages] = useState(false);
+  const [needsReportedMessagesRefresh, setNeedsReportedMessagesRefresh] = useState(false);
+  const [selectedParticipantForMessages, setSelectedParticipantForMessages] = useState<Participant | null>(null);
+  const [participantMessages, setParticipantMessages] = useState<DisplayMessage[]>([]);
+  const [showParticipantMessagesDialog, setShowParticipantMessagesDialog] = useState(false);
+  const [isLoadingParticipantMessages, setIsLoadingParticipantMessages] = useState(false);
+  const [isTogglingBlur, setIsTogglingBlur] = useState<string | null>(null);
+  const [isAdjustingCooldown, setIsAdjustingCooldown] = useState(false);
+
+  // NEU: Image Modal State
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string>("");
+  const [selectedImageAlt, setSelectedImageAlt] = useState<string>("");
+  
+  // NEU: Voice Message State
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingTimer, setRecordingTimer] = useState<NodeJS.Timeout | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [audioUploadProgress, setAudioUploadProgress] = useState<number | null>(null);
+  
+  // NEU: currentUserBadges für Moderationsrechte
+  const currentUserBadges = useMemo(() => currentParticipantDetails?.assignedBadges || [], [currentParticipantDetails]);
+
+  // NEU: Berechnung für Moderatorrechte
+  const hasModPermissions = useMemo(() => 
+    currentUserBadges?.includes('admin') || currentUserBadges?.includes('moderator')
+  , [currentUserBadges]); 
+
+  // NEU: Effekt zum Laden der Feature-Toggles
+  useEffect(() => {
+    if (sessionData) {
+      setBlockingEnabled(sessionData.enableBlocking || false);
+      setReportingEnabled(sessionData.enableReporting || false);
+      setDirectMessagesEnabled(sessionData.enableDirectMessages !== false); // Standard true, wenn nicht explizit false
+    }
+  }, [sessionData]);
+
+  // NEU: Effekt zum Laden der blockierten Nutzer
+  useEffect(() => {
+    if (!sessionId || !userId || !currentParticipantDetails) return;
+    
+    // Blockierte Nutzer aus Teilnehmerdetails laden
+    setBlockedUsers(currentParticipantDetails.blockedUserIds || []);
+  }, [sessionId, userId, currentParticipantDetails]);
+
+  // NEU: Funktion zum Laden der gemeldeten Nachrichten
+  const loadReportedMessages = useCallback(async () => {
+    if (!sessionId || !hasModPermissions) return;
+
+    setIsLoadingReportedMessages(true);
+
+    try {
+      const messagesRef = collection(db, "sessions", sessionId, "messages");
+      // Query für Nachrichten mit mindestens einer Meldung
+      const reportedQuery = query(messagesRef, 
+        where("reportedBy", "!=", []), 
+        orderBy("timestamp", "desc"),
+        limit(50)
+      );
+      
+      const reportedDocsSnap = await getDocs(reportedQuery);
+      const reportedMsgsData: DisplayMessage[] = [];
+      
+      reportedDocsSnap.forEach((doc) => {
+        const data = doc.data() as MessageType;
+        if (data.reportedBy && Array.isArray(data.reportedBy) && data.reportedBy.length > 0) {
+          const timestamp = data.timestamp as Timestamp;
+          reportedMsgsData.push({
+            ...data,
+            id: doc.id,
+            isOwn: false, // Standardwert für Moderationsansicht
+            timestampDisplay: timestamp ? timestamp.toDate().toLocaleString() : "Unbekannt",
+            reactions: data.reactions || {},
+            replyToMessageId: data.replyToMessageId || undefined,
+            replyToMessageSenderName: data.replyToMessageSenderName || undefined,
+            replyToMessageContentSnippet: data.replyToMessageContentSnippet || undefined
+          });
+        }
+      });
+      
+      console.log(`Geladene gemeldete Nachrichten: ${reportedMsgsData.length}`);
+      setReportedMessages(reportedMsgsData);
+    } catch (error) {
+      console.error("Fehler beim Laden der gemeldeten Nachrichten:", error);
+      toast({
+        variant: "destructive",
+        title: "Fehler",
+        description: "Gemeldete Nachrichten konnten nicht geladen werden."
+      });
+    } finally {
+      setIsLoadingReportedMessages(false);
+    }
+  }, [sessionId, hasModPermissions, toast]);
+
+  // Meldungen beim ersten Laden der Seite abrufen, wenn Moderatorrechte vorhanden
+  useEffect(() => {
+    if (hasModPermissions && sessionId) {
+      loadReportedMessages();
+    }
+  }, [hasModPermissions, sessionId, loadReportedMessages]);
+
+  // NEU: Effekt zum Aktualisieren der gemeldeten Nachrichten bei Bedarf
+  useEffect(() => {
+    if (needsReportedMessagesRefresh) {
+      loadReportedMessages();
+      setNeedsReportedMessagesRefresh(false);
+    }
+  }, [needsReportedMessagesRefresh, loadReportedMessages]);
+
+  // NEU: Funktion zum Entfernen einer Meldung mit optimistischem Update
+  const handleDismissReport = useCallback(async (messageId: string, reporterUserId: string) => {
+    if (!sessionId || !messageId || !reporterUserId) return;
+
+    const messageInReportedList = reportedMessages.find(msg => msg.id === messageId);
+    if (!messageInReportedList) return;
+
+    const originalReportedBy = [...(messageInReportedList.reportedBy || [])]; // Kopie für Rollback
+    const updatedReportedByOptimistic = originalReportedBy.filter((report: any) => report.userId !== reporterUserId);
+
+    // Optimistisches Update
+    setReportedMessages(prev => {
+      if (updatedReportedByOptimistic.length === 0) {
+        return prev.filter(msg => msg.id !== messageId);
+      }
+      return prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, reportedBy: updatedReportedByOptimistic }
+          : msg
+      );
+    });
+
+    try {
+      const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
+      const messageSnap = await getDoc(messageRef);
+      if (messageSnap.exists()) {
+        const messageData = messageSnap.data();
+        const currentReportedByDB = messageData.reportedBy || [];
+        const finalReportedByForDB = currentReportedByDB.filter((report: any) => report.userId !== reporterUserId);
+
+        await updateDoc(messageRef, {
+          reportedBy: finalReportedByForDB
+        });
+
+        toast({
+          title: "Meldung verworfen",
+          description: "Die Meldung wurde erfolgreich verworfen."
+        });
+        if (showModeratorOverviewDialog) {
+            setNeedsReportedMessagesRefresh(true);
+        }
+      } else {
+        throw new Error("Nachricht nicht in DB gefunden für Dismiss.");
+      }
+    } catch (error) {
+      console.error("Fehler beim Verwerfen der Meldung:", error);
+      toast({
+        variant: "destructive",
+        title: "Fehler",
+        description: "Die Meldung konnte nicht verworfen werden."
+      });
+      setNeedsReportedMessagesRefresh(true);
+    }
+  }, [sessionId, reportedMessages, toast, showModeratorOverviewDialog]);
+
+  // NEU: Filter für blockierte Nachrichten
+  const filteredMessages = useMemo(() => {
+    if (!blockingEnabled || isAdminView || !blockedUsers.length) return messages;
+
+    // Nachrichten von blockierten Nutzern herausfiltern
+    return messages.filter(message => {
+      if (message.senderUserId && blockedUsers.includes(message.senderUserId)) {
+        return false; // Nachricht nicht einschließen
+      }
+      return true; // Nachricht einschließen
+    });
+  }, [messages, blockingEnabled, isAdminView, blockedUsers]);
+
+  // NEU: Implementation der fehlenden Funktionen
+  const handleShowModeratorOverview = useCallback(() => {
+    if (!hasModPermissions) {
+      toast({ variant: "destructive", title: "Keine Berechtigung", description: "Du hast nicht die nötigen Rechte für die Moderationsansicht." });
+      return;
+    }
+    loadReportedMessages();
+    setShowModeratorOverviewDialog(true);
+  }, [hasModPermissions, loadReportedMessages, toast]);
+
+  const handleShowParticipantMessages = useCallback(async (participant: Participant) => {
+    if (!hasModPermissions || !sessionId) {
+      toast({ variant: "destructive", title: "Keine Berechtigung", description: "Du hast nicht die nötigen Rechte für diese Aktion." });
+      return;
+    }
+    
+    setSelectedParticipantForMessages(participant);
+    setIsLoadingParticipantMessages(true);
+    
+    try {
+      const messagesRef = collection(db, "sessions", sessionId, "messages");
+      const participantMessagesQuery = query(
+        messagesRef,
+        where("senderUserId", "==", participant.userId),
+        orderBy("timestamp", "desc"),
+        limit(50)
+      );
+      
+      const querySnapshot = await getDocs(participantMessagesQuery);
+      const participantMessagesData: DisplayMessage[] = [];
+      
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        participantMessagesData.push({
+          id: doc.id,
+          ...data,
+          isOwn: false,
+          timestampDisplay: data.timestamp instanceof Timestamp 
+            ? data.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) 
+            : "...",
+        } as DisplayMessage);
+      });
+      
+      setParticipantMessages(participantMessagesData);
+      setShowParticipantMessagesDialog(true);
+    } catch (error: any) {
+      console.error("Fehler beim Laden der Teilnehmernachrichten:", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Nachrichten konnten nicht geladen werden." });
+    } finally {
+      setIsLoadingParticipantMessages(false);
+    }
+  }, [hasModPermissions, sessionId, toast]);
+
+  // NEU: Funktion zum Blockieren/Entsperren eines Nutzers
+  const handleToggleBlockUser = useCallback(async (userId: string) => {
+    if (!sessionId || !currentParticipantDetails || !blockingEnabled) return;
+    
+    setIsBlockingUser(userId);
+    
+    const currentBlockedUsers = currentParticipantDetails.blockedUserIds || [];
+    const isCurrentlyBlocked = currentBlockedUsers.includes(userId);
+    
+    let updatedBlockedUsers: string[];
+    if (isCurrentlyBlocked) {
+      updatedBlockedUsers = currentBlockedUsers.filter(id => id !== userId);
+    } else {
+      updatedBlockedUsers = [...currentBlockedUsers, userId];
+    }
+    
+    // Optimistisches Update des lokalen States
+    setBlockedUsers(updatedBlockedUsers);
+    setCurrentParticipantDetails(prev => prev ? {
+      ...prev,
+      blockedUserIds: updatedBlockedUsers
+    } : null);
+    
+    try {
+      // Aktualisiere in der Datenbank
+      const participantRef = doc(db, "sessions", sessionId, "participants", currentParticipantDetails.id);
+      await updateDoc(participantRef, {
+        blockedUserIds: updatedBlockedUsers,
+        updatedAt: serverTimestamp()
+      });
+      
+      toast({ 
+        title: isCurrentlyBlocked ? "Nutzer entsperrt" : "Nutzer blockiert", 
+        description: isCurrentlyBlocked 
+          ? "Du siehst wieder Nachrichten von diesem Nutzer." 
+          : "Du siehst keine Nachrichten mehr von diesem Nutzer." 
+      });
+    } catch (error: any) {
+      console.error("Fehler beim Blockieren/Entsperren des Nutzers:", error);
+      // Rollback bei Fehler
+      const originalBlockedUsers = currentParticipantDetails.blockedUserIds || [];
+      setBlockedUsers(originalBlockedUsers);
+      setCurrentParticipantDetails(prev => prev ? {
+        ...prev,
+        blockedUserIds: originalBlockedUsers
+      } : null);
+      toast({ variant: "destructive", title: "Fehler", description: "Der Nutzer konnte nicht blockiert/entsperrt werden." });
+    } finally {
+      setIsBlockingUser(null);
+    }
+  }, [sessionId, currentParticipantDetails, blockingEnabled, toast]);
+
+  // NEU: Funktion zum Melden einer Nachricht
+  const handleReportMessage = useCallback(async (messageId: string, reason: string) => {
+    if (!sessionId || !userId || !currentParticipantDetails || !reportingEnabled) return;
+    
+    setIsReportingMessage(messageId);
+    
+    try {
+      const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
+      const messageDoc = await getDoc(messageRef);
+      
+      if (!messageDoc.exists()) {
+        toast({ variant: "destructive", title: "Fehler", description: "Die Nachricht existiert nicht mehr." });
+        setIsReportingMessage(null);
+        return;
+      }
+
+      const messageData = messageDoc.data();
+      const currentReports = messageData.reportedBy || [];
+      
+      // Prüfen, ob der Nutzer bereits gemeldet hat
+      const hasAlreadyReported = currentReports.some((report: any) => report.userId === userId);
+      if (hasAlreadyReported) {
+        toast({ title: "Bereits gemeldet", description: "Du hast diese Nachricht bereits gemeldet." });
+        setIsReportingMessage(null);
+        return;
+      }
+
+      const newReport = {
+        userId: userId,
+        reason: reason,
+        timestamp: Timestamp.now()
+      };
+
+      await updateDoc(messageRef, {
+        reportedBy: [...currentReports, newReport]
+      });
+
+      toast({ title: "Nachricht gemeldet", description: "Deine Meldung wurde an die Moderatoren weitergeleitet." });
+    } catch (error: any) {
+      console.error("Fehler beim Melden der Nachricht:", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Die Nachricht konnte nicht gemeldet werden." });
+    } finally {
+      setIsReportingMessage(null);
+    }
+  }, [sessionId, userId, currentParticipantDetails, reportingEnabled, toast]);
+
+  // NEU: Funktion zum Verbergen/Anzeigen von Nachrichten (Blur Toggle)
+  const toggleBlurMessage = useCallback(async (messageId: string) => {
+    if (!sessionId || !hasModPermissions) return;
+
+    setIsTogglingBlur(messageId);
+
+    try {
+      const messageRef = doc(db, "sessions", sessionId, "messages", messageId);
+      const messageDoc = await getDoc(messageRef);
+      
+      if (!messageDoc.exists()) {
+        toast({ variant: "destructive", title: "Fehler", description: "Die Nachricht existiert nicht mehr." });
+        return;
+      }
+
+      const messageData = messageDoc.data();
+      const isCurrentlyBlurred = messageData.isBlurred || false;
+      
+      // Optimistisches Update
+      const updatedMessages = messages.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, isBlurred: !isCurrentlyBlurred, blurredBy: !isCurrentlyBlurred ? userId : null }
+          : msg
+      );
+      
+      await updateDoc(messageRef, {
+        isBlurred: !isCurrentlyBlurred,
+        blurredBy: !isCurrentlyBlurred ? userId : null
+      });
+
+      toast({
+        title: isCurrentlyBlurred ? "Nachricht sichtbar" : "Nachricht verborgen",
+        description: isCurrentlyBlurred 
+          ? "Die Nachricht ist wieder für alle sichtbar." 
+          : "Die Nachricht wurde für normale Nutzer verborgen."
+      });
+    } catch (error: any) {
+      console.error("Fehler beim Verbergen/Anzeigen der Nachricht:", error);
+      toast({ variant: "destructive", title: "Fehler", description: "Die Nachricht konnte nicht bearbeitet werden." });
+    } finally {
+      setIsTogglingBlur(null);
+    }
+  }, [sessionId, hasModPermissions, userId, messages, toast]);
+
+  // NEU: Funktion zum Anwenden von Strafen (Gelbe/Rote Karte)
+  const handleApplyPenalty = useCallback(async (participantId: string, penaltyType: 'yellow' | 'red') => {
+    if (!sessionId || !hasModPermissions) return;
+
+    const targetParticipant = participants.find(p => p.id === participantId);
+    if (!targetParticipant) {
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer nicht gefunden." });
+      return;
+    }
+
+    // Admins und Moderatoren können nicht bestraft werden (außer von Admins)
+    if ((targetParticipant.assignedBadges?.includes('admin') || targetParticipant.assignedBadges?.includes('moderator')) && !currentUserBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Aktion nicht erlaubt", description: "Admins und Moderatoren können nur von Admins bestraft werden." });
+      return;
+    }
+
+    const durationMinutes = penaltyType === 'yellow' ? 2 : 3; // Gelb: 2 Min, Rot: 3 Min
+    const description = penaltyType === 'yellow' ? "Gelbe Karte" : "Rote Karte";
+
+    try {
+      const participantRef = doc(db, "sessions", sessionId, "participants", participantId);
+      await updateDoc(participantRef, {
+        activePenalty: {
+          type: penaltyType,
+          startedAt: serverTimestamp(),
+          durationMinutes: durationMinutes,
+          description: `${description} (von ${currentParticipantDetails?.displayName || 'Moderator'})`,
+        },
+        isMuted: true,
+        updatedAt: serverTimestamp()
+      });
+
+      toast({ 
+        title: `${description} vergeben`, 
+        description: `${targetParticipant.displayName} wurde für ${durationMinutes} Minuten stummgeschaltet.` 
+      });
+    } catch (error: any) {
+      console.error(`Fehler beim Vergeben der Strafe:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Strafe konnte nicht vergeben werden: ${error.message}` });
+    }
+  }, [sessionId, hasModPermissions, participants, currentUserBadges, currentParticipantDetails, toast]);
+
+  // NEU: Funktion zum Zuweisen von Badges
+  const handleAssignBadge = useCallback(async (participantId: string, badgeType: 'admin' | 'moderator') => {
+    if (!sessionId || !currentUserBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Keine Berechtigung", description: "Nur Admins können Badges vergeben." });
+      return;
+    }
+
+    const targetParticipant = participants.find(p => p.id === participantId);
+    if (!targetParticipant) {
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer nicht gefunden." });
+      return;
+    }
+
+    try {
+      const participantRef = doc(db, "sessions", sessionId, "participants", participantId);
+      const currentBadges = targetParticipant.assignedBadges || [];
+      
+      if (!currentBadges.includes(badgeType)) {
+        await updateDoc(participantRef, {
+          assignedBadges: [...currentBadges, badgeType],
+          updatedAt: serverTimestamp()
+        });
+        toast({ 
+          title: `${badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}-Badge vergeben`, 
+          description: `${targetParticipant.displayName} wurde zum ${badgeType.charAt(0).toUpperCase() + badgeType.slice(1)} ernannt.` 
+        });
+      } else {
+        toast({ title: "Badge bereits vorhanden", description: `${targetParticipant.displayName} hat dieses Badge bereits.` });
+      }
+    } catch (error: any) {
+      console.error(`Fehler beim Vergeben des Badges:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Badge konnte nicht vergeben werden: ${error.message}` });
+    }
+  }, [sessionId, currentUserBadges, participants, toast]);
+
+  // NEU: Funktion zum Entfernen von Badges
+  const handleRemoveBadge = useCallback(async (participantId: string, badgeType: 'admin' | 'moderator') => {
+    if (!sessionId || !currentUserBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Keine Berechtigung", description: "Nur Admins können Badges entfernen." });
+      return;
+    }
+
+    const targetParticipant = participants.find(p => p.id === participantId);
+    if (!targetParticipant) {
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer nicht gefunden." });
+      return;
+    }
+
+    try {
+      const participantRef = doc(db, "sessions", sessionId, "participants", participantId);
+      const currentBadges = targetParticipant.assignedBadges || [];
+      
+      if (currentBadges.includes(badgeType)) {
+        await updateDoc(participantRef, {
+          assignedBadges: currentBadges.filter(badge => badge !== badgeType),
+          updatedAt: serverTimestamp()
+        });
+        toast({ 
+          title: `${badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}-Badge entfernt`, 
+          description: `${badgeType.charAt(0).toUpperCase() + badgeType.slice(1)}-Status wurde von ${targetParticipant.displayName} entfernt.` 
+        });
+      } else {
+        toast({ title: "Badge nicht vorhanden", description: `${targetParticipant.displayName} hat dieses Badge nicht.` });
+      }
+    } catch (error: any) {
+      console.error(`Fehler beim Entfernen des Badges:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Badge konnte nicht entfernt werden: ${error.message}` });
+    }
+  }, [sessionId, currentUserBadges, participants, toast]);
+
+  // NEU: Funktion zum Stummschalten/Entsperren
+  const handleToggleMute = useCallback(async (participantId: string) => {
+    if (!sessionId || !hasModPermissions) return;
+
+    const targetParticipant = participants.find(p => p.id === participantId);
+    if (!targetParticipant) {
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer nicht gefunden." });
+      return;
+    }
+
+    // Admins und Moderatoren können nicht stummgeschaltet werden (außer von Admins)
+    if ((targetParticipant.assignedBadges?.includes('admin') || targetParticipant.assignedBadges?.includes('moderator')) && !currentUserBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Aktion nicht erlaubt", description: "Admins und Moderatoren können nur von Admins stummgeschaltet werden." });
+      return;
+    }
+
+    try {
+      const participantRef = doc(db, "sessions", sessionId, "participants", participantId);
+      const newMuteState = !targetParticipant.isMuted;
+      
+      await updateDoc(participantRef, {
+        isMuted: newMuteState,
+        updatedAt: serverTimestamp()
+      });
+
+      toast({ 
+        title: newMuteState ? "Teilnehmer stummgeschaltet" : "Stummschaltung aufgehoben",
+        description: `${targetParticipant.displayName} wurde ${newMuteState ? 'stummgeschaltet' : 'entsperrt'}.` 
+      });
+    } catch (error: any) {
+      console.error(`Fehler beim Umschalten der Stummschaltung:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Stummschaltung konnte nicht geändert werden: ${error.message}` });
+    }
+  }, [sessionId, hasModPermissions, participants, currentUserBadges, toast]);
+
+  // NEU: Funktion zum Entfernen von Teilnehmern
+  const handleRemoveParticipant = useCallback(async (participantId: string) => {
+    if (!sessionId || !currentUserBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Keine Berechtigung", description: "Nur Admins können Teilnehmer entfernen." });
+      return;
+    }
+
+    const targetParticipant = participants.find(p => p.id === participantId);
+    if (!targetParticipant) {
+      toast({ variant: "destructive", title: "Fehler", description: "Teilnehmer nicht gefunden." });
+      return;
+    }
+
+    // Admins können nicht entfernt werden
+    if (targetParticipant.assignedBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Aktion nicht erlaubt", description: "Admins können nicht entfernt werden." });
+      return;
+    }
+
+    try {
+      const participantRef = doc(db, "sessions", sessionId, "participants", participantId);
+      
+      await updateDoc(participantRef, {
+        status: 'Entfernt',
+        isMuted: true,
+        removedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      toast({ 
+        title: "Teilnehmer entfernt",
+        description: `${targetParticipant.displayName} wurde aus dem Chat entfernt.` 
+      });
+    } catch (error: any) {
+      console.error(`Fehler beim Entfernen des Teilnehmers:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Teilnehmer konnte nicht entfernt werden: ${error.message}` });
+    }
+  }, [sessionId, currentUserBadges, participants, toast]);
+
+  // NEU: Funktion zum Aufheben aller Blur-Markierungen
+  const handleClearAllBlurs = useCallback(async () => {
+    if (!sessionId || !currentUserBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Keine Berechtigung", description: "Nur Admins können alle Blur-Markierungen aufheben." });
+      return;
+    }
+
+    setIsAdjustingCooldown(true);
+
+    try {
+      const messagesRef = collection(db, "sessions", sessionId, "messages");
+      const blurredMessagesQuery = query(messagesRef, where("isBlurred", "==", true));
+      const blurredMessagesSnapshot = await getDocs(blurredMessagesQuery);
+      
+      // Batch Update für bessere Performance
+      await runTransaction(db, async (transaction) => {
+        blurredMessagesSnapshot.forEach((docSnapshot) => {
+          transaction.update(docSnapshot.ref, {
+            isBlurred: false,
+            blurredBy: null,
+            updatedAt: serverTimestamp()
+          });
+        });
+      });
+      
+      toast({ 
+        title: "Alle Blur-Markierungen entfernt",
+        description: `${blurredMessagesSnapshot.size} Nachrichten wurden wieder sichtbar gemacht.`
+      });
+    } catch (error: any) {
+      console.error(`Fehler beim Entfernen aller Blur-Markierungen:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Blur-Markierungen konnten nicht entfernt werden: ${error.message}` });
+    } finally {
+      setIsAdjustingCooldown(false);
+    }
+  }, [sessionId, currentUserBadges, toast]);
+
+  // NEU: Funktion zum Anpassen des Cooldowns
+  const handleAdjustCooldown = useCallback(async (newCooldownSeconds: number) => {
+    if (!sessionId || !currentUserBadges?.includes('admin')) {
+      toast({ variant: "destructive", title: "Keine Berechtigung", description: "Nur Admins können den Cooldown anpassen." });
+      return;
+    }
+
+    setIsAdjustingCooldown(true);
+
+    try {
+      const sessionRef = doc(db, "sessions", sessionId);
+      
+      await updateDoc(sessionRef, {
+        messageCooldownSeconds: newCooldownSeconds,
+        updatedAt: serverTimestamp()
+      });
+      
+      toast({ 
+        title: "Cooldown angepasst",
+        description: `Nachrichten-Cooldown wurde auf ${newCooldownSeconds} Sekunden gesetzt.`
+      });
+    } catch (error: any) {
+      console.error(`Fehler beim Anpassen des Cooldowns:`, error);
+      toast({ variant: "destructive", title: "Fehler", description: `Cooldown konnte nicht angepasst werden: ${error.message}` });
+    } finally {
+      setIsAdjustingCooldown(false);
+    }
+  }, [sessionId, currentUserBadges, toast]);
+
+  // NEU: Zentrale Funktion zum Schließen aller Modals (außer DMs)
+  const closeAllModalsExceptDMs = useCallback(() => {
+    setShowModeratorOverviewDialog(false);
+    setShowParticipantMessagesDialog(false);
+    setShowInbox(false);
+    setShowAdminBroadcastInboxModal(false);
+    // DM-Popup und Admin DM Overlay bleiben offen
+  }, []);
+
+  // NEU: Image Modal Funktionen
+  const openImageModal = useCallback((imageUrl: string, alt: string = "Bild") => {
+    setSelectedImageUrl(imageUrl);
+    setSelectedImageAlt(alt);
+    setShowImageModal(true);
+  }, []);
+
+  const closeImageModal = useCallback(() => {
+    setShowImageModal(false);
+    setSelectedImageUrl("");
+    setSelectedImageAlt("");
+  }, []);
 
   const scrollToBottomDm = useCallback(() => {
     dmMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -651,7 +1314,7 @@ export function ChatPageContent({
           const remainingMillis = endTime - now;
 
           if (remainingMillis <= 0) {
-            setPenaltyTimeRemaining(null); 
+            setPenaltyTimeRemaining(null);
             // Optimistically update the local participant details
             setCurrentParticipantDetails(prevDetails => {
               if (prevDetails && prevDetails.activePenalty) {
@@ -1151,7 +1814,8 @@ export function ChatPageContent({
         console.log(`[DM LOAD THREAD for ${otherUserId}] Filtered threadMessages count:`, threadMessages.length, threadMessages.map(m => ({s:m.senderUserId, r:m.recipientId, c:m.content?.substring(0,10)})));
         setActiveDmThread(threadMessages);
 
-        if (!showDmPopup && threadMessages.length > 0) { // Only show popup if messages exist
+        // Immer das Popup öffnen, auch wenn keine Nachrichten vorhanden sind
+        if (!showDmPopup) {
           setShowDmPopup(true);
         }
 
@@ -1171,6 +1835,172 @@ export function ChatPageContent({
     
     return unsubscribeThread;
   }, [sessionId, userId, participants, toast, showDmPopup]);
+
+  // NEU: Voice Recording Funktionen
+  const startVoiceRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      
+      const audioChunks: Blob[] = [];
+      
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      };
+      
+      recorder.onstop = () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        setRecordedAudioBlob(audioBlob);
+        setAudioPreviewUrl(URL.createObjectURL(audioBlob));
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      setMediaRecorder(recorder);
+      recorder.start();
+      setIsRecording(true);
+      setRecordingDuration(0);
+      
+      const timer = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+      setRecordingTimer(timer);
+      
+      toast({ title: "Aufnahme gestartet", description: "Sprachnachricht wird aufgenommen..." });
+    } catch (error) {
+      console.error("Error starting voice recording:", error);
+      toast({ variant: "destructive", title: "Mikrofon-Fehler", description: "Zugriff auf das Mikrofon wurde verweigert." });
+    }
+  }, [toast]);
+
+  const stopVoiceRecording = useCallback(() => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+      
+      if (recordingTimer) {
+        clearInterval(recordingTimer);
+        setRecordingTimer(null);
+      }
+      
+      toast({ title: "Aufnahme beendet", description: "Sprachnachricht bereit zum Senden." });
+    }
+  }, [mediaRecorder, isRecording, recordingTimer, toast]);
+
+  const cancelVoiceRecording = useCallback(() => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+    }
+    
+    if (recordingTimer) {
+      clearInterval(recordingTimer);
+      setRecordingTimer(null);
+    }
+    
+    setRecordedAudioBlob(null);
+    setRecordingDuration(0);
+    
+    if (audioPreviewUrl) {
+      URL.revokeObjectURL(audioPreviewUrl);
+      setAudioPreviewUrl(null);
+    }
+  }, [mediaRecorder, isRecording, recordingTimer, audioPreviewUrl]);
+
+  // NEU: Voice Message Upload und Send Funktion
+  const handleSendVoiceMessage = useCallback(async () => {
+    if (!recordedAudioBlob || !userId || !userDisplayName || !userAvatarFallback) {
+      toast({ variant: "destructive", title: "Fehler", description: "Sprachnachricht oder Benutzerdetails fehlen." });
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    const cooldownSetting = sessionData?.messageCooldownSeconds ?? 0;
+
+    if (cooldownSetting > 0 && lastMessageSentAt && (now - lastMessageSentAt < cooldownSetting * 1000) && !isAdminView) {
+      const timeLeft = Math.ceil((cooldownSetting * 1000 - (now - lastMessageSentAt)) / 1000);
+      toast({ 
+        variant: "default",
+        title: "Cooldown aktiv",
+        description: `Nächste Nachricht in ${timeLeft} Sekunden.`
+      });
+      return;
+    }
+
+    setIsUploadingAudio(true);
+    setAudioUploadProgress(0);
+    setLastMessageSentAt(now);
+
+    try {
+      // Upload audio to Firebase Storage
+      const fileName = `voice_${Date.now()}_${userId}.webm`;
+      const audioRef = storageRef(storage, `sessionVoiceMessages/${sessionId}/${fileName}`);
+      
+      const uploadTask = uploadBytesResumable(audioRef, recordedAudioBlob);
+      
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on('state_changed',
+          (snapshot) => {
+            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            setAudioUploadProgress(progress);
+          },
+          (error) => {
+            console.error("Voice message upload error:", error);
+            toast({ variant: "destructive", title: "Upload fehlgeschlagen", description: error.message });
+            reject(error);
+          },
+          async () => {
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            
+            // Create voice message in Firestore
+            const messageData: Partial<MessageType> = {
+              senderUserId: userId,
+              senderName: userDisplayName,
+              senderType: isAdminView ? 'admin' : 'user',
+              avatarFallback: userAvatarFallback,
+              content: `🎵 Sprachnachricht (${Math.floor(recordingDuration / 60)}:${(recordingDuration % 60).toString().padStart(2, '0')})`,
+              voiceMessageUrl: downloadURL,
+              voiceMessageFileName: fileName,
+              voiceMessageDuration: recordingDuration,
+              platform: currentScenario?.initialPost?.platform || 'Generic',
+              timestamp: serverTimestamp() as Timestamp,
+            };
+
+            if (replyingTo) {
+              messageData.replyToMessageId = replyingTo.id;
+              messageData.replyToMessageContentSnippet = replyingTo.content.substring(0, 50) + (replyingTo.content.length > 50 ? "..." : "");
+              messageData.replyToMessageSenderName = replyingTo.senderName;
+            }
+
+            const messagesColRef = collection(db, "sessions", sessionId, "messages");
+            await addDoc(messagesColRef, messageData);
+
+            // Reset voice recording state
+            setRecordedAudioBlob(null);
+            setAudioPreviewUrl(null);
+            setRecordingDuration(0);
+            setReplyingTo(null);
+            setQuotingMessage(null);
+
+            toast({ title: "Sprachnachricht gesendet", description: "Deine Sprachnachricht wurde erfolgreich gesendet." });
+            resolve();
+          }
+        );
+      });
+
+    } catch (error: any) {
+      console.error("Error sending voice message: ", error);
+      toast({ variant: "destructive", title: "Fehler beim Senden", description: error.message });
+    } finally {
+      setIsUploadingAudio(false);
+      setAudioUploadProgress(null);
+    }
+  }, [
+    recordedAudioBlob, userId, userDisplayName, userAvatarFallback, sessionData, lastMessageSentAt, 
+    isAdminView, recordingDuration, sessionId, replyingTo, currentScenario, toast
+  ]);
 
   if (isLoadingPage && !pageError) {
     return <LoadingScreen text={isAdminView ? "Admin Chat-Ansicht wird geladen..." : "Chat wird geladen..."} />;
@@ -1204,14 +2034,28 @@ export function ChatPageContent({
                  <ChatSidebar
                     participants={participants}
                     currentUserId={userId}
-                isLoadingParticipants={isLoadingParticipantsHook}
-                isAdminView={isAdminView}
-          getParticipantColorClasses={getParticipantColorClasses}
+                    isLoadingParticipants={isLoadingParticipantsHook}
+                    isAdminView={isAdminView}
+                    getParticipantColorClasses={getParticipantColorClasses}
           onInitiateDm={(participant: Participant) => {
             setShowInbox(false); // Close inbox if open
             loadAndMarkDmThread(participant.userId);
           }}
-        />
+          currentUserBadges={currentUserBadges}
+          onApplyPenalty={handleApplyPenalty}
+                    onAssignBadge={handleAssignBadge}
+                    onRemoveBadge={handleRemoveBadge}
+                    onToggleMute={handleToggleMute}
+                    onRemoveParticipant={handleRemoveParticipant}
+                    onClearAllBlurs={handleClearAllBlurs}
+                    onAdjustCooldown={handleAdjustCooldown}
+          currentCooldown={sessionData?.messageCooldownSeconds}
+                    onShowModeratorOverview={handleShowModeratorOverview}
+                    onShowParticipantMessages={handleShowParticipantMessages}
+          reportedMessagesCount={reportedMessages.length}
+          onToggleBlockUser={handleToggleBlockUser}
+          blockedUserIds={blockedUsers}
+                  />
         {/* User Info Box - fixed height, shown below participant list */}
         {!isAdminView && (
           <div className="p-4 border-t bg-background/80 backdrop-blur-sm shadow-sm">
@@ -1331,7 +2175,7 @@ export function ChatPageContent({
               >
                <div className="p-4 md:p-6"> 
                 <MessageList
-                  messages={messages}
+                  messages={filteredMessages}
                   currentUserId={userId}
                   getParticipantColorClasses={getParticipantColorClasses}
                   onMentionUser={handleMentionUser}
@@ -1344,8 +2188,17 @@ export function ChatPageContent({
                   messagesEndRef={messagesEndRef}
                   isChatDataLoading={isLoadingMessagesHook || (isAdminView && (isLoadingSessionDataHook || isLoadingScenario))}
                   isAdminView={isAdminView}
-              onOpenImageModal={(imageUrl: string) => { console.log("Opening image modal for:", imageUrl); /* TODO: Implement Image Modal */ }}
-              onOpenDm={(recipient: Participant) => loadAndMarkDmThread(recipient.userId)}
+                  onOpenImageModal={openImageModal}
+                  onOpenDm={(recipient: Participant) => loadAndMarkDmThread(recipient.userId)}
+                  toggleBlurMessage={toggleBlurMessage} 
+                  isTogglingBlur={isTogglingBlur} 
+                  currentUserBadges={currentUserBadges}
+                  currentParticipantDetails={currentParticipantDetails} 
+                  participants={participants}
+                  onBlockUser={handleToggleBlockUser}
+                  onReportMessage={handleReportMessage}
+                  blockingEnabled={blockingEnabled}
+                  reportingEnabled={reportingEnabled}
                 />
                </div>
             </ScrollArea>
@@ -1387,12 +2240,23 @@ export function ChatPageContent({
               handleEmojiSelect={handleEmojiSelectForInput} 
               emojiCategories={emojiCategories}
               messageCooldownSeconds={sessionData?.messageCooldownSeconds}
+              currentUserBadges={currentUserBadges}
+              isRecording={isRecording}
+              recordingDuration={recordingDuration}
+              recordedAudioBlob={recordedAudioBlob}
+              audioPreviewUrl={audioPreviewUrl}
+              isUploadingAudio={isUploadingAudio}
+              audioUploadProgress={audioUploadProgress}
+              startVoiceRecording={startVoiceRecording}
+              stopVoiceRecording={stopVoiceRecording}
+              cancelVoiceRecording={cancelVoiceRecording}
+              handleSendVoiceMessage={handleSendVoiceMessage}
             />
         </div>
 
       {/* DM Popup / Overlay */}
       {showDmPopup && dmRecipient && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); handleCloseDmPopup();}}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); handleCloseDmPopup();}}>
           <Card className="w-full max-w-lg shadow-2xl relative bg-card text-card-foreground" onClick={(e) => e.stopPropagation()}> 
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <div className="flex items-center">
@@ -1534,7 +2398,7 @@ export function ChatPageContent({
       
       {/* Inbox Overlay/Modal */}
       {showInbox && (
-         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={() => setShowInbox(false)}>
+         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowInbox(false)}>
             <Card className="w-full max-w-md shadow-2xl relative bg-card text-card-foreground" onClick={(e) => e.stopPropagation()}>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center justify-between">
@@ -1643,7 +2507,7 @@ export function ChatPageContent({
 
       {/* NEU: Modal für Admin Broadcast Inbox */}
       {showAdminBroadcastInboxModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowAdminBroadcastInboxModal(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowAdminBroadcastInboxModal(false)}>
           <Card className="w-full max-w-lg shadow-2xl relative bg-card text-card-foreground" onClick={(e) => e.stopPropagation()}>
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
                 <div className="flex items-center">
@@ -1723,7 +2587,7 @@ export function ChatPageContent({
       {/* Admin Broadcast DM Overlay (das existierende zum Anzeigen einer einzelnen Nachricht) */}
       {showAdminDmOverlay && adminDmToDisplay && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4" 
+          className="fixed inset-0 bg-black/60 backdrop-blur-md z-[60] flex items-center justify-center p-4"
           onClick={async (e) => { 
             // Nur schließen, wenn auf den Hintergrund geklickt wird, nicht auf die Card selbst.
             if (e.target === e.currentTarget) {
@@ -1815,6 +2679,198 @@ export function ChatPageContent({
           </Card>
         </div>
       )}
+
+      {/* NEU: Modal für Teilnehmer-Nachrichtenübersicht */}
+      {showParticipantMessagesDialog && selectedParticipantForMessages && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowParticipantMessagesDialog(false)}>
+          <Card className="w-full max-w-4xl shadow-2xl relative bg-card text-card-foreground max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between border-b">
+              <CardTitle className="text-xl flex items-center">
+                <MessageSquare className="h-6 w-6 mr-3 text-blue-500" />
+                Nachrichten von {selectedParticipantForMessages.displayName}
+              </CardTitle>
+              <Button variant="ghost" size="icon" onClick={() => setShowParticipantMessagesDialog(false)} className="h-8 w-8">
+                <XIcon className="h-5 w-5" />
+                  </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="h-[70vh] p-6">
+                {isLoadingParticipantMessages ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin mr-3" />
+                    <span className="text-lg">Lade Nachrichten...</span>
+                </div>
+                ) : participantMessages.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <MessageSquare className="h-16 w-16 mx-auto mb-6 opacity-50" />
+                    <p className="text-lg">Keine Nachrichten von diesem Teilnehmer gefunden.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {participantMessages.map(msg => (
+                      <Card key={msg.id} className="border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3 mb-3">
+                                <Avatar className="h-8 w-8">
+                              <AvatarFallback className={cn(getParticipantColorClasses(msg.senderUserId).bg, getParticipantColorClasses(msg.senderUserId).text, "text-sm font-bold")}>
+                                {msg.avatarFallback}
+                              </AvatarFallback>
+                                </Avatar>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="font-semibold">{msg.senderName}</span>
+                                <span className="text-sm text-muted-foreground">{msg.timestampDisplay}</span>
+                                {msg.isBlurred && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    <Eye className="h-3 w-3 mr-1" />
+                                    Ausgeblendet
+                                      </Badge>
+                              )}
+                            </div>
+                            
+                              <div className="bg-muted/30 rounded-lg p-3">
+                                {msg.imageUrl && (
+                                  <div className="mb-3 relative aspect-video max-w-md">
+                                    <NextImage src={msg.imageUrl} alt="Nachrichtenbild" layout="fill" objectFit="contain" className="rounded-lg" />
+                                      </div>
+                                )}
+                                <p className="text-base whitespace-pre-wrap">{msg.content}</p>
+                            </div>
+                            
+                              <div className="flex gap-2 mt-3">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                    closeAllModalsExceptDMs();
+                                  setTimeout(() => {
+                                      const messageElements = document.querySelectorAll('.message-container');
+                                      for (const element of messageElements) {
+                                        const messageId = element.getAttribute('data-message-id');
+                                        if (messageId === msg.id) {
+                                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                          element.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+                                      setTimeout(() => {
+                                            element.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+                                      }, 2000);
+                                          break;
+                                        }
+                                    }
+                                  }, 300);
+                                }}
+                                  className="text-xs"
+                              >
+                                  <ArrowLeft className="h-3 w-3 mr-1 rotate-180" />
+                                  Zur Nachricht springen
+                              </Button>
+                                {hasModPermissions && (
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => toggleBlurMessage(msg.id)}
+                                    disabled={isTogglingBlur === msg.id}
+                                    className="text-xs"
+                                  >
+                                    {isTogglingBlur === msg.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                    ) : (
+                                      <Eye className="h-3 w-3 mr-1" />
+                                    )}
+                                    {msg.isBlurred ? 'Einblenden' : 'Ausblenden'}
+                                  </Button>
+                                )}
+                              </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+            <CardFooter className="border-t p-4">
+              <div className="flex justify-between items-center w-full">
+                <span className="text-sm text-muted-foreground">
+                  {participantMessages.length} Nachricht{participantMessages.length !== 1 ? 'en' : ''} gefunden
+                </span>
+                <Button variant="outline" onClick={() => setShowParticipantMessagesDialog(false)}>
+                  Schließen
+                </Button>
+              </div>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
+
+      {/* NEU: Image Modal für vergrößerte Bildanzeige */}
+      {showImageModal && selectedImageUrl && (
+        <div 
+          className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[70] flex items-center justify-center p-4" 
+          onClick={closeImageModal}
+        >
+          <div className="relative max-w-[95vw] max-h-[95vh] w-full h-full flex items-center justify-center">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={closeImageModal}
+              className="absolute top-4 right-4 z-10 bg-black/50 hover:bg-black/70 text-white rounded-full h-12 w-12"
+            >
+              <XIcon className="h-8 w-8" />
+            </Button>
+            
+            <div 
+              className="relative w-full h-full flex items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+                            <NextImage 
+                src={selectedImageUrl} 
+                alt={selectedImageAlt}
+                              layout="fill" 
+                objectFit="contain"
+                className="rounded-lg shadow-2xl"
+                sizes="95vw"
+                priority
+                            />
+                          </div>
+            
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm max-w-[90%] text-center">
+              {selectedImageAlt}
+                      </div>
+                      </div>
+                      </div>
+                    )}
+
+      {/* Moderationsübersicht Komponente */}
+      <ModerationOverview
+        showModeratorOverviewDialog={showModeratorOverviewDialog}
+        setShowModeratorOverviewDialog={setShowModeratorOverviewDialog}
+        hasModPermissions={hasModPermissions}
+        currentUserBadges={currentUserBadges}
+        sessionId={sessionId}
+        participants={participants}
+        reportedMessages={reportedMessages}
+        isLoadingReportedMessages={isLoadingReportedMessages}
+        loadReportedMessages={loadReportedMessages}
+        handleDismissReport={handleDismissReport}
+        toggleBlurMessage={toggleBlurMessage}
+        isTogglingBlur={isTogglingBlur}
+        handleApplyPenalty={handleApplyPenalty}
+        handleShowParticipantMessages={handleShowParticipantMessages}
+        loadAndMarkDmThread={loadAndMarkDmThread}
+        getParticipantColorClasses={getParticipantColorClasses}
+        toast={toast}
+        handleAssignBadge={handleAssignBadge}
+        handleRemoveBadge={handleRemoveBadge}
+        handleToggleMute={handleToggleMute}
+        handleRemoveParticipant={handleRemoveParticipant}
+        handleClearAllBlurs={handleClearAllBlurs}
+        isAdjustingCooldown={isAdjustingCooldown}
+        handleAdjustCooldown={handleAdjustCooldown}
+        sessionData={sessionData}
+        userId={userId}
+        closeAllModalsExceptDMs={closeAllModalsExceptDMs}
+      />
     </div>
   );
 }
