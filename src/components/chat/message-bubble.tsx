@@ -11,12 +11,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from '@/lib/utils';
 import type { DisplayMessage, Participant } from '@/lib/types';
-import type { ParticipantColor, emojiCategories as EmojiCategoriesType } from '@/lib/config';
+import type { ParticipantColor } from '@/lib/config';
 import { useToast } from "@/hooks/use-toast";
 import { Timestamp } from 'firebase/firestore';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { EnhancedEmojiPicker } from "@/components/ui/enhanced-emoji-picker";
+import { parseMarkdown } from "@/lib/markdown-utils";
 
 interface MessageBubbleProps {
   message: DisplayMessage & { isFromBlockedUser?: boolean };
@@ -28,7 +30,6 @@ interface MessageBubbleProps {
   onReaction: (messageId: string, emoji: string) => Promise<void>;
   reactingToMessageId: string | null;
   setReactingToMessageId: (messageId: string | null) => void;
-  emojiCategories: typeof EmojiCategoriesType;
   isAdminView?: boolean;
   onOpenImageModal: (imageUrl: string, imageFileName?: string) => void;
   onOpenDm?: (recipient: Participant) => void;
@@ -53,7 +54,6 @@ const MessageBubble = memo(function MessageBubble({
   onReaction,
   reactingToMessageId,
   setReactingToMessageId,
-  emojiCategories,
   isAdminView = false,
   onOpenImageModal,
   onOpenDm,
@@ -257,9 +257,23 @@ const MessageBubble = memo(function MessageBubble({
       <div
         className={cn(
           "max-w-[85%] sm:max-w-[70%] md:max-w-[65%] lg:max-w-[60%]",
-          "rounded-xl shadow-md flex flex-col",
-          bubbleColor.bg,
-          bubbleColor.text,
+          "rounded-xl shadow-md flex flex-col text-white",
+          // Sanftere Hintergrundfarben für Light Mode
+          isOwn && "bg-orange-500/85 dark:bg-orange-500",
+          message.senderType === 'admin' && !isOwn && "bg-red-600/85 dark:bg-red-600",
+          message.senderType === 'bot' && "bg-purple-600/85 dark:bg-purple-600",
+          message.senderType === 'system' && "bg-gray-500/85 dark:bg-gray-500",
+          // Für andere Nutzer - Fallback mit sanfterer Transparenz
+          !isOwn && message.senderType !== 'admin' && message.senderType !== 'bot' && message.senderType !== 'system' && [
+            bubbleColor.name === 'green' && "bg-green-500/85 dark:bg-green-500",
+            bubbleColor.name === 'blue' && "bg-blue-600/85 dark:bg-blue-600", 
+            bubbleColor.name === 'pink' && "bg-pink-500/85 dark:bg-pink-500",
+            bubbleColor.name === 'indigo' && "bg-indigo-500/85 dark:bg-indigo-500",
+            bubbleColor.name === 'teal' && "bg-teal-500/85 dark:bg-teal-500",
+            bubbleColor.name === 'cyan' && "bg-cyan-500/85 dark:bg-cyan-500",
+            bubbleColor.name === 'lime' && "bg-lime-500/85 dark:bg-lime-500 text-black dark:text-black",
+            bubbleColor.name === 'emerald' && "bg-emerald-500/85 dark:bg-emerald-500"
+          ].filter(Boolean),
           "relative" // Hinzugefügt für absolute Positionierung des Blur-Overlays
         )}
       >
@@ -289,8 +303,8 @@ const MessageBubble = memo(function MessageBubble({
                   variant="default"
                   className={cn(
                     "text-xs px-1.5 py-0.5 h-5 leading-tight shadow-sm flex items-center gap-1",
-                    badge === 'admin' && "bg-pink-500 hover:bg-pink-600 text-white border-pink-700",
-                    badge === 'moderator' && "bg-yellow-400 hover:bg-yellow-500 text-black border-yellow-600"
+                    badge === 'admin' && "bg-pink-600/90 dark:bg-pink-500 hover:bg-pink-700/90 dark:hover:bg-pink-600 text-white border-pink-700/50",
+                    badge === 'moderator' && "bg-amber-600/90 dark:bg-yellow-400 hover:bg-amber-700/90 dark:hover:bg-yellow-500 text-white dark:text-black border-amber-700/50 dark:border-yellow-600"
                   )}
                   title={`${badge.charAt(0).toUpperCase() + badge.slice(1)}-Badge`}
                 >
@@ -451,7 +465,12 @@ const MessageBubble = memo(function MessageBubble({
                 <p className="text-xs opacity-70 mt-1 italic">Sprachnachricht wird geladen: {message.voiceMessageFileName}</p>
               )}
 
-              {message.content && <p className="text-sm whitespace-pre-wrap">{message.content}</p>}
+              {message.content && (
+                <div 
+                  className="text-sm whitespace-pre-wrap"
+                  dangerouslySetInnerHTML={{ __html: parseMarkdown(message.content) }}
+                />
+              )}
           
               {/* Display Reactions */}
               {message.reactions && Object.keys(message.reactions).length > 0 && (
@@ -495,63 +514,29 @@ const MessageBubble = memo(function MessageBubble({
                   </>
                 )}
                 
-                {/* Emoji-Picker-Popover */}
-                <Popover open={reactingToMessageId === message.id} onOpenChange={(open) => {
-                  if (!open && reactingToMessageId === message.id) {
-                    setReactingToMessageId(null);
-                  }
-                }}>
-                  <PopoverTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")} 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        handleOpenReactionPicker(e); 
-                      }} 
-                      aria-label="Reaktion hinzufügen"
-                    >
-                      <Smile className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reaktion</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs z-20"
-                    side="top"
-                    align={isOwn ? "end" : "start"}
-                    onClick={(e) => e.stopPropagation()}
-                    onInteractOutside={() => {if(reactingToMessageId === message.id) setReactingToMessageId(null)}}
+                {/* Enhanced Emoji-Picker für Reaktionen */}
+                <div className="relative">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")} 
+                    onClick={handleOpenReactionPicker} 
+                    aria-label="Reaktion hinzufügen"
+                    data-emoji-trigger="true"
                   >
-                    <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-                      <TabsList className="grid w-full grid-cols-5 h-auto p-1">
-                        {emojiCategories.map(category => (
-                          <TabsTrigger key={category.name} value={category.name} className="text-xl p-1.5 h-9" title={category.name}>
-                            {category.icon}
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
-                      {emojiCategories.map(category => (
-                        <TabsContent key={category.name} value={category.name} className="mt-0">
-                          <ScrollArea className="h-48">
-                            <div className="grid grid-cols-8 gap-0.5 p-2">
-                              {category.emojis.map(emoji => (
-                                <Button
-                                  key={emoji}
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-xl p-0 h-9 w-9 hover:bg-muted/50"
-                                  onClick={() => handleLocalEmojiSelectForReaction(emoji)}
-                                >
-                                  {emoji}
-                                </Button>
-                              ))}
-                            </div>
-                          </ScrollArea>
-                        </TabsContent>
-                      ))}
-                    </Tabs>
-                  </PopoverContent>
-                </Popover>
+                    <Smile className="h-3.5 w-3.5 mr-1" /> 
+                    <span className="text-xs">Reaktion</span>
+                  </Button>
+                  
+                  <EnhancedEmojiPicker
+                    isOpen={reactingToMessageId === message.id}
+                    onClose={() => setReactingToMessageId(null)}
+                    onEmojiSelect={handleLocalEmojiSelectForReaction}
+                    variant="reaction"
+                    position="top"
+                    align={isOwn ? "end" : "start"}
+                  />
+                </div>
               </div>
             </>
           )}

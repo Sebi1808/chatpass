@@ -34,9 +34,10 @@ import { ModerationOverview } from "@/components/chat/moderation-overview";
 import { MobileChatLayout } from '@/components/chat/mobile-chat-layout';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Input } from "@/components/ui/input";
-import { EmojiPicker } from '@/components/chat/emoji-picker';
+import { EnhancedEmojiPicker } from '@/components/ui/enhanced-emoji-picker';
 import { useTheme } from "next-themes"; // Added useTheme
 import { MobileModerationOverview } from '@/components/chat/mobile-moderation-overview'; // NEU
+import { initializeEmojiDatabase } from '@/lib/emoji-utils';
 
 interface ChatPageUrlParams {
   sessionId: string;
@@ -230,6 +231,13 @@ export function ChatPageContent({
   const hasModPermissions = useMemo(() => 
     currentUserBadges?.includes('admin') || currentUserBadges?.includes('moderator')
   , [currentUserBadges]); 
+
+  // Emoji-Datenbank initialisieren
+  useEffect(() => {
+    initializeEmojiDatabase().catch((error) => {
+      console.error('Fehler beim Initialisieren der Emoji-Datenbank:', error);
+    });
+  }, []);
 
   // NEU: Effekt zum Laden der Feature-Toggles
   useEffect(() => {
@@ -1110,52 +1118,54 @@ export function ChatPageContent({
   }, [lastMessageSentAt, sessionData?.messageCooldownSeconds, isAdminView]);
 
   const getParticipantColorClasses = useCallback((pUserId?: string, pSenderType?: 'admin' | 'user' | 'bot' | 'system'): ParticipantColor => {
-    // Define base colors and their text/nameText counterparts
+    // Define base colors and their text/nameText counterparts mit optimierten nameText-Farben für Light Mode
     const adminColorBase: Omit<ParticipantColor, 'name' | 'nameText'> = { bg: "bg-red-600", text: "text-white", ring: "ring-red-500" };
     const systemColorBase: Omit<ParticipantColor, 'name' | 'nameText'> = { bg: "bg-gray-500", text: "text-white", ring: "ring-gray-400" };
-    const botColorBase: Omit<ParticipantColor, 'name' | 'nameText'> = { bg: "bg-purple-600", text: "text-white", ring: "ring-purple-500" }; // Adjusted Bot color
-    const ownUserColorBase: Omit<ParticipantColor, 'name' | 'nameText'> = { bg: "bg-orange-500", text: "text-white", ring: "ring-orange-400" }; // Own messages in Orange
+    const botColorBase: Omit<ParticipantColor, 'name' | 'nameText'> = { bg: "bg-purple-600", text: "text-white", ring: "ring-purple-500" };
+    const ownUserColorBase: Omit<ParticipantColor, 'name' | 'nameText'> = { bg: "bg-orange-500", text: "text-white", ring: "ring-orange-400" };
 
     const otherUserColors: Array<Omit<ParticipantColor, 'name' | 'nameText'> & {namePrefix: string}> = [
       { namePrefix: "green", bg: "bg-green-500", text: "text-white", ring: "ring-green-400" },
-      { namePrefix: "blue", bg: "bg-blue-600", text: "text-white", ring: "ring-blue-500" }, // Changed from yellow to blue for better contrast with orange
+      { namePrefix: "blue", bg: "bg-blue-600", text: "text-white", ring: "ring-blue-500" },
       { namePrefix: "pink", bg: "bg-pink-500", text: "text-white", ring: "ring-pink-400" },
       { namePrefix: "indigo", bg: "bg-indigo-500", text: "text-white", ring: "ring-indigo-400" },
       { namePrefix: "teal", bg: "bg-teal-500", text: "text-white", ring: "ring-teal-400" },
       { namePrefix: "cyan", bg: "bg-cyan-500", text: "text-white", ring: "ring-cyan-400"},
       { namePrefix: "lime", bg: "bg-lime-500", text: "text-black", ring: "ring-lime-400"},
       { namePrefix: "emerald", bg: "bg-emerald-500", text: "text-white", ring: "ring-emerald-400"},
-
     ];
 
-    const constructColor = (base: Omit<ParticipantColor, 'name' | 'nameText'>, name: string): ParticipantColor => ({
+    const constructColor = (base: Omit<ParticipantColor, 'name' | 'nameText'>, name: string, customNameText?: string): ParticipantColor => ({
         ...base,
         name: name,
-        nameText: base.text // Simplified: nameText is same as text, adjust if specific styling needed
+        nameText: customNameText || "text-gray-800 dark:text-gray-200" // Fallback mit guter Lesbarkeit in beiden Modi
     });
 
-    if (isAdminView && pUserId === userId && pSenderType === 'admin') return constructColor(adminColorBase, 'admin_self_as_admin_in_chat_view'); // Admin sending as admin in full chat view
-    if (pSenderType === 'admin') return constructColor(adminColorBase, 'admin');
-    if (pSenderType === 'system') return constructColor(systemColorBase, 'system');
-    if (pSenderType === 'bot') return constructColor(botColorBase, 'bot');
+    // Spezifische nameText-Farben für besseren Kontrast im Light Mode
+    if (isAdminView && pUserId === userId && pSenderType === 'admin') return constructColor(adminColorBase, 'admin_self_as_admin_in_chat_view', "text-red-700 dark:text-red-200");
+    if (pSenderType === 'admin') return constructColor(adminColorBase, 'admin', "text-red-700 dark:text-red-200");
+    if (pSenderType === 'system') return constructColor(systemColorBase, 'system', "text-gray-700 dark:text-gray-200");
+    if (pSenderType === 'bot') return constructColor(botColorBase, 'bot', "text-purple-700 dark:text-purple-200");
 
     // If it's the current user's message (and not admin in admin view sending as user)
-    if (pUserId === userId) return constructColor(ownUserColorBase, 'own_user');
+    if (pUserId === userId) return constructColor(ownUserColorBase, 'own_user', "text-orange-700 dark:text-orange-200");
 
-    // Fallback for other users - pseudo-random color based on ID
-    if (!pUserId) return constructColor(otherUserColors[0], otherUserColors[0].namePrefix); // Default if no ID
+    // Fallback for other users - pseudo-random color based on ID mit spezifischen nameText-Farben
+    if (!pUserId) return constructColor(otherUserColors[0], otherUserColors[0].namePrefix, "text-green-700 dark:text-green-200");
     
     const participant = participants.find(par => par.userId === pUserId);
     if (participant && participant.colorSeed != null) {
         const colorIndex = Math.abs(participant.colorSeed) % otherUserColors.length;
         const selectedColorBase = otherUserColors[colorIndex];
-        return constructColor(selectedColorBase, selectedColorBase.namePrefix);
+        const nameTextForColor = `text-${selectedColorBase.namePrefix}-700 dark:text-${selectedColorBase.namePrefix}-200`;
+        return constructColor(selectedColorBase, selectedColorBase.namePrefix, nameTextForColor);
     }
     
     // If no colorSeed, use hash as before
     const hash = simpleHash(pUserId);
     const selectedColorBase = otherUserColors[Math.abs(hash) % otherUserColors.length];
-    return constructColor(selectedColorBase, selectedColorBase.namePrefix);
+    const nameTextForColor = `text-${selectedColorBase.namePrefix}-700 dark:text-${selectedColorBase.namePrefix}-200`;
+    return constructColor(selectedColorBase, selectedColorBase.namePrefix, nameTextForColor);
 
   }, [userId, isAdminView, participants]);
 
@@ -1377,8 +1387,10 @@ export function ChatPageContent({
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const handleEmojiSelectForInput = useCallback((emoji: string) => {
+    console.log('[DEBUG] handleEmojiSelectForInput called with:', emoji);
     handleSetNewMessage(prev => prev + emoji);
-    setShowEmojiPicker(false); 
+    // NICHT MEHR automatisch schließen - Emoji-Picker entscheidet selbst basierend auf variant
+    // setShowEmojiPicker(false); 
   }, [handleSetNewMessage]);
 
   // Effect to get current participant details for UserInfoBox and set up penalty countdown
@@ -1773,8 +1785,10 @@ export function ChatPageContent({
   };
 
   const handleDmEmojiSelect = useCallback((emoji: string) => {
+    console.log('[DEBUG] handleDmEmojiSelect called with:', emoji);
     setDmContent(prev => prev + emoji);
-    setShowDmEmojiPicker(false); 
+    // NICHT MEHR automatisch schließen - Emoji-Picker entscheidet selbst basierend auf variant
+    // setShowDmEmojiPicker(false); 
   }, []);
 
   const handleDmImageFileSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
@@ -1919,6 +1933,16 @@ export function ChatPageContent({
   // NEU: Voice Recording Funktionen
   const startVoiceRecording = useCallback(async () => {
     try {
+      // Überprüfe ob mediaDevices verfügbar ist
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        toast({ 
+          variant: "destructive", 
+          title: "Mikrofon nicht verfügbar", 
+          description: "Ihr Browser unterstützt keine Sprachaufnahme oder Sie befinden sich auf einer unsicheren Verbindung (HTTP)." 
+        });
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       
@@ -1948,9 +1972,19 @@ export function ChatPageContent({
       setRecordingTimer(timer);
       
       toast({ title: "Aufnahme gestartet", description: "Sprachnachricht wird aufgenommen..." });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error starting voice recording:", error);
-      toast({ variant: "destructive", title: "Mikrofon-Fehler", description: "Zugriff auf das Mikrofon wurde verweigert." });
+      let errorMessage = "Zugriff auf das Mikrofon wurde verweigert.";
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage = "Mikrofon-Zugriff wurde verweigert. Bitte erlauben Sie den Zugriff in Ihren Browser-Einstellungen.";
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = "Kein Mikrofon gefunden. Stellen Sie sicher, dass ein Mikrofon angeschlossen ist.";
+      } else if (error.name === 'NotSupportedError') {
+        errorMessage = "Sprachaufnahme wird von Ihrem Browser nicht unterstützt.";
+      }
+      
+      toast({ variant: "destructive", title: "Mikrofon-Fehler", description: errorMessage });
     }
   }, [toast]);
 
@@ -2188,7 +2222,7 @@ export function ChatPageContent({
 
       {/* User Info Section (nur Desktop) */}
       {!isMobile && currentParticipantDetails && (
-        <div className="border-t p-4 flex-shrink-0 bg-muted/30">
+        <div className="border-t p-4 flex-shrink-0 bg-muted/50 dark:bg-muted/30">
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <Avatar className="h-8 w-8 border-2 border-border">
@@ -2331,7 +2365,6 @@ export function ChatPageContent({
       showEmojiPicker={showEmojiPicker}
       setShowEmojiPicker={setShowEmojiPicker}
       handleEmojiSelect={handleEmojiSelectForInput} 
-      emojiCategories={emojiCategories}
       messageCooldownSeconds={sessionData?.messageCooldownSeconds}
       currentUserBadges={currentUserBadges}
       isRecording={isRecording}
@@ -2361,7 +2394,7 @@ export function ChatPageContent({
               viewportRef={viewportRef}
               type={isMobile ? "always" : "auto"}
               >
-         <div className={cn("p-4 md:p-6", isMobile && "pb-2")}> 
+         <div className={cn("p-4 md:p-6 bg-muted/30 dark:bg-transparent", isMobile && "pb-2")}> 
                 <MessageList
                   messages={filteredMessages}
                   currentUserId={userId}
@@ -2372,7 +2405,6 @@ export function ChatPageContent({
                   onReaction={handleReaction}
                   reactingToMessageId={reactingToMessageId}
                   setReactingToMessageId={setReactingToMessageId}
-                  emojiCategories={emojiCategories}
                   messagesEndRef={messagesEndRef}
                   isChatDataLoading={isLoadingMessagesHook || (isAdminView && (isLoadingSessionDataHook || isLoadingScenario))}
                   isAdminView={isAdminView}
@@ -2428,6 +2460,14 @@ export function ChatPageContent({
           showAdminBroadcastInboxModal={() => setShowAdminBroadcastInboxModal(true)}
           userRole={userRole || undefined}
           roleDescription={currentScenario?.humanRolesConfig?.find((r: { id: string }) => r.id === currentParticipantDetails?.roleId)?.description}
+          emojiPicker={showEmojiPicker ? (
+            <EnhancedEmojiPicker
+              isOpen={showEmojiPicker}
+              onClose={() => setShowEmojiPicker(false)}
+              onEmojiSelect={handleEmojiSelectForInput}
+              variant="input"
+            />
+          ) : undefined}
         >
           {mainChatArea}
         </MobileChatLayout>
@@ -2435,7 +2475,7 @@ export function ChatPageContent({
         /* Desktop Layout - Original */
         <div className="flex h-screen bg-background">
           {/* Desktop Sidebar */}
-          <div className="w-64 md:w-72 lg:w-80 border-r flex flex-col bg-muted/40">
+          <div className="w-64 md:w-72 lg:w-80 border-r flex flex-col bg-muted/60 dark:bg-muted/40">
             {sidebarContent}
                             </div>
           
@@ -2964,24 +3004,24 @@ export function ChatPageContent({
                       variant="outline" 
                       size="icon" 
                       type="button"
-              onClick={() => {
+                      onClick={() => {
                         console.log('[DM EMOJI] DM Emoji Picker button MANUALLY clicked, toggling showDmEmojiPicker.');
                         setShowDmEmojiPicker(prev => !prev);
-              }}
+                      }}
                       disabled={isSendingDm}
-            >
+                      data-emoji-trigger="true"
+                    >
                       <Smile className="h-4 w-4" />
-            </Button>
+                    </Button>
                     
                     {/* Neue EmojiPicker-Komponente für DMs */}
-                    <EmojiPicker
+                    <EnhancedEmojiPicker
                       isOpen={showDmEmojiPicker}
                       onClose={() => setShowDmEmojiPicker(false)}
                       onEmojiSelect={handleDmEmojiSelect}
+                      variant="input"
                       position="top"
                       align="center"
-                      isMobile={isMobile}
-                      isInModal={true}
                     />
                   </div>
                 </div>

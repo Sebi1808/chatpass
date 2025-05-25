@@ -2,9 +2,8 @@
 
 import React, { memo, type FormEvent, type ChangeEvent, type RefObject } from 'react';
 import NextImage from 'next/image';
-import Image from 'next/image';
-import { emojiCategories } from '@/lib/config';
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Paperclip, Send, Smile, Mic, XCircle, ImageIcon as ImageIconLucide, Trash2, PauseCircle, AlertTriangle, VolumeX, CornerDownLeft, X, PaperclipIcon, SmileIcon, Loader2, Ban, MicIcon, Pencil, ShieldCheck, Square, Plus } from "lucide-react"; // Changed ImageIcon to ImageIconLucide
 import { Progress } from "@/components/ui/progress";
@@ -14,13 +13,14 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { DisplayMessage } from "@/lib/types";
 import { useIsMobile } from '@/hooks/use-mobile';
-import { EmojiPicker } from '@/components/chat/emoji-picker';
+import { EnhancedEmojiPicker } from "@/components/ui/enhanced-emoji-picker";
+import { MarkdownInfo } from "@/components/ui/markdown-info";
 
 interface MessageInputBarProps {
   newMessage: string;
   setNewMessage: (value: string) => void;
   handleSendMessage: (event?: FormEvent<HTMLFormElement>) => Promise<void>;
-  inputRef: RefObject<HTMLInputElement>;
+  inputRef: RefObject<HTMLTextAreaElement>;
   fileInputRef: RefObject<HTMLInputElement>;
   handleImageFileSelected: (event: ChangeEvent<HTMLInputElement>) => void;
   selectedImageFile: File | null;
@@ -40,7 +40,6 @@ interface MessageInputBarProps {
   showEmojiPicker: boolean;
   setShowEmojiPicker: (value: boolean) => void;
   handleEmojiSelect: (emoji: string) => void; 
-  emojiCategories: typeof emojiCategories;
   messageCooldownSeconds: number | undefined;
   currentUserBadges?: ('admin' | 'moderator')[];
   isRecording: boolean;
@@ -106,7 +105,6 @@ const MessageInputBar = memo(function MessageInputBar({
   showEmojiPicker,
   setShowEmojiPicker,
   handleEmojiSelect, 
-  emojiCategories,
   messageCooldownSeconds,
   currentUserBadges,
   isRecording,
@@ -128,9 +126,26 @@ const MessageInputBar = memo(function MessageInputBar({
   const [showMobileAttachments, setShowMobileAttachments] = React.useState(false);
 
   // Optimierung: useCallback für message change handler
-  const handleMessageChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMessageChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(e.target.value);
   }, [setNewMessage]);
+
+  // Auto-resize Textarea (nur für Mobile)
+  React.useEffect(() => {
+    if (isMobile && inputRef.current) {
+      const textarea = inputRef.current;
+      // Reset height to get the correct scrollHeight
+      textarea.style.height = 'auto';
+      
+      // Calculate number of lines based on scrollHeight
+      const lineHeight = 24; // Approximate line height
+      const maxLines = 5;
+      const lines = Math.min(Math.ceil(textarea.scrollHeight / lineHeight), maxLines);
+      
+      // Set height based on content, max 5 lines
+      textarea.style.height = `${Math.min(textarea.scrollHeight, lineHeight * maxLines)}px`;
+    }
+  }, [newMessage, isMobile]);
 
   // Format recording duration helper function
   const formatDuration = (seconds: number) => {
@@ -169,7 +184,7 @@ const MessageInputBar = memo(function MessageInputBar({
 
   return (
     <div className={cn(
-      "border-t bg-background relative",
+      "border-t bg-muted/40 dark:bg-background relative",
       isAdminView ? "border-t-0 p-3 md:p-4" : "p-3 md:p-4",
       isMobile && "pb-safe-area-inset-bottom"
     )}>
@@ -201,15 +216,15 @@ const MessageInputBar = memo(function MessageInputBar({
       {/* Quote UI - Mobile Optimized */}
       {quotingMessage && (
         <div className={cn(
-          "mb-3 p-3 border rounded-xl bg-muted/50 text-sm text-muted-foreground flex justify-between items-start",
-          isMobile && "rounded-2xl p-4"
+          "mb-3 p-3 border-l-4 border-primary bg-muted/30 text-sm flex justify-between items-start",
+          isMobile && "p-4 rounded-r-2xl"
         )}>
           <div className="flex-1 min-w-0">
             <p className="font-medium text-primary mb-1">
-              Zitiert {quotingMessage.senderName}
+              Zitiere: {quotingMessage.senderName}
             </p>
-            <p className="text-muted-foreground text-xs">
-              Bearbeiten Sie das Zitat und Ihre Nachricht.
+            <p className="text-muted-foreground truncate">
+              "{quotingMessage.content}"
             </p>
           </div>
           <Button 
@@ -224,295 +239,360 @@ const MessageInputBar = memo(function MessageInputBar({
       )}
 
       {/* Image Preview - Mobile Optimized */}
-      {imagePreviewUrl && (
-        <div className={cn("relative group mb-3", isMobile ? "max-w-full" : "max-w-xs")}>
-          <Image 
-            src={imagePreviewUrl} 
-            alt="Bildvorschau" 
-            width={isMobile ? 200 : 120} 
-            height={isMobile ? 200 : 120} 
-            className="rounded-lg shadow-sm object-cover" 
-          />
-          <Button
-            variant="destructive"
-            size="icon"
-            className={cn(
-              "absolute top-2 right-2 opacity-70 group-hover:opacity-100",
-              isMobile ? "h-8 w-8" : "h-6 w-6"
-            )}
-            onClick={handleRemoveSelectedImage}
-            disabled={isSendingMessage}
-          >
-            <X className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
-          </Button>
-          {imageUploadProgress !== null && imageUploadProgress < 100 && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-lg">
-              <Loader2 className="h-6 w-6 animate-spin text-white"/>
+      {selectedImageFile && imagePreviewUrl && (
+        <div className={cn(
+          "mb-3 p-3 border rounded-xl bg-muted/30",
+          isMobile && "p-4 rounded-2xl"
+        )}>
+          <div className="flex items-start gap-3">
+            <div className="relative">
+              <NextImage
+                src={imagePreviewUrl}
+                alt="Preview"
+                width={isMobile ? 80 : 60}
+                height={isMobile ? 80 : 60}
+                className="rounded-lg object-cover"
+              />
+              {imageUploadProgress !== null && (
+                <div className="absolute inset-0 bg-black/50 rounded-lg flex items-center justify-center">
+                  <div className="text-white text-xs font-medium">
+                    {imageUploadProgress.toFixed(0)}%
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{selectedImageFile.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {(selectedImageFile.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+              {imageUploadProgress !== null && (
+                <Progress value={imageUploadProgress} className="mt-2 h-2" />
+              )}
+            </div>
+            {!isSendingMessage && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={handleRemoveSelectedImage}
+                className={cn("flex-shrink-0", isMobile ? "h-8 w-8" : "h-6 w-6 p-0")}
+              >
+                <Trash2 className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
       {/* Voice Recording UI - Mobile Optimized */}
       {isRecording && (
         <div className={cn(
-          "bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg mb-3",
-          isMobile ? "p-4 rounded-2xl" : "p-3"
+          "mb-3 p-3 border rounded-xl bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800",
+          isMobile && "p-4 rounded-2xl"
         )}>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse" />
-              <span className={cn(
-                "font-medium text-red-700 dark:text-red-400",
-                isMobile && "text-lg"
-              )}>
-                Aufnahme läuft
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-red-700 dark:text-red-300">
+                  Aufnahme läuft
+                </span>
+              </div>
+              <span className="text-sm text-red-600 dark:text-red-400 font-mono">
+                {formatDuration(recordingDuration)}
               </span>
             </div>
-            <span className={cn(
-              "font-mono text-red-600 dark:text-red-400",
-              isMobile ? "text-xl" : "text-sm"
-            )}>
-              {formatDuration(recordingDuration)}
-            </span>
-          </div>
-          
-          <div className="flex gap-3">
-            <Button 
-              variant="destructive" 
-              onClick={cancelVoiceRecording}
-              className={cn(
-                isMobile ? "h-12 px-6 text-base flex-1" : "h-8 px-3 text-xs"
-              )}
-            >
-              <X className={cn(isMobile ? "h-5 w-5 mr-2" : "h-3.5 w-3.5 mr-1")} />
-              Abbrechen
-            </Button>
-            <Button 
-              variant="default" 
-              onClick={stopVoiceRecording}
-              className={cn(
-                "bg-red-600 hover:bg-red-700",
-                isMobile ? "h-12 px-6 text-base flex-1" : "h-8 px-3 text-xs"
-              )}
-            >
-              <Square className={cn(isMobile ? "h-5 w-5 mr-2" : "h-3.5 w-3.5 mr-1")} />
-              Stopp
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={stopVoiceRecording}
+                className="text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30"
+              >
+                <Square className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+                <span className="ml-1">Stopp</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={cancelVoiceRecording}
+                className="text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/30"
+              >
+                <X className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+              </Button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Audio Preview - Mobile Optimized */}
+      {/* Voice Message Preview - Mobile Optimized */}
       {recordedAudioBlob && audioPreviewUrl && !isRecording && (
         <div className={cn(
-          "bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg mb-3",
-          isMobile ? "p-4 rounded-2xl" : "p-3"
+          "mb-3 p-3 border rounded-xl bg-muted/30",
+          isMobile && "p-4 rounded-2xl"
         )}>
-          <div className="flex items-center gap-3 mb-3">
-            <Mic className={cn("text-blue-600 dark:text-blue-400", isMobile ? "h-5 w-5" : "h-4 w-4")} />
-            <span className={cn(
-              "font-medium text-blue-700 dark:text-blue-400",
-              isMobile && "text-lg"
-            )}>
-              Sprachnachricht bereit
-            </span>
-            <span className="text-sm text-blue-600 dark:text-blue-400">
-              ({formatDuration(recordingDuration)})
-            </span>
-          </div>
-          
-          <audio 
-            controls 
-            className="w-full mb-3" 
-            style={{ height: isMobile ? '48px' : '32px' }}
-          >
-            <source src={audioPreviewUrl} type="audio/webm" />
-            Ihr Browser unterstützt keine Audio-Wiedergabe.
-          </audio>
-          
-          {isUploadingAudio && audioUploadProgress !== null && (
-            <div className="w-full bg-blue-100 dark:bg-blue-900 rounded-full h-2 mb-3">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                style={{width: `${audioUploadProgress}%`}}
-              ></div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Mic className={cn("text-muted-foreground", isMobile ? "h-5 w-5" : "h-4 w-4")} />
+                <span className="text-sm font-medium">Sprachnachricht</span>
+              </div>
+              <audio 
+                controls 
+                src={audioPreviewUrl} 
+                className="h-8 max-w-40"
+                preload="metadata"
+              >
+                Ihr Browser unterstützt keine Audio-Wiedergabe.
+              </audio>
             </div>
-          )}
-          
-          <div className="flex gap-3">
-            <Button 
-              variant="outline" 
-              onClick={cancelVoiceRecording}
-              disabled={isUploadingAudio}
-              className={cn(
-                isMobile ? "h-12 px-6 text-base flex-1" : "h-8 px-3 text-xs"
+            <div className="flex items-center gap-2">
+              {isUploadingAudio && audioUploadProgress !== null && (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-xs text-muted-foreground">
+                    {audioUploadProgress.toFixed(0)}%
+                  </span>
+                </div>
               )}
-            >
-              <X className={cn(isMobile ? "h-5 w-5 mr-2" : "h-3.5 w-3.5 mr-1")} />
-              Verwerfen
-            </Button>
-            <Button 
-              variant="default" 
-              onClick={handleSendVoiceMessage}
-              disabled={isUploadingAudio}
-              className={cn(
-                isMobile ? "h-12 px-6 text-base flex-1" : "h-8 px-3 text-xs"
-              )}
-            >
-              {isUploadingAudio ? (
+              {!isUploadingAudio && (
                 <>
-                  <Loader2 className={cn(isMobile ? "h-5 w-5 mr-2 animate-spin" : "h-3.5 w-3.5 mr-1 animate-spin")} />
-                  Hochladen...
-                </>
-              ) : (
-                <>
-                  <Send className={cn(isMobile ? "h-5 w-5 mr-2" : "h-3.5 w-3.5 mr-1")} />
-                  Senden
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSendVoiceMessage}
+                    disabled={isSendingMessage}
+                    className="text-green-600 hover:text-green-700 hover:bg-green-100 dark:hover:bg-green-900/30"
+                  >
+                    <Send className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+                    <span className="ml-1">Senden</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={cancelVoiceRecording}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <Trash2 className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+                  </Button>
                 </>
               )}
-            </Button>
+            </div>
           </div>
+          {isUploadingAudio && audioUploadProgress !== null && (
+            <Progress value={audioUploadProgress} className="mt-2 h-2" />
+          )}
         </div>
       )}
 
-      {/* Status Alerts - Mobile Optimized */}
-      {!canTryToSend && sessionStatus !== "active" && !isAdminView && (
-        <Alert variant={sessionStatus === "ended" ? "destructive" : "default"} className={cn("mb-3", isMobile && "rounded-2xl")}>
-          {sessionStatus === "paused" ? <PauseCircle className="h-4 w-4" /> : (sessionStatus === "ended" ? <AlertTriangle className="h-4 w-4" /> : null)}
+      {/* Admin/Moderator Hinweis */}
+      {currentUserBadges && currentUserBadges.length > 0 && !isAdminView && (
+        <div className={cn("mb-3 flex items-center gap-2", isMobile && "rounded-2xl")}>
+          <Badge 
+            variant="secondary" 
+            className={cn(
+              "text-xs px-2 py-1 flex items-center gap-1.5",
+              currentUserBadges.includes('admin') 
+                ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800" 
+                : "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-300 dark:border-yellow-800"
+            )}
+          >
+            <ShieldCheck className="h-3 w-3" />
+            {currentUserBadges.includes('admin') ? 'Admin' : 'Moderator'}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            Moderationsrechte aktiv - Klicken Sie auf Nachrichten/Teilnehmer für Optionen
+          </span>
+        </div>
+      )}
+
+      {/* Cooldown & Status Warning - Mobile Optimized */}
+      {(cooldownRemainingSeconds > 0 || sessionStatus === "paused" || sessionStatus === "ended" || isMuted) && !isAdminView && (
+        <Alert className={cn("mb-3", isMobile && "rounded-2xl")}>
+          <AlertTriangle className="h-4 w-4" />
           <AlertTitle>
-            {sessionStatus === "ended" ? "Sitzung beendet" : (sessionStatus === "paused" ? "Sitzung pausiert" : "Hinweis")}
+            {cooldownRemainingSeconds > 0 && "Nachrichtenbegrenzung"}
+            {sessionStatus === "paused" && "Simulation pausiert"}
+            {sessionStatus === "ended" && "Simulation beendet"}
+            {isMuted && "Stummgeschaltet"}
           </AlertTitle>
           <AlertDescription>
-            {sessionStatus === "ended" ? "Diese Simulation wurde vom Administrator beendet." : "Die Simulation ist aktuell pausiert."}
+            {cooldownRemainingSeconds > 0 && 
+              `Sie können in ${cooldownRemainingSeconds} Sekunden wieder schreiben. ${messageCooldownSeconds ? `Cooldown: ${messageCooldownSeconds}s` : ''}`
+            }
+            {sessionStatus === "paused" && "Die Simulation wurde pausiert. Warten Sie auf die Fortsetzung."}
+            {sessionStatus === "ended" && "Die Simulation ist beendet. Keine weiteren Nachrichten möglich."}
+            {isMuted && "Sie wurden von einem Moderator stummgeschaltet."}
           </AlertDescription>
         </Alert>
       )}
 
-      {isMuted && !isAdminView && sessionStatus === "active" && (
-        <Alert variant="destructive" className={cn("mb-3", isMobile && "rounded-2xl")}>
-          <VolumeX className="h-4 w-4" />
-          <AlertTitle>Stummgeschaltet</AlertTitle>
-          <AlertDescription>Sie wurden vom Administrator stummgeschaltet.</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Moderation Reminder - Mobile Optimized */}
-      {(currentUserBadges?.includes('admin') || currentUserBadges?.includes('moderator')) && (
-        <div className="w-full flex justify-center mb-3">
-          <div className={cn(
-            "text-xs p-2 px-4 rounded-full flex items-center gap-2 bg-muted/70 text-muted-foreground",
-            currentUserBadges?.includes('admin') ? "border-pink-500 border" : "border-yellow-400 border",
-            isMobile && "text-sm p-3 px-5 rounded-2xl"
-          )}>
-            <ShieldCheck className={cn(isMobile ? "h-4 w-4" : "h-3.5 w-3.5")} />
-            <span className={isMobile ? "hidden" : ""}>Du hast Moderationsrechte: Du kannst{' '}
-              <span className="font-medium">
-                {currentUserBadges?.includes('admin') ? 'Nachrichten verbergen & Strafen verteilen' : 'Nachrichten verbergen'}
-              </span>
-            </span>
-            <span className={isMobile ? "" : "hidden"}>Moderator</span>
-          </div>
-        </div>
-      )}
-
-      {/* Main Input Form - Mobile Optimized */}
-      <form className="flex items-end gap-2" onSubmit={handleSendMessage}>
-        <input type="file" ref={fileInputRef} onChange={handleImageFileSelected} accept="image/*" className="hidden" disabled={!showAttachmentAndEmojiButtons} />
-        
-        {/* Mobile: Attachment Button */}
-        {isMobile && showAttachmentAndEmojiButtons && (
-          <Button 
-            type="button"
-            variant="outline" 
-            size="icon" 
-            className={cn(mobileButtonClasses, "flex-shrink-0")} 
-            onClick={() => setShowMobileAttachments(!showMobileAttachments)}
-          >
-            <Plus className="h-5 w-5" />
-          </Button>
-        )}
-
-        {/* Desktop: Individual Buttons */}
-        {!isMobile && showAttachmentAndEmojiButtons && (
-          <>
-            <Button variant="outline" size="icon" className="shrink-0" title="Bild anhängen" onClick={() => fileInputRef.current?.click()}>
-              <Paperclip className="h-5 w-5" />
-            </Button>
-            
-            <Button 
-              variant="outline" 
-              size="icon" 
-              className={cn("shrink-0", isRecording ? "bg-red-100 border-red-500 text-red-600" : "")} 
-              title={isRecording ? "Aufnahme läuft..." : "Sprachnachricht aufnehmen"}
-              onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
-              disabled={recordedAudioBlob !== null}
+      {/* Main Input Area */}
+      <form onSubmit={handleSendMessage} className="space-y-0">
+        <div className="flex items-end gap-2">
+          {/* Mobile Attachment Button */}
+          {isMobile && showAttachmentAndEmojiButtons && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(mobileButtonClasses, "flex-shrink-0")}
+              onClick={() => setShowMobileAttachments(!showMobileAttachments)}
             >
-              {isRecording ? (
-                <Square className="h-5 w-5" />
-              ) : (
-                <Mic className="h-5 w-5" />
-              )}
+              <Plus className="h-5 w-5" />
             </Button>
+          )}
 
-            <div className="relative">
-              <Button 
-                variant="outline" 
-                size="icon" 
-                className="shrink-0" 
-                title="Emoji einfügen"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+          {/* Desktop Attachment Buttons */}
+          {!isMobile && showAttachmentAndEmojiButtons && (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(mobileButtonClasses, "flex-shrink-0")}
+                onClick={() => fileInputRef.current?.click()}
+                title="Bild anhängen"
               >
-                <Smile className="h-5 w-5" />
+                <Paperclip className="h-4 w-4" />
               </Button>
               
-              {/* Neue EmojiPicker-Komponente für Desktop */}
-              <EmojiPicker
-                isOpen={showEmojiPicker}
-                onClose={() => setShowEmojiPicker(false)}
-                onEmojiSelect={handleEmojiSelect}
-                position="top"
-                align="start"
-                isMobile={false}
-              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(mobileButtonClasses, "flex-shrink-0")}
+                onClick={startVoiceRecording}
+                disabled={recordedAudioBlob !== null}
+                title="Sprachnachricht aufnehmen"
+              >
+                <Mic className="h-4 w-4" />
+              </Button>
+
+              {/* Emoji Button - LINKS der Eingabe */}
+              <div className="relative">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(mobileButtonClasses, "flex-shrink-0")}
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  title="Emoji hinzufügen"
+                  data-emoji-trigger="true"
+                >
+                  <Smile className="h-4 w-4" />
+                </Button>
+                
+                {/* Desktop Emoji-Picker */}
+                <EnhancedEmojiPicker
+                  isOpen={showEmojiPicker}
+                  onClose={() => setShowEmojiPicker(false)}
+                  onEmojiSelect={handleEmojiSelect}
+                  variant="input"
+                  position="top"
+                  align="start"
+                />
+              </div>
+            </>
+          )}
+
+          {/* Text Input */}
+          <div className="flex-1 min-w-0 relative">
+            <Textarea
+              ref={inputRef}
+              placeholder={inputPlaceholderText}
+              value={newMessage}
+              onChange={handleMessageChange}
+              disabled={isInputDisabled}
+              rows={1}
+              className={cn(
+                "resize-none border-2 transition-colors pr-8", // Mehr Platz rechts für Markdown-Info
+                "focus:border-primary focus:ring-0",
+                isMobile ? "text-base min-h-[44px] text-[16px] rounded-2xl" : "text-base",
+                isInputDisabled && "opacity-50"
+              )}
+              style={{
+                minHeight: isMobile ? '44px' : '40px',
+                maxHeight: isMobile ? '120px' : '40px', // 5 lines * 24px = 120px für Mobile
+                overflowY: isMobile ? 'auto' : 'hidden'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (isMobile) {
+                    // Mobile: Enter = neue Zeile, Shift+Enter = senden (oder nur senden via Button)
+                    if (e.shiftKey) {
+                      e.preventDefault();
+                      if (!isSendButtonDisabled) {
+                        handleSendMessage();
+                      }
+                    }
+                    // Normale Enter-Taste: neue Zeile (default Verhalten)
+                  } else {
+                    // Desktop: Enter = senden, Shift+Enter = neue Zeile
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      if (!isSendButtonDisabled) {
+                        handleSendMessage();
+                      }
+                    }
+                    // Shift+Enter: neue Zeile (default Verhalten)
+                  }
+                }
+              }}
+            />
+            
+            {/* Markdown Info - dezent in der rechten unteren Ecke */}
+            <div className="absolute bottom-1 right-1">
+              <MarkdownInfo size="sm" />
             </div>
-          </>
-        )}
+          </div>
 
-        {/* Input Field */}
-        <Input
-          ref={inputRef}
-          id="message-input"
-          type="text"
-          placeholder={inputPlaceholderText}
-          className={cn("flex-1", inputClasses)}
-          value={newMessage}
-          onChange={handleMessageChange}
-          disabled={isInputDisabled}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && isMobile) {
-              e.preventDefault();
-              handleSendMessage();
-            }
-          }}
-        />
+          {/* Mobile Emoji Button - RECHTS nur für Mobile */}
+          {isMobile && showAttachmentAndEmojiButtons && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(mobileButtonClasses, "flex-shrink-0")}
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              title="Emoji hinzufügen"
+              data-emoji-trigger="true"
+            >
+              <Smile className="h-4 w-4" />
+            </Button>
+          )}
 
-        {/* Send/Voice Button */}
-        <Button 
-          type="submit" 
-          size="icon" 
-          className={cn("flex-shrink-0 bg-primary hover:bg-primary/90", mobileButtonClasses)} 
-          disabled={isSendButtonDisabled} 
-          aria-label="Senden"
-        >
-          {isSendingMessage && selectedImageFile && imageUploadProgress !== null && imageUploadProgress < 100 ? 
-            <ImageIconLucide className="h-5 w-5 animate-pulse" /> : 
-            <Send className="h-5 w-5" />
-          }
-        </Button>
+          {/* Send Button */}
+          <Button
+            type="submit"
+            disabled={isSendButtonDisabled}
+            className={cn(
+              mobileButtonClasses,
+              "flex-shrink-0 transition-all duration-200",
+              isSendButtonDisabled 
+                ? "opacity-50 cursor-not-allowed" 
+                : "hover:scale-105 active:scale-95"
+            )}
+          >
+            {isSendingMessage ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </form>
 
-      {/* Mobile Attachments Popover */}
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageFileSelected}
+        className="hidden"
+      />
+
+      {/* Mobile Attachments Menu */}
       {isMobile && showMobileAttachments && (
         <div className="absolute bottom-full left-0 right-0 mb-2 bg-card rounded-2xl shadow-lg border p-3 z-10">
           <div className="grid grid-cols-3 gap-3">
@@ -561,6 +641,7 @@ const MessageInputBar = memo(function MessageInputBar({
                 setShowEmojiPicker(true);
                 setShowMobileAttachments(false);
               }}
+              data-emoji-trigger="true"
             >
               <Smile className="h-6 w-6" />
               <span className="text-xs">Emoji</span>
@@ -568,31 +649,9 @@ const MessageInputBar = memo(function MessageInputBar({
           </div>
         </div>
       )}
-
-      {/* Mobile Emoji Picker - Full Screen */}
-      {isMobile && (
-        <EmojiPicker
-          isOpen={showEmojiPicker}
-          onClose={() => setShowEmojiPicker(false)}
-          onEmojiSelect={handleEmojiSelect}
-          isMobile={true}
-        />
-      )}
-
-      {/* Cooldown Messages */}
-      {cooldownRemainingSeconds > 0 && canTryToSend && !isAdminView && sessionStatus === "active" && !isMuted && (
-        <p className={cn("text-xs text-muted-foreground mt-2 text-right", isMobile && "text-sm")}>
-          Nächste Nachricht in {cooldownRemainingSeconds}s
-        </p>
-      )}
-      {messageCooldownSeconds && messageCooldownSeconds > 0 && cooldownRemainingSeconds <= 0 && canTryToSend && !isAdminView && sessionStatus === "active" && !isMuted && (
-        <p className={cn("text-xs text-muted-foreground mt-2 text-right", isMobile && "text-sm")}>
-          Nachrichten Cooldown: {messageCooldownSeconds}s
-        </p>
-      )}
     </div>
   );
-}, areEqual); // Verwende die optimierte Vergleichsfunktion
+}, areEqual);
 
 MessageInputBar.displayName = "MessageInputBar";
 

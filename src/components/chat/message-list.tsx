@@ -5,7 +5,7 @@ import { memo } from 'react';
 import { MessageSquare } from "lucide-react";
 import { MessageBubble } from './message-bubble';
 import type { DisplayMessage, Participant } from '@/lib/types';
-import type { ParticipantColor, emojiCategories as EmojiCategoriesType } from '@/lib/config';
+import type { ParticipantColor } from '@/lib/config';
 import { cn } from '@/lib/utils';
 
 interface MessageListProps {
@@ -19,7 +19,6 @@ interface MessageListProps {
   onReaction: (messageId: string, emoji: string) => Promise<void>; 
   reactingToMessageId: string | null; 
   setReactingToMessageId: (messageId: string | null) => void;
-  emojiCategories: typeof EmojiCategoriesType; 
   messagesEndRef: RefObject<HTMLDivElement>;
   isChatDataLoading: boolean;
   isAdminView?: boolean;
@@ -47,7 +46,6 @@ const MessageList = memo(function MessageList({
   onReaction, 
   reactingToMessageId,
   setReactingToMessageId,
-  emojiCategories, 
   messagesEndRef,
   isChatDataLoading,
   isAdminView = false,
@@ -101,7 +99,6 @@ const MessageList = memo(function MessageList({
               onReaction={onReaction} 
               reactingToMessageId={reactingToMessageId}
               setReactingToMessageId={setReactingToMessageId}
-              emojiCategories={emojiCategories}
               isAdminView={isAdminView}
               onOpenImageModal={onOpenImageModal}
               onOpenDm={onOpenDm}

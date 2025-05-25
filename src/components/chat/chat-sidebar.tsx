@@ -345,7 +345,7 @@ const ChatSidebar = memo(function ChatSidebar({
 
               return (
                 <div key={p.id} className={cn(
-                  "flex items-center gap-3 p-2 rounded-md hover:bg-muted/50",
+                  "flex items-center gap-3 p-2 rounded-md hover:bg-muted/80 dark:hover:bg-muted/50 transition-colors",
                   isBlockedByCurrentUser && "opacity-60 hover:opacity-75"
                 )}>
                   <Avatar className={cn("h-9 w-9 border-2", pColor.ring)}>
@@ -354,9 +354,9 @@ const ChatSidebar = memo(function ChatSidebar({
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium flex items-center flex-wrap">
-                      <span className="text-neutral-200 truncate">{p.displayName}</span>
-                      {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-purple-700 text-white border border-purple-900/50 shadow-sm flex items-center gap-1"><BotIcon className="h-3 w-3" />BOT</Badge>}
-                      {isAdminParticipant && <Badge variant="destructive" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-red-700 text-white border border-red-900/50 shadow-sm flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
+                      <span className={cn("truncate", pColor.nameText)}>{p.displayName}</span>
+                      {p.isBot && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-purple-600/90 dark:bg-purple-700 text-white border border-purple-700/50 dark:border-purple-900/50 shadow-sm flex items-center gap-1"><BotIcon className="h-3 w-3" />BOT</Badge>}
+                      {isAdminParticipant && <Badge variant="outline" className="ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight bg-red-600/90 dark:bg-red-700 text-white border border-red-700/50 dark:border-red-900/50 shadow-sm flex items-center gap-1"><Crown className="h-3 w-3" />ADMIN</Badge>}
                       {p.userId === currentUserId && !isAdminView && <Badge variant="secondary" className="ml-1.5 text-xs px-1.5 py-0">Du</Badge>}
                       {isCurrentParticipantMuted && !p.isBot && <VolumeX className="inline h-3 w-3 text-destructive ml-1.5" />}
                       {isBlockedByCurrentUser && (
@@ -378,8 +378,8 @@ const ChatSidebar = memo(function ChatSidebar({
                           variant="default"
                           className={cn(
                             "ml-1.5 text-xs px-1.5 py-0.5 h-5 leading-tight shadow-sm flex items-center gap-1",
-                            badge === 'admin' && "bg-pink-500 hover:bg-pink-600 text-white",
-                            badge === 'moderator' && "bg-yellow-400 hover:bg-yellow-500 text-black"
+                            badge === 'admin' && "bg-pink-600/90 dark:bg-pink-500 hover:bg-pink-700/90 dark:hover:bg-pink-600 text-white",
+                            badge === 'moderator' && "bg-amber-600/90 dark:bg-yellow-400 hover:bg-amber-700/90 dark:hover:bg-yellow-500 text-white dark:text-black"
                           )}
                           title={`${badge.charAt(0).toUpperCase() + badge.slice(1)}-Badge`}
                         >
@@ -394,7 +394,7 @@ const ChatSidebar = memo(function ChatSidebar({
                       <Badge variant={p.activePenalty.type === 'red' ? "destructive" : "default"}
                         className={cn(
                           "mt-1 text-xs",
-                          p.activePenalty.type === 'yellow' && "bg-yellow-500 text-black"
+                          p.activePenalty.type === 'yellow' && "bg-amber-600/90 dark:bg-yellow-500 text-white dark:text-black"
                         )}
                       >
                         {p.activePenalty.type === 'yellow' ? 'Gelbe Karte' : 'Rote Karte'}
@@ -829,8 +829,8 @@ export const UserInfoBox: React.FC<UserInfoBoxProps> = ({
                 variant="default"
                 className={cn(
                   "text-xs px-1.5 py-0.5",
-                  badge === 'admin' && "bg-pink-500 hover:bg-pink-600 text-white",
-                  badge === 'moderator' && "bg-yellow-400 hover:bg-yellow-500 text-black"
+                  badge === 'admin' && "bg-pink-600/90 dark:bg-pink-500 hover:bg-pink-700/90 dark:hover:bg-pink-600 text-white",
+                  badge === 'moderator' && "bg-amber-600/90 dark:bg-yellow-400 hover:bg-amber-700/90 dark:hover:bg-yellow-500 text-white dark:text-black"
                 )}
                 title={`${badge.charAt(0).toUpperCase() + badge.slice(1)}-Badge`}
               >

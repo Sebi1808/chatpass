@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 3003",
+    "dev2": "next dev --turbopack -p 3004",
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
@@ -41,6 +42,8 @@
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "dotenv": "^16.5.0",
+    "emojibase": "^16.0.0",
+    "emojibase-data": "^16.0.3",
     "firebase": "^11.7.0",
     "framer-motion": "^12.12.2",
     "genkit": "^1.8.0",

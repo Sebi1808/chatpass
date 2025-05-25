@@ -15,6 +15,7 @@ interface MobileChatLayoutProps {
   children: React.ReactNode;
   sidebar: React.ReactNode;
   messageInput: React.ReactNode;
+  emojiPicker?: React.ReactNode;
   participants: Participant[];
   unreadDms: number;
   showModeratorOverview?: () => void;
@@ -34,6 +35,7 @@ export const MobileChatLayout = ({
   children, 
   sidebar, 
   messageInput, 
+  emojiPicker,
   participants, 
   unreadDms,
   showModeratorOverview,
@@ -100,7 +102,7 @@ export const MobileChatLayout = ({
           
           {/* Expandable User Info */}
           {showUserInfo && currentParticipantDetails && (
-            <div className="p-3 border-t bg-muted/30 animate-in slide-in-from-top duration-200">
+            <div className="p-3 border-t bg-muted/50 dark:bg-muted/30 animate-in slide-in-from-top duration-200">
               {/* User Info */}
               <div className="flex items-center gap-3 mb-3">
                 <Avatar className="h-10 w-10 border-2 border-border">
@@ -224,13 +226,20 @@ export const MobileChatLayout = ({
           )}
         </div>
 
-        {/* Chat Messages Area - Full Height */}
-        <div className="flex-1 relative overflow-hidden">
+        {/* Chat Messages Area - nimmt verfügbaren Raum */}
+        <div className="flex-1 overflow-hidden">
           {children}
         </div>
 
-        {/* Message Input - Fixed Bottom */}
-        <div className="border-t bg-background pb-safe-area-inset-bottom">
+        {/* Emoji-Picker - Fix in der Mitte wenn geöffnet */}
+        {emojiPicker && (
+          <div className="h-64 border-t border-b bg-muted/40 dark:bg-background flex-shrink-0">
+            {emojiPicker}
+          </div>
+        )}
+
+        {/* Message Input - Fix unten */}
+        <div className="border-t bg-muted/40 dark:bg-background pb-safe-area-inset-bottom flex-shrink-0">
           {messageInput}
         </div>
 
