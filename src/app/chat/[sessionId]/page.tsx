@@ -2417,7 +2417,7 @@ export function ChatPageContent({
           messageInput={messageInput}
           participants={participants}
           unreadDms={unreadDms.length}
-          showModeratorOverview={() => setShowModeratorOverviewDialog(true)}
+          showModeratorOverview={handleShowModeratorOverview}
           currentUserBadges={currentUserBadges}
           reportedMessagesCount={reportedMessages.length}
           currentParticipantDetails={currentParticipantDetails}
@@ -3049,37 +3049,39 @@ export function ChatPageContent({
       )}
 
       {/* Moderationsübersicht Komponente */}
-      <ModerationOverview
-        showModeratorOverviewDialog={showModeratorOverviewDialog}
-        setShowModeratorOverviewDialog={setShowModeratorOverviewDialog}
-        hasModPermissions={hasModPermissions}
-        currentUserBadges={currentUserBadges}
-        sessionId={sessionId}
-        participants={participants}
-        reportedMessages={reportedMessages}
-        isLoadingReportedMessages={isLoadingReportedMessages}
-        loadReportedMessages={loadReportedMessages}
-        handleDismissReport={handleDismissReport}
-        toggleBlurMessage={toggleBlurMessage}
-        isTogglingBlur={isTogglingBlur}
-        handleApplyPenalty={handleApplyPenalty}
-        handleShowParticipantMessages={handleShowParticipantMessages}
-        loadAndMarkDmThread={loadAndMarkDmThread}
-        getParticipantColorClasses={getParticipantColorClasses}
-        toast={toast}
-        handleAssignBadge={handleAssignBadge}
-        handleRemoveBadge={handleRemoveBadge}
-        handleToggleMute={handleToggleMute}
-        handleRemoveParticipant={handleRemoveParticipant}
-        handleClearAllBlurs={handleClearAllBlurs}
-        isAdjustingCooldown={isAdjustingCooldown}
-        handleAdjustCooldown={handleAdjustCooldown}
-        sessionData={sessionData}
-        userId={userId}
-        closeAllModalsExceptDMs={closeAllModalsExceptDMs}
-      />
+      {!isMobile && (
+        <ModerationOverview
+          showModeratorOverviewDialog={showModeratorOverviewDialog}
+          setShowModeratorOverviewDialog={setShowModeratorOverviewDialog}
+          hasModPermissions={hasModPermissions}
+          currentUserBadges={currentUserBadges}
+          sessionId={sessionId}
+          participants={participants}
+          reportedMessages={reportedMessages}
+          isLoadingReportedMessages={isLoadingReportedMessages}
+          loadReportedMessages={loadReportedMessages}
+          handleDismissReport={handleDismissReport}
+          toggleBlurMessage={toggleBlurMessage}
+          isTogglingBlur={isTogglingBlur}
+          handleApplyPenalty={handleApplyPenalty}
+          handleShowParticipantMessages={handleShowParticipantMessages}
+          loadAndMarkDmThread={loadAndMarkDmThread}
+          getParticipantColorClasses={getParticipantColorClasses}
+          toast={toast}
+          handleAssignBadge={handleAssignBadge}
+          handleRemoveBadge={handleRemoveBadge}
+          handleToggleMute={handleToggleMute}
+          handleRemoveParticipant={handleRemoveParticipant}
+          handleClearAllBlurs={handleClearAllBlurs}
+          isAdjustingCooldown={isAdjustingCooldown}
+          handleAdjustCooldown={handleAdjustCooldown}
+          sessionData={sessionData}
+          userId={userId}
+          closeAllModalsExceptDMs={closeAllModalsExceptDMs}
+        />
+      )}
 
-      {/* NEU: Mobile Moderationsübersicht Komponente */}
+      {/* Mobile Moderationsübersicht Komponente */}
       {isMobile && (
         <MobileModerationOverview
           isOpen={showMobileModeratorOverview}
@@ -3095,7 +3097,7 @@ export function ChatPageContent({
           toggleBlurMessage={toggleBlurMessage}
           isTogglingBlur={isTogglingBlur}
           handleApplyPenalty={handleApplyPenalty}
-          handleShowParticipantMessages={handleShowParticipantMessages} // Evtl. direkt in MobileModOverview behandeln
+          handleShowParticipantMessages={handleShowParticipantMessages}
           loadAndMarkDmThread={loadAndMarkDmThread}
           getParticipantColorClasses={getParticipantColorClasses}
           toast={toast}
@@ -3114,46 +3116,6 @@ export function ChatPageContent({
           loadActivePenalties={loadActivePenalties}
           loadHiddenMessages={loadHiddenMessages}
           penaltyTimers={penaltyTimers}
-        />
-      )}
-
-      {/* Moderationsübersicht Komponente (NUR DESKTOP) */}
-      {!isMobile && (
-        <ModerationOverview
-          showModeratorOverviewDialog={showModeratorOverviewDialog}
-          setShowModeratorOverviewDialog={setShowModeratorOverviewDialog}
-          hasModPermissions={hasModPermissions}
-          currentUserBadges={currentUserBadges}
-          sessionId={sessionId}
-          participants={participants}
-          reportedMessages={reportedMessages} // Wird weiterhin für Desktop benötigt
-          isLoadingReportedMessages={isLoadingReportedMessages} // Wird weiterhin für Desktop benötigt
-          loadReportedMessages={loadReportedMessages} // Wird weiterhin für Desktop benötigt
-          handleDismissReport={handleDismissReport}
-          toggleBlurMessage={toggleBlurMessage}
-          isTogglingBlur={isTogglingBlur}
-          handleApplyPenalty={handleApplyPenalty}
-          handleShowParticipantMessages={handleShowParticipantMessages}
-          loadAndMarkDmThread={loadAndMarkDmThread}
-          getParticipantColorClasses={getParticipantColorClasses}
-          toast={toast}
-          handleAssignBadge={handleAssignBadge}
-          handleRemoveBadge={handleRemoveBadge}
-          handleToggleMute={handleToggleMute}
-          handleRemoveParticipant={handleRemoveParticipant}
-          handleClearAllBlurs={handleClearAllBlurs}
-          isAdjustingCooldown={isAdjustingCooldown}
-          handleAdjustCooldown={handleAdjustCooldown}
-          sessionData={sessionData}
-          userId={userId}
-          // Die folgenden Props sind nur für MobileModerationOverview und werden hier entfernt
-          // activePenalties={activePenalties}
-          // hiddenMessages={hiddenMessages}
-          // isLoadingHiddenMessages={isLoadingHiddenMessages}
-          // loadActivePenalties={loadActivePenalties}
-          // loadHiddenMessages={loadHiddenMessages}
-          // penaltyTimers={penaltyTimers}
-          closeAllModalsExceptDMs={closeAllModalsExceptDMs} // Wird von Desktop-Version verwendet
         />
       )}
     </div>
