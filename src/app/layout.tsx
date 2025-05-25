@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+import { ThemeProvider } from "@/components/ui/theme-provider";
+import { cn } from "@/lib/utils";
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -9,20 +11,36 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'ChatSim Schularena',
-  description: 'Plattform für schulische Chat-Simulationen',
+  title: 'Studio Chat',
+  description: 'Modulare Chat-Anwendung für interaktive Szenarien',
+  viewport: 'width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: 'white' },
+    { media: '(prefers-color-scheme: dark)', color: '#000212' },
+  ],
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="de" className="dark">
-      <body className={`${inter.variable} font-sans antialiased`}>
-        {children}
-        <Toaster />
+    <html lang="de" suppressHydrationWarning className="dark">
+      <head>
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="mobile-web-app-capable" content="yes" />
+      </head>
+      <body className={cn(
+        "min-h-screen bg-background font-sans antialiased",
+        inter.variable
+      )}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          <Toaster />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -88,16 +88,28 @@ const MessageBubble = memo(function MessageBubble({
   // console.log(`MessageBubble for ${message.id} by ${message.senderName}, color:`, bubbleColor, "isOwn:", isOwn);
 
   const handleLocalEmojiSelectForReaction = async (emoji: string) => {
-    await onReaction(message.id, emoji);
-    setReactingToMessageId(null); // Close picker after reaction
+    console.log('[DEBUG] handleLocalEmojiSelectForReaction called with emoji:', emoji, 'for message:', message.id);
+    await onReaction(message.id, emoji); 
+    setReactingToMessageId(null); // Close after selecting an emoji
   };
 
   const handleOpenReactionPicker = (e: MouseEvent) => {
-    e.stopPropagation();
+    console.log('[DEBUG] handleOpenReactionPicker called for message:', message.id);
+    e.stopPropagation(); // Prevent triggering other handlers
     setReactingToMessageId(reactingToMessageId === message.id ? null : message.id);
   };
 
   const handleDirectMessagePlaceholder = () => {
+    console.log('[DM Debug] handleDirectMessagePlaceholder called');
+    console.log('[DM Debug] onOpenDm exists:', !!onOpenDm);
+    console.log('[DM Debug] message data:', {
+      senderUserId: message.senderUserId,
+      senderName: message.senderName,
+      avatarFallback: message.avatarFallback,
+      senderType: message.senderType,
+      currentUserId: currentUserId
+    });
+    
     if (onOpenDm) {
       if (!message.senderUserId || !message.senderName || typeof message.avatarFallback === 'undefined') {
         toast({ title: "DM Fehler", description: "Sender-Informationen unvollständig für DM." });
@@ -117,6 +129,7 @@ const MessageBubble = memo(function MessageBubble({
         roleId: "unknown",
       };
       if (message.senderType !== 'system' && message.senderUserId !== currentUserId) {
+         console.log('[DM Debug] Calling onOpenDm with recipient:', recipient);
          onOpenDm(recipient);
       } else if (message.senderUserId === currentUserId) {
         toast({title: "Hinweis", description: "Du kannst dir nicht selbst eine DM schreiben."});
@@ -481,58 +494,69 @@ const MessageBubble = memo(function MessageBubble({
                     </Button>
                   </>
                 )}
-                <Button variant="ghost" size="sm" className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")} onClick={(e) => { e.stopPropagation(); handleOpenReactionPicker(e); }} aria-label="Reaktion hinzufügen">
-                  <Smile className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reaktion</span>
-                </Button>
+                
+                {/* Emoji-Picker-Popover */}
+                <Popover open={reactingToMessageId === message.id} onOpenChange={(open) => {
+                  if (!open && reactingToMessageId === message.id) {
+                    setReactingToMessageId(null);
+                  }
+                }}>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className={cn("h-auto px-1.5 py-0.5", "hover:bg-black/10 dark:hover:bg-white/10 text-current/80 hover:text-current")} 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleOpenReactionPicker(e); 
+                      }} 
+                      aria-label="Reaktion hinzufügen"
+                    >
+                      <Smile className="h-3.5 w-3.5 mr-1" /> <span className="text-xs">Reaktion</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs z-20"
+                    side="top"
+                    align={isOwn ? "end" : "start"}
+                    onClick={(e) => e.stopPropagation()}
+                    onInteractOutside={() => {if(reactingToMessageId === message.id) setReactingToMessageId(null)}}
+                  >
+                    <Tabs defaultValue={emojiCategories[0].name} className="w-full">
+                      <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+                        {emojiCategories.map(category => (
+                          <TabsTrigger key={category.name} value={category.name} className="text-xl p-1.5 h-9" title={category.name}>
+                            {category.icon}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                      {emojiCategories.map(category => (
+                        <TabsContent key={category.name} value={category.name} className="mt-0">
+                          <ScrollArea className="h-48">
+                            <div className="grid grid-cols-8 gap-0.5 p-2">
+                              {category.emojis.map(emoji => (
+                                <Button
+                                  key={emoji}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-xl p-0 h-9 w-9 hover:bg-muted/50"
+                                  onClick={() => handleLocalEmojiSelectForReaction(emoji)}
+                                >
+                                  {emoji}
+                                </Button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  </PopoverContent>
+                </Popover>
               </div>
             </>
           )}
         </div>
 
-        {/* Emoji-Picker-Popover */}
-        <Popover open={reactingToMessageId === message.id} onOpenChange={(open) => {
-          if (!open && reactingToMessageId === message.id) { // Only close if this specific popover was open
-            setReactingToMessageId(null);
-          }
-        }}>
-          <PopoverContent
-            className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs z-20"
-            side="top"
-            align={isOwn ? "end" : "start"}
-            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside popover
-            onInteractOutside={() => {if(reactingToMessageId === message.id) setReactingToMessageId(null)}}
-          >
-            <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-              <TabsList className="grid w-full grid-cols-5 h-auto p-1">
-                {emojiCategories.map(category => (
-                  <TabsTrigger key={category.name} value={category.name} className="text-xl p-1.5 h-9" title={category.name}>
-                    {category.icon}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {emojiCategories.map(category => (
-                <TabsContent key={category.name} value={category.name} className="mt-0">
-                  <ScrollArea className="h-48">
-                    <div className="grid grid-cols-8 gap-0.5 p-2">
-                      {category.emojis.map(emoji => (
-                        <Button
-                          key={emoji}
-                          variant="ghost"
-                          size="icon"
-                          className="text-xl p-0 h-9 w-9 hover:bg-muted/50" // Slightly larger emoji text
-                          onClick={() => handleLocalEmojiSelectForReaction(emoji)}
-                        >
-                          {emoji}
-                        </Button>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-              ))}
-            </Tabs>
-          </PopoverContent>
-        </Popover>
-        
         {/* Blur Overlay - NEU */}
         {message.isBlurred && !isLocallyUnblurred && (
           <div 

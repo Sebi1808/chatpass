@@ -223,21 +223,23 @@ export function ModerationOverview({
   if (!showModeratorOverviewDialog || !hasModPermissions) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowModeratorOverviewDialog(false)}>
-      <Card className="w-full max-w-7xl shadow-2xl relative bg-card text-card-foreground max-h-[95vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between border-b">
-          <CardTitle className="text-2xl flex items-center">
-            <Crown className="h-7 w-7 mr-3 text-pink-500" /> Moderationsübersicht
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4" onClick={() => setShowModeratorOverviewDialog(false)}>
+      <Card className="w-full max-w-full sm:max-w-7xl shadow-2xl relative bg-card text-card-foreground max-h-[95vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between border-b px-4 sm:px-6">
+          <CardTitle className="text-lg sm:text-2xl flex items-center">
+            <Crown className="h-5 w-5 sm:h-7 sm:w-7 mr-2 sm:mr-3 text-pink-500" /> 
+            <span className="hidden sm:inline">Moderationsübersicht</span>
+            <span className="sm:hidden">Moderation</span>
           </CardTitle>
-          <Button variant="ghost" size="icon" onClick={() => setShowModeratorOverviewDialog(false)} className="h-9 w-9">
-            <XIcon className="h-6 w-6" />
+          <Button variant="ghost" size="icon" onClick={() => setShowModeratorOverviewDialog(false)} className="h-8 w-8 sm:h-9 sm:w-9">
+            <XIcon className="h-5 w-5 sm:h-6 sm:w-6" />
           </Button>
         </CardHeader>
         <CardContent className="p-0">
           <Tabs value={currentModerationTab} onValueChange={setCurrentModerationTab} className="w-full">
-            <div className="flex items-center justify-between px-6 py-3 border-b bg-muted/30">
-              <TabsList className="grid grid-cols-6 h-12">
-                <TabsTrigger value="reported" className="relative text-sm font-medium">
+            <div className="flex flex-col sm:flex-row items-center justify-between px-4 sm:px-6 py-3 border-b bg-muted/30">
+              <TabsList className="grid grid-cols-3 sm:grid-cols-6 h-auto w-full sm:w-auto gap-1 p-1">
+                <TabsTrigger value="reported" className="relative text-sm font-medium py-2">
                   Meldungen
                   {reportedMessages.length > 0 && (
                     <Badge variant="destructive" className="ml-2 h-5 min-w-[20px] text-xs">
@@ -245,9 +247,9 @@ export function ModerationOverview({
                     </Badge>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="participants" className="text-sm font-medium">Teilnehmer</TabsTrigger>
-                <TabsTrigger value="moderators" className="text-sm font-medium">Moderatoren</TabsTrigger>
-                <TabsTrigger value="penalties" className="relative text-sm font-medium">
+                <TabsTrigger value="participants" className="text-sm font-medium py-2">Teilnehmer</TabsTrigger>
+                <TabsTrigger value="moderators" className="text-sm font-medium py-2">Moderatoren</TabsTrigger>
+                <TabsTrigger value="penalties" className="relative text-sm font-medium py-2">
                   Strafen
                   {activePenalties.length > 0 && (
                     <Badge variant="secondary" className="ml-2 h-5 min-w-[20px] text-xs">
@@ -255,9 +257,9 @@ export function ModerationOverview({
                     </Badge>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="hidden" className="relative text-sm font-medium">
+                <TabsTrigger value="hidden" className="relative text-sm font-medium py-2">
                   <span className="flex items-center gap-2">
-                    Ausgeblendete Nachrichten
+                    Ausgeblendet
                     {hiddenMessages.length > 0 && (
                       <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-xs font-medium bg-secondary text-secondary-foreground rounded-full">
                         {hiddenMessages.length}
@@ -265,11 +267,11 @@ export function ModerationOverview({
                     )}
                   </span>
                 </TabsTrigger>
-                <TabsTrigger value="blocking" className="text-sm font-medium">Blockiert</TabsTrigger>
+                <TabsTrigger value="blocking" className="text-sm font-medium py-2">Blockiert</TabsTrigger>
               </TabsList>
               
-              {/* Navigation Buttons */}
-              <div className="flex gap-2">
+              {/* Navigation Buttons - nur auf Desktop */}
+              <div className="hidden sm:flex gap-2 mt-0">
                 <Button variant="outline" size="sm" onClick={() => {
                   const tabs = ["reported", "participants", "moderators", "penalties", "hidden", "blocking"];
                   const currentIndex = tabs.indexOf(currentModerationTab);
@@ -287,22 +289,42 @@ export function ModerationOverview({
               </div>
             </div>
 
+            {/* Mobile Navigation Buttons */}
+            <div className="sm:hidden flex justify-between px-4 py-2 border-b">
+              <Button variant="outline" size="sm" onClick={() => {
+                const tabs = ["reported", "participants", "moderators", "penalties", "hidden", "blocking"];
+                const currentIndex = tabs.indexOf(currentModerationTab);
+                if (currentIndex > 0) setCurrentModerationTab(tabs[currentIndex - 1]);
+              }} className="h-10 px-3">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                const tabs = ["reported", "participants", "moderators", "penalties", "hidden", "blocking"];
+                const currentIndex = tabs.indexOf(currentModerationTab);
+                if (currentIndex < tabs.length - 1) setCurrentModerationTab(tabs[currentIndex + 1]);
+              }} className="h-10 px-3">
+                <ArrowLeft className="h-5 w-5 rotate-180" />
+              </Button>
+            </div>
+
             {/* Tab: Gemeldete Nachrichten */}
             <TabsContent value="reported" className="mt-0">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold">Gemeldete Nachrichten ({reportedMessages.length})</h3>
+              <div className="p-4 sm:p-6">
+                <div className="flex items-center justify-between mb-4 sm:mb-6">
+                  <h3 className="text-lg sm:text-xl font-semibold">Gemeldete Nachrichten ({reportedMessages.length})</h3>
                   <Button 
                     variant="outline" 
-                    size="default" 
+                    size="sm"
                     onClick={loadReportedMessages}
                     disabled={isLoadingReportedMessages}
+                    className="h-9 px-3"
                   >
-                    {isLoadingReportedMessages ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
-                    Aktualisieren
+                    {isLoadingReportedMessages ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+                    <span className="hidden sm:inline">Aktualisieren</span>
+                    <span className="sm:hidden">Neu</span>
                   </Button>
                 </div>
-                <ScrollArea className="h-[65vh]">
+                <ScrollArea className="h-[60vh] sm:h-[65vh]">
                   {isLoadingReportedMessages ? (
                     <div className="flex items-center justify-center py-12">
                       <Loader2 className="h-8 w-8 animate-spin mr-3" />
@@ -353,8 +375,8 @@ export function ModerationOverview({
                                 </div>
                               </div>
                               
-                              {/* Button-Leiste - Fixe Breite rechts, alle Buttons in einer horizontalen Reihe */}
-                              <div className="flex gap-1.5 items-start shrink-0 flex-wrap sm:flex-nowrap">
+                              {/* Optimierte Buttons für mobile Geräte */}
+                              <div className="flex gap-1.5 sm:gap-2 items-center flex-wrap">
                                 <Button 
                                   variant="outline"
                                   size="icon"
@@ -362,7 +384,7 @@ export function ModerationOverview({
                                     setShowModeratorOverviewDialog(false);
                                     loadAndMarkDmThread(msg.senderUserId!)
                                   }}
-                                  className="h-9 w-9 text-foreground hover:bg-muted border-neutral-400"
+                                  className="h-10 w-10 sm:h-9 sm:w-9 text-foreground hover:bg-muted border-neutral-400 touch-manipulation"
                                   title="Direktnachricht senden"
                                   disabled={!msg.senderUserId}
                                 >
@@ -372,7 +394,7 @@ export function ModerationOverview({
                                   variant="outline"
                                   size="icon"
                                   onClick={() => handleShowParticipantMessages(participants.find(p => p.userId === msg.senderUserId)!)}
-                                  className="h-9 w-9 text-blue-600 border-blue-500 hover:bg-blue-500/10"
+                                  className="h-10 w-10 sm:h-9 sm:w-9 text-blue-600 border-blue-500 hover:bg-blue-500/10 touch-manipulation"
                                   disabled={!participants.find(p => p.userId === msg.senderUserId)}
                                   title="Alle Nachrichten anzeigen"
                                 >
@@ -383,7 +405,7 @@ export function ModerationOverview({
                                   size="icon"
                                   onClick={() => toggleBlurMessage(msg.id)}
                                   disabled={isTogglingBlur === msg.id}
-                                  className={cn("h-9 w-9", 
+                                  className={cn("h-10 w-10 sm:h-9 sm:w-9 touch-manipulation", 
                                     msg.isBlurred 
                                       ? "bg-orange-500 hover:bg-orange-600 text-white border-orange-500" 
                                       : "border-orange-500 text-orange-600 hover:bg-orange-500/10"
@@ -396,55 +418,84 @@ export function ModerationOverview({
                                     <Eye className="h-4 w-4" />
                                   )}
                                 </Button>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => {
-                                    closeAllModalsExceptDMs();
-                                    setTimeout(() => {
-                                      const messageElements = document.querySelectorAll('.message-container');
-                                      for (const element of messageElements) {
-                                        const messageId = element.getAttribute('data-message-id');
-                                        if (messageId === msg.id) {
-                                          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                          element.classList.add('ring-2', 'ring-cyan-500', 'ring-offset-2');
+                                {/* Weitere Aktionen in einem Dropdown-Menü auf mobilen Geräten */}
+                                <div className="sm:hidden">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => {
+                                      const participant = participants.find(p => p.userId === msg.senderUserId);
+                                      if (participant) {
+                                        // Zeige Aktions-Menü
+                                        const action = prompt("Aktion wählen:\n1 = Gelbe Karte\n2 = Rote Karte\n3 = Zur Nachricht");
+                                        if (action === "1") handleApplyPenalty(participant.id, 'yellow');
+                                        else if (action === "2") handleApplyPenalty(participant.id, 'red');
+                                        else if (action === "3") {
+                                          closeAllModalsExceptDMs();
                                           setTimeout(() => {
-                                            element.classList.remove('ring-2', 'ring-cyan-500', 'ring-offset-2');
-                                          }, 2000);
-                                          break;
+                                            const element = document.querySelector(`[data-message-id="${msg.id}"]`);
+                                            element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                          }, 300);
                                         }
                                       }
-                                    }, 300);
-                                  }}
-                                  className="h-9 w-9 text-cyan-600 border-cyan-500 hover:bg-cyan-500/10"
-                                  title="Zur Nachricht im Chat springen"
-                                >
-                                  <ArrowLeft className="h-4 w-4 rotate-180" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => {
-                                    const participant = participants.find(p => p.userId === msg.senderUserId);
-                                    if (participant) handleApplyPenalty(participant.id, 'yellow');
-                                  }}
-                                  className="h-9 w-9 border-yellow-500 text-yellow-600 hover:bg-yellow-500/10"
-                                  title="Gelbe Karte (2 Min Timeout)"
-                                >
-                                  <Ban className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => {
-                                    const participant = participants.find(p => p.userId === msg.senderUserId);
-                                    if (participant) handleApplyPenalty(participant.id, 'red');
-                                  }}
-                                  className="h-9 w-9 border-red-500 text-red-600 hover:bg-red-500/10"
-                                  title="Rote Karte (3 Min Timeout)"
-                                >
-                                  <Ban className="h-4 w-4" />
-                                </Button>
+                                    }}
+                                    className="h-10 w-10 touch-manipulation"
+                                  >
+                                    <Ban className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                {/* Desktop-Buttons */}
+                                <div className="hidden sm:flex gap-1.5">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => {
+                                      closeAllModalsExceptDMs();
+                                      setTimeout(() => {
+                                        const messageElements = document.querySelectorAll('.message-container');
+                                        for (const element of messageElements) {
+                                          const messageId = element.getAttribute('data-message-id');
+                                          if (messageId === msg.id) {
+                                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            element.classList.add('ring-2', 'ring-cyan-500', 'ring-offset-2');
+                                            setTimeout(() => {
+                                              element.classList.remove('ring-2', 'ring-cyan-500', 'ring-offset-2');
+                                            }, 2000);
+                                            break;
+                                          }
+                                        }
+                                      }, 300);
+                                    }}
+                                    className="h-9 w-9 text-cyan-600 border-cyan-500 hover:bg-cyan-500/10"
+                                    title="Zur Nachricht im Chat springen"
+                                  >
+                                    <ArrowLeft className="h-4 w-4 rotate-180" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => {
+                                      const participant = participants.find(p => p.userId === msg.senderUserId);
+                                      if (participant) handleApplyPenalty(participant.id, 'yellow');
+                                    }}
+                                    className="h-9 w-9 border-yellow-500 text-yellow-600 hover:bg-yellow-500/10"
+                                    title="Gelbe Karte (2 Min Timeout)"
+                                  >
+                                    <Ban className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => {
+                                      const participant = participants.find(p => p.userId === msg.senderUserId);
+                                      if (participant) handleApplyPenalty(participant.id, 'red');
+                                    }}
+                                    className="h-9 w-9 border-red-500 text-red-600 hover:bg-red-500/10"
+                                    title="Rote Karte (3 Min Timeout)"
+                                  >
+                                    <Ban className="h-4 w-4" />
+                                  </Button>
+                                </div>
                               </div>
                             </div>
                             
@@ -480,18 +531,19 @@ export function ModerationOverview({
 
             {/* Tab: Aktive Strafen */}
             <TabsContent value="penalties" className="mt-0">
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">Aktive Strafen ({activePenalties.length})</h3>
+              <div className="p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold">Aktive Strafen ({activePenalties.length})</h3>
                   <Button 
                     variant="outline" 
                     size="sm"
                     onClick={loadActivePenalties}
+                    className="h-8 px-2 text-xs"
                   >
                     Aktualisieren
                   </Button>
                 </div>
-                <ScrollArea className="h-[60vh]">
+                <ScrollArea className="h-[55vh] sm:h-[60vh]">
                   {activePenalties.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <p>Keine aktiven Strafen vorhanden.</p>
@@ -694,20 +746,22 @@ export function ModerationOverview({
 
             {/* Tab: Versteckte Nachrichten */}
             <TabsContent value="hidden" className="mt-0">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold">Ausgeblendete Nachrichten ({hiddenMessages.length})</h3>
+              <div className="p-4 sm:p-6">
+                <div className="flex items-center justify-between mb-4 sm:mb-6">
+                  <h3 className="text-lg sm:text-xl font-semibold">Ausgeblendete Nachrichten ({hiddenMessages.length})</h3>
                   <Button 
                     variant="outline" 
-                    size="default"
+                    size="sm"
                     onClick={loadHiddenMessages}
                     disabled={isLoadingHiddenMessages}
+                    className="h-9 px-3"
                   >
-                    {isLoadingHiddenMessages ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
-                    Aktualisieren
+                    {isLoadingHiddenMessages ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+                    <span className="hidden sm:inline">Aktualisieren</span>
+                    <span className="sm:hidden">Neu</span>
                   </Button>
                 </div>
-                <ScrollArea className="h-[65vh]">
+                <ScrollArea className="h-[60vh] sm:h-[65vh]">
                   {isLoadingHiddenMessages ? (
                     <div className="flex items-center justify-center py-12">
                       <Loader2 className="h-8 w-8 animate-spin mr-3" />
@@ -759,13 +813,13 @@ export function ModerationOverview({
                                 </div>
                               </div>
                               
-                              <div className="flex flex-col gap-2">
+                              <div className="flex flex-col gap-1.5 sm:gap-2">
                                 <Button 
                                   variant="default" 
                                   size="sm"
                                   onClick={() => toggleBlurMessage(msg.id)}
                                   disabled={isTogglingBlur === msg.id}
-                                  className="h-8 text-xs bg-orange-500 hover:bg-orange-600 border-orange-500"
+                                  className="h-8 text-xs bg-orange-500 hover:bg-orange-600 border-orange-500 w-full sm:w-auto"
                                   title="Nachricht einblenden"
                                 >
                                   {isTogglingBlur === msg.id ? (
@@ -795,7 +849,7 @@ export function ModerationOverview({
                                       }
                                     }, 300);
                                   }}
-                                  className="h-8 text-xs border-cyan-500 text-cyan-600 hover:bg-cyan-50"
+                                  className="h-8 text-xs border-cyan-500 text-cyan-600 hover:bg-cyan-50 w-full sm:w-auto"
                                   title="Zur Nachricht im Chat springen"
                                 >
                                   <ArrowLeft className="h-3.5 w-3.5 rotate-180 mr-1" />
@@ -814,23 +868,25 @@ export function ModerationOverview({
 
             {/* Tab: Teilnehmer-Verwaltung mit allen Lucide Icons */}
             <TabsContent value="participants" className="mt-0">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold">Teilnehmer-Verwaltung ({participants.length})</h3>
+              <div className="p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-3">
+                  <h3 className="text-lg sm:text-xl font-semibold">Teilnehmer-Verwaltung ({participants.length})</h3>
                   {currentUserBadges?.includes('admin') && (
-                    <div className="flex gap-3">
+                    <div className="flex gap-2 w-full sm:w-auto">
                       <Button 
                         variant="outline" 
-                        size="default" 
+                        size="sm"
                         onClick={handleClearAllBlurs}
                         disabled={isAdjustingCooldown}
+                        className="flex-1 sm:flex-initial h-9"
                       >
-                        {isAdjustingCooldown ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
-                        Alle Blurs aufheben
+                        {isAdjustingCooldown ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+                        <span className="hidden sm:inline">Alle Blurs aufheben</span>
+                        <span className="sm:hidden">Blurs weg</span>
                       </Button>
                       <Button 
                         variant="outline" 
-                        size="default" 
+                        size="sm"
                         onClick={() => {
                           const newCooldown = prompt("Neuer Cooldown in Sekunden:", sessionData?.messageCooldownSeconds?.toString() || "0");
                           if (newCooldown !== null) {
@@ -841,13 +897,15 @@ export function ModerationOverview({
                           }
                         }}
                         disabled={isAdjustingCooldown}
+                        className="flex-1 sm:flex-initial h-9"
                       >
-                        Cooldown anpassen
+                        <span className="hidden sm:inline">Cooldown anpassen</span>
+                        <span className="sm:hidden">Cooldown</span>
                       </Button>
                     </div>
                   )}
                 </div>
-                <ScrollArea className="h-[65vh]">
+                <ScrollArea className="h-[60vh] sm:h-[65vh]">
                   <div className="space-y-3">
                     {participants.map(participant => (
                       <Card key={participant.id} className={cn("border-l-4 hover:shadow-lg transition-shadow", 
@@ -890,136 +948,209 @@ export function ModerationOverview({
                                 <p className="text-sm text-muted-foreground mt-1">{participant.realName} • {participant.role}</p>
                               </div>
                             </div>
-                            <div className="flex gap-2 flex-wrap">
-                              <Button 
-                                variant="outline" 
-                                size="icon" 
-                                onClick={() => {
-                                  setShowModeratorOverviewDialog(false);
-                                  loadAndMarkDmThread(participant.userId)
-                                }}
-                                className="h-9 w-9 text-foreground hover:bg-muted border-neutral-400"
-                                title="Direktnachricht senden"
-                                disabled={!participant.userId}
-                              >
-                                <Send className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="outline" 
-                                size="icon" 
-                                onClick={() => handleShowParticipantMessages(participant)} 
-                                className="h-9 w-9 text-blue-600 border-blue-500 hover:bg-blue-500/10"
-                                title="Alle Nachrichten anzeigen"
-                              >
-                                <MessageSquare className="h-4 w-4" />
-                              </Button>
-                              {hasModPermissions && participant.userId !== userId && (
-                                <>
+                            <div className="flex gap-1.5 sm:gap-2 flex-wrap justify-end">
+                              {/* Mobile: Kompakte Button-Gruppe */}
+                              <div className="sm:hidden flex gap-1">
+                                <Button 
+                                  variant="outline" 
+                                  size="icon" 
+                                  onClick={() => {
+                                    setShowModeratorOverviewDialog(false);
+                                    loadAndMarkDmThread(participant.userId)
+                                  }}
+                                  className="h-10 w-10 touch-manipulation"
+                                  title="Direktnachricht senden"
+                                >
+                                  <Send className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="icon" 
+                                  onClick={() => handleShowParticipantMessages(participant)} 
+                                  className="h-10 w-10 touch-manipulation"
+                                  title="Alle Nachrichten anzeigen"
+                                >
+                                  <MessageSquare className="h-4 w-4" />
+                                </Button>
+                                {hasModPermissions && participant.userId !== userId && (
                                   <Button 
                                     variant="outline" 
                                     size="icon" 
-                                    onClick={() => handleToggleMute(participant.id)}
-                                    className={cn("h-9 w-9", 
-                                      participant.isMuted 
-                                        ? "border-green-500 text-green-500 hover:bg-green-500/10" 
-                                        : "border-red-500 text-red-600 hover:bg-red-500/10"
-                                    )}
-                                    title={participant.isMuted ? "Stummschaltung aufheben" : "Stummschalten"}
-                                  >
-                                    <Volume2 className="h-4 w-4" />
-                                  </Button>
-                                  <Button 
-                                    variant="outline" 
-                                    size="icon" 
-                                    onClick={() => handleApplyPenalty(participant.id, 'yellow')} 
-                                    className="h-9 w-9 border-yellow-500 text-yellow-600 hover:bg-yellow-500/10"
-                                    title="Gelbe Karte"
-                                  >
-                                    <Ban className="h-4 w-4" />
-                                  </Button>
-                                  <Button 
-                                    variant="outline" 
-                                    size="icon" 
-                                    onClick={() => handleApplyPenalty(participant.id, 'red')} 
-                                    className="h-9 w-9 border-red-500 text-red-600 hover:bg-red-500/10"
-                                    title="Rote Karte"
-                                  >
-                                    <Ban className="h-4 w-4" />
-                                  </Button>
-                                </>
-                              )}
-                              {currentUserBadges?.includes('admin') && participant.userId !== userId && (
-                                <>
-                                  {!participant.assignedBadges?.includes('moderator') && (
-                                    <Button 
-                                      variant="outline" 
-                                      size="icon" 
-                                      onClick={() => handleAssignBadge(participant.id, 'moderator')} 
-                                      className="h-9 w-9 text-purple-600 border-purple-500 hover:bg-purple-500/10"
-                                      title="Moderator-Badge vergeben"
-                                    >
-                                      <ShieldCheck className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                  {participant.assignedBadges?.includes('moderator') && (
-                                    <Button 
-                                      variant="outline" 
-                                      size="icon" 
-                                      onClick={() => handleRemoveBadge(participant.id, 'moderator')} 
-                                      className="h-9 w-9 text-purple-600 border-purple-500 hover:bg-purple-500/10"
-                                      title="Moderator-Badge entfernen"
-                                    >
-                                      <XIcon className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                  {!participant.assignedBadges?.includes('admin') && (
-                                    <Button 
-                                      variant="outline" 
-                                      size="icon" 
-                                      onClick={() => handleAssignBadge(participant.id, 'admin')} 
-                                      className="h-9 w-9 text-pink-600 border-pink-500 hover:bg-pink-500/10"
-                                      title="Admin-Badge vergeben"
-                                    >
-                                      <Crown className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                  {participant.activePenalty && (
-                                    <Button 
-                                      variant="outline" 
-                                      size="icon" 
-                                      onClick={async () => {
-                                        try {
-                                          const participantRef = doc(db, "sessions", sessionId, "participants", participant.id);
-                                          await updateDoc(participantRef, {
-                                            activePenalty: null,
-                                            isMuted: false,
-                                            updatedAt: serverTimestamp()
-                                          });
-                                          toast({ title: "Strafe aufgehoben", description: `Strafe für ${participant.displayName} wurde aufgehoben.` });
-                                          loadActivePenalties();
-                                        } catch (error: any) {
-                                          toast({ variant: "destructive", title: "Fehler", description: "Strafe konnte nicht aufgehoben werden." });
+                                    onClick={() => {
+                                      // Mobile Aktions-Menü
+                                      const actions = [];
+                                      actions.push(participant.isMuted ? "1 = Stummschaltung aufheben" : "1 = Stummschalten");
+                                      actions.push("2 = Gelbe Karte");
+                                      actions.push("3 = Rote Karte");
+                                      if (currentUserBadges?.includes('admin')) {
+                                        if (!participant.assignedBadges?.includes('moderator')) {
+                                          actions.push("4 = Moderator machen");
+                                        } else {
+                                          actions.push("4 = Moderator entfernen");
                                         }
-                                      }}
-                                      className="h-9 w-9 text-green-600 border-green-500 hover:bg-green-500/10"
-                                      title="Strafe aufheben"
-                                    >
-                                      <Check className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                  {!participant.assignedBadges?.includes('admin') && (
+                                        if (!participant.assignedBadges?.includes('admin')) {
+                                          actions.push("5 = Admin machen");
+                                          actions.push("6 = Entfernen");
+                                        }
+                                      }
+                                      
+                                      const action = prompt("Aktion wählen:\n" + actions.join("\n"));
+                                      
+                                      switch(action) {
+                                        case "1": handleToggleMute(participant.id); break;
+                                        case "2": handleApplyPenalty(participant.id, 'yellow'); break;
+                                        case "3": handleApplyPenalty(participant.id, 'red'); break;
+                                        case "4": 
+                                          if (!participant.assignedBadges?.includes('moderator')) {
+                                            handleAssignBadge(participant.id, 'moderator');
+                                          } else {
+                                            handleRemoveBadge(participant.id, 'moderator');
+                                          }
+                                          break;
+                                        case "5": handleAssignBadge(participant.id, 'admin'); break;
+                                        case "6": handleRemoveParticipant(participant.id); break;
+                                      }
+                                    }}
+                                    className="h-10 w-10 touch-manipulation"
+                                    title="Aktionen"
+                                  >
+                                    <Crown className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                              
+                              {/* Desktop: Alle Buttons einzeln */}
+                              <div className="hidden sm:flex gap-2 flex-wrap">
+                                <Button 
+                                  variant="outline" 
+                                  size="icon" 
+                                  onClick={() => {
+                                    setShowModeratorOverviewDialog(false);
+                                    loadAndMarkDmThread(participant.userId)
+                                  }}
+                                  className="h-9 w-9 text-foreground hover:bg-muted border-neutral-400"
+                                  title="Direktnachricht senden"
+                                  disabled={!participant.userId}
+                                >
+                                  <Send className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="icon" 
+                                  onClick={() => handleShowParticipantMessages(participant)} 
+                                  className="h-9 w-9 text-blue-600 border-blue-500 hover:bg-blue-500/10"
+                                  title="Alle Nachrichten anzeigen"
+                                >
+                                  <MessageSquare className="h-4 w-4" />
+                                </Button>
+                                {hasModPermissions && participant.userId !== userId && (
+                                  <>
                                     <Button 
                                       variant="outline" 
                                       size="icon" 
-                                      onClick={() => handleRemoveParticipant(participant.id)} 
-                                      className="h-9 w-9 text-destructive hover:bg-destructive/10"
-                                      title="Teilnehmer entfernen"
+                                      onClick={() => handleToggleMute(participant.id)}
+                                      className={cn("h-9 w-9", 
+                                        participant.isMuted 
+                                          ? "border-green-500 text-green-500 hover:bg-green-500/10" 
+                                          : "border-red-500 text-red-600 hover:bg-red-500/10"
+                                      )}
+                                      title={participant.isMuted ? "Stummschaltung aufheben" : "Stummschalten"}
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <Volume2 className="h-4 w-4" />
                                     </Button>
-                                  )}
-                                </>
-                              )}
+                                    <Button 
+                                      variant="outline" 
+                                      size="icon" 
+                                      onClick={() => handleApplyPenalty(participant.id, 'yellow')} 
+                                      className="h-9 w-9 border-yellow-500 text-yellow-600 hover:bg-yellow-500/10"
+                                      title="Gelbe Karte"
+                                    >
+                                      <Ban className="h-4 w-4" />
+                                    </Button>
+                                    <Button 
+                                      variant="outline" 
+                                      size="icon" 
+                                      onClick={() => handleApplyPenalty(participant.id, 'red')} 
+                                      className="h-9 w-9 border-red-500 text-red-600 hover:bg-red-500/10"
+                                      title="Rote Karte"
+                                    >
+                                      <Ban className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
+                                {currentUserBadges?.includes('admin') && participant.userId !== userId && (
+                                  <>
+                                    {!participant.assignedBadges?.includes('moderator') && (
+                                      <Button 
+                                        variant="outline" 
+                                        size="icon" 
+                                        onClick={() => handleAssignBadge(participant.id, 'moderator')} 
+                                        className="h-9 w-9 text-purple-600 border-purple-500 hover:bg-purple-500/10"
+                                        title="Moderator-Badge vergeben"
+                                      >
+                                        <ShieldCheck className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    {participant.assignedBadges?.includes('moderator') && (
+                                      <Button 
+                                        variant="outline" 
+                                        size="icon" 
+                                        onClick={() => handleRemoveBadge(participant.id, 'moderator')} 
+                                        className="h-9 w-9 text-purple-600 border-purple-500 hover:bg-purple-500/10"
+                                        title="Moderator-Badge entfernen"
+                                      >
+                                        <XIcon className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    {!participant.assignedBadges?.includes('admin') && (
+                                      <Button 
+                                        variant="outline" 
+                                        size="icon" 
+                                        onClick={() => handleAssignBadge(participant.id, 'admin')} 
+                                        className="h-9 w-9 text-pink-600 border-pink-500 hover:bg-pink-500/10"
+                                        title="Admin-Badge vergeben"
+                                      >
+                                        <Crown className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    {participant.activePenalty && (
+                                      <Button 
+                                        variant="outline" 
+                                        size="icon" 
+                                        onClick={async () => {
+                                          try {
+                                            const participantRef = doc(db, "sessions", sessionId, "participants", participant.id);
+                                            await updateDoc(participantRef, {
+                                              activePenalty: null,
+                                              isMuted: false,
+                                              updatedAt: serverTimestamp()
+                                            });
+                                            toast({ title: "Strafe aufgehoben", description: `Strafe für ${participant.displayName} wurde aufgehoben.` });
+                                            loadActivePenalties();
+                                          } catch (error: any) {
+                                            toast({ variant: "destructive", title: "Fehler", description: "Strafe konnte nicht aufgehoben werden." });
+                                          }
+                                        }}
+                                        className="h-9 w-9 text-green-600 border-green-500 hover:bg-green-500/10"
+                                        title="Strafe aufheben"
+                                      >
+                                        <Check className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    {!participant.assignedBadges?.includes('admin') && (
+                                      <Button 
+                                        variant="outline" 
+                                        size="icon" 
+                                        onClick={() => handleRemoveParticipant(participant.id)} 
+                                        className="h-9 w-9 text-destructive hover:bg-destructive/10"
+                                        title="Teilnehmer entfernen"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </CardContent>

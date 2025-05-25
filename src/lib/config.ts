@@ -1,4 +1,3 @@
-
 import type { LucideIcon } from 'lucide-react';
 import {
   ShieldAlert,
@@ -27,6 +26,21 @@ export interface ParticipantColor {
   text: string;
   nameText: string;
   ring: string;
+}
+
+// NEU: Typdefinition für ein einzelnes Emoji-Objekt
+export interface Emoji { // Sicherstellen, dass dies exportiert wird
+  char: string;
+  name: string;
+  keywords?: string[];
+  category?: string;
+}
+
+// NEU: Typ für eine Emoji-Kategorie
+export interface EmojiCategory { // Sicherstellen, dass dies exportiert wird
+  name: string;
+  icon: string;
+  emojis: Emoji[];
 }
 
 // Consistent color definitions

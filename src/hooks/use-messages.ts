@@ -110,7 +110,8 @@ export function useMessages(
           ...data,
           id: docSn.id,
           isOwn: data.senderUserId === currentUserId && (!isAdminView || (isAdminView && data.senderType === 'admin')),
-          timestampDisplay: timestamp ? timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...'
+          timestampDisplay: timestamp ? timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Senden...',
+          reactions: data.reactions || {}
         });
       });
       

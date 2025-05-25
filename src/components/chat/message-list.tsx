@@ -138,4 +138,34 @@ const MessageList = memo(function MessageList({
 
 MessageList.displayName = "MessageList";
 
-export { MessageList };
+// Optimierte Vergleichsfunktion für React.memo
+const areEqual = (prevProps: MessageListProps, nextProps: MessageListProps) => {
+  // Tiefenvergleich nur für die wichtigsten Props
+  if (prevProps.messages.length !== nextProps.messages.length) return false;
+  if (prevProps.currentUserId !== nextProps.currentUserId) return false;
+  if (prevProps.isChatDataLoading !== nextProps.isChatDataLoading) return false;
+  if (prevProps.isAdminView !== nextProps.isAdminView) return false;
+  if (prevProps.reactingToMessageId !== nextProps.reactingToMessageId) return false;
+  if (prevProps.isTogglingBlur !== nextProps.isTogglingBlur) return false;
+  if (prevProps.currentUserBadges?.length !== nextProps.currentUserBadges?.length) return false;
+  if (prevProps.participants?.length !== nextProps.participants?.length) return false;
+  if (prevProps.blockingEnabled !== nextProps.blockingEnabled) return false;
+  if (prevProps.reportingEnabled !== nextProps.reportingEnabled) return false;
+  
+  // Vergleiche nur die IDs der Nachrichten, nicht den gesamten Inhalt
+  for (let i = 0; i < prevProps.messages.length; i++) {
+    if (prevProps.messages[i].id !== nextProps.messages[i].id) return false;
+    // Vergleiche nur kritische Felder, die eine Neudarstellung erfordern
+    if (prevProps.messages[i].content !== nextProps.messages[i].content) return false;
+    if (prevProps.messages[i].isBlurred !== nextProps.messages[i].isBlurred) return false;
+    if (JSON.stringify(prevProps.messages[i].reactions) !== JSON.stringify(nextProps.messages[i].reactions)) return false;
+  }
+  
+  return true;
+};
+
+// Exportiere die optimierte Version
+const OptimizedMessageList = memo(MessageList, areEqual);
+OptimizedMessageList.displayName = "MessageList";
+
+export { OptimizedMessageList as MessageList };

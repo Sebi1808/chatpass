@@ -3,7 +3,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowDown, XCircle, Loader2, AlertTriangle, Eye, X as XIcon, Users as UsersIconLucide, Send, Paperclip, Smile, Mic, Crown, Bot as BotIconLucide, ImageIcon as ImageIconLucide, MessageSquare, ArrowLeft, Check } from "lucide-react";
+import { ArrowDown, XCircle, Loader2, AlertTriangle, Eye, X as XIcon, Users as UsersIconLucide, Send, Paperclip, Smile, Mic, Crown, Bot as BotIconLucide, ImageIcon as ImageIconLucide, MessageSquare, ArrowLeft, Check, Settings, Sun, Moon } from "lucide-react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense, useRef, type FormEvent, type ChangeEvent, useMemo, useCallback } from "react";
 import NextImage from 'next/image';
@@ -31,6 +31,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DialogFooter } from "@/components/ui/dialog";
 import { ModerationOverview } from "@/components/chat/moderation-overview";
+import { MobileChatLayout } from '@/components/chat/mobile-chat-layout';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Input } from "@/components/ui/input";
+import { EmojiPicker } from '@/components/chat/emoji-picker';
+import { useTheme } from "next-themes"; // Added useTheme
+import { MobileModerationOverview } from '@/components/chat/mobile-moderation-overview'; // NEU
 
 interface ChatPageUrlParams {
   sessionId: string;
@@ -91,6 +97,7 @@ export function ChatPageContent({
   const sessionId = sessionIdProp;
   const { toast } = useToast();
   const router = useRouter();
+  const isMobile = useIsMobile();
 
   const [userRealName, setUserRealName] = useState<string | null>(initialUserRealNameProp || null); 
   const [userDisplayName, setUserDisplayName] = useState<string | null>(initialDisplayNameProp || null); 
@@ -98,6 +105,19 @@ export function ChatPageContent({
   const [userId, setUserId] = useState<string | null>(initialUserIdProp || null);
   const [userAvatarFallback, setUserAvatarFallback] = useState<string>(initialUserAvatarFallbackProp || "??");
   const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(!isAdminView && !initialDisplayNameProp);
+
+  // Fehlende Variablen für Scroll-Funktionalität
+  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const firstTimeMessagesLoadRef = useRef(true);
+  const SCROLL_UP_THRESHOLD = 150; // Pixel-Schwellwert für das Scrollen nach oben
+  
+  // Fehlende States für Antworten und Zitate
+  const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
+  const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
 
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [lastMessageSentAt, setLastMessageSentAt] = useState<number>(0);
@@ -107,22 +127,18 @@ export function ChatPageContent({
   const { sessionData, isLoading: isLoadingSessionDataHook, error: sessionErrorHook } = useSessionData(sessionId);
   const [currentScenario, setCurrentScenario] = useState<Scenario | undefined>(undefined);
   const [isLoadingScenario, setIsLoadingScenario] = useState(true); 
+  const { theme, setTheme } = useTheme(); // Added theme logic
   
   const { participants, isLoadingParticipants: isLoadingParticipantsHook, participantsError } = useParticipants(sessionId);
   const { messages, isLoadingMessages: isLoadingMessagesHook, messagesError } = useMessages(sessionId, userId, isAdminView, currentScenario, sessionData);
 
-  const [newMessage, setNewMessage] = useState("");
-  const messagesEndRef = useRef<null | HTMLDivElement>(null);
-  const viewportRef = useRef<null | HTMLDivElement>(null);
-  const firstTimeMessagesLoadRef = useRef(true);
-  const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
-  const SCROLL_UP_THRESHOLD = 50; 
-
-  const [replyingTo, setReplyingTo] = useState<DisplayMessage | null>(null);
-  const [quotingMessage, setQuotingMessage] = useState<DisplayMessage | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [newMessage, setNewMessage] = useState<string>('');
+  
+  // Memoisierte Version von setNewMessage
+  const handleSetNewMessage = useCallback((value: string | ((prev: string) => string)) => {
+    setNewMessage(value);
+  }, []);
+  
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
@@ -184,6 +200,13 @@ export function ChatPageContent({
   const [isLoadingParticipantMessages, setIsLoadingParticipantMessages] = useState(false);
   const [isTogglingBlur, setIsTogglingBlur] = useState<string | null>(null);
   const [isAdjustingCooldown, setIsAdjustingCooldown] = useState(false);
+
+  // NEU: States für Mobile Moderation (teilweise von Desktop-Komponente übernommen)
+  const [activePenalties, setActivePenalties] = useState<Participant[]>([]);
+  const [hiddenMessages, setHiddenMessages] = useState<DisplayMessage[]>([]);
+  const [isLoadingHiddenMessages, setIsLoadingHiddenMessages] = useState(false);
+  const [penaltyTimers, setPenaltyTimers] = useState<{ [key: string]: string }>({});
+  const [showMobileModeratorOverview, setShowMobileModeratorOverview] = useState(false);
 
   // NEU: Image Modal State
   const [showImageModal, setShowImageModal] = useState(false);
@@ -357,15 +380,66 @@ export function ChatPageContent({
     });
   }, [messages, blockingEnabled, isAdminView, blockedUsers]);
 
+  // NEU: Funktion zum Laden der aktiven Strafen (hierher verschoben)
+  const loadActivePenalties = useCallback(async () => {
+    if (!sessionId || !hasModPermissions) return;
+    const active = participants.filter(p => p.activePenalty && p.activePenalty.startedAt instanceof Timestamp && 
+                                         (p.activePenalty.startedAt.toMillis() + p.activePenalty.durationMinutes * 60000) > Date.now());
+    setActivePenalties(active);
+  }, [sessionId, hasModPermissions, participants]);
+
+  // NEU: Funktion zum Laden der ausgeblendeten Nachrichten (hierher verschoben)
+  const loadHiddenMessages = useCallback(async () => {
+    if (!sessionId || !hasModPermissions) return;
+    setIsLoadingHiddenMessages(true);
+    try {
+      const messagesRef = collection(db, "sessions", sessionId, "messages");
+      const hiddenQuery = query(messagesRef, 
+        where("isBlurred", "==", true), 
+        orderBy("timestamp", "desc"),
+        limit(50)
+      );
+      const hiddenDocsSnap = await getDocs(hiddenQuery);
+      const hiddenMsgsData: DisplayMessage[] = [];
+      hiddenDocsSnap.forEach((doc) => {
+        const data = doc.data() as MessageType;
+        const timestamp = data.timestamp as Timestamp;
+        hiddenMsgsData.push({
+          ...data,
+          id: doc.id,
+          isOwn: false,
+          timestampDisplay: timestamp ? timestamp.toDate().toLocaleString() : "Unbekannt",
+        });
+      });
+      setHiddenMessages(hiddenMsgsData);
+    } catch (error) {
+      console.error("Fehler beim Laden der ausgeblendeten Nachrichten:", error);
+      toast({
+        variant: "destructive",
+        title: "Fehler",
+        description: "Ausgeblendete Nachrichten konnten nicht geladen werden."
+      });
+    } finally {
+      setIsLoadingHiddenMessages(false);
+    }
+  }, [sessionId, hasModPermissions, toast]);
+
   // NEU: Implementation der fehlenden Funktionen
   const handleShowModeratorOverview = useCallback(() => {
     if (!hasModPermissions) {
       toast({ variant: "destructive", title: "Keine Berechtigung", description: "Du hast nicht die nötigen Rechte für die Moderationsansicht." });
       return;
     }
-    loadReportedMessages();
-    setShowModeratorOverviewDialog(true);
-  }, [hasModPermissions, loadReportedMessages, toast]);
+    if (isMobile) {
+      loadReportedMessages(); 
+      loadActivePenalties();
+      loadHiddenMessages();
+      setShowMobileModeratorOverview(true);
+    } else {
+      loadReportedMessages(); 
+      setShowModeratorOverviewDialog(true);
+    }
+  }, [hasModPermissions, loadReportedMessages, toast, isMobile, loadActivePenalties, loadHiddenMessages]);
 
   const handleShowParticipantMessages = useCallback(async (participant: Participant) => {
     if (!hasModPermissions || !sessionId) {
@@ -945,16 +1019,18 @@ export function ChatPageContent({
   const scrollToBottom = useCallback((force: boolean = false, behavior: 'auto' | 'smooth' = 'smooth') => {
     if (messagesEndRef.current && viewportRef.current) {
       const scrollContainer = viewportRef.current;
-      const isNearBottomThreshold = 100; 
+      const isNearBottomThreshold = isMobile ? 150 : 100; 
       const isScrolledToBottom = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + isNearBottomThreshold;
 
       if (force || isScrolledToBottom) {
         if (messagesEndRef.current.offsetParent !== null) { 
-             messagesEndRef.current.scrollIntoView({ behavior: behavior });
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: behavior, block: 'end' });
+          }, isMobile ? 100 : 0);
         }
       }
     }
-  }, []);
+  }, [isMobile]);
 
   useEffect(() => {
     if (isLoadingMessagesHook || !messages.length || !viewportRef.current) return;
@@ -964,24 +1040,24 @@ export function ChatPageContent({
     const isOwnMessage = lastMessage.senderUserId === userId;
 
     if (firstTimeMessagesLoadRef.current) {
-      setTimeout(() => scrollToBottom(true, 'auto'), 200); 
+      setTimeout(() => scrollToBottom(true, 'auto'), isMobile ? 300 : 200); 
       firstTimeMessagesLoadRef.current = false;
     } else {
       if (isOwnMessage) {
         // Explicit scroll for own messages is now handled in handleSendMessage's finally/then block
         // Potentially add a small delay here too if race conditions occur on mobile
-        setTimeout(() => scrollToBottom(true, 'smooth'), 50);
+        setTimeout(() => scrollToBottom(true, 'smooth'), isMobile ? 150 : 50);
       } else { // New message from someone else
         const scrollContainer = viewportRef.current;
-        const isNearBottomForNewMessage = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + 250;
+        const isNearBottomForNewMessage = scrollContainer.scrollHeight - scrollContainer.clientHeight <= scrollContainer.scrollTop + (isMobile ? 350 : 250);
         if (isNearBottomForNewMessage) {
-          setTimeout(() => scrollToBottom(false, 'smooth'), 100);
+          setTimeout(() => scrollToBottom(false, 'smooth'), isMobile ? 200 : 100);
         } else if (!showScrollToBottomButton) {
            setShowScrollToBottomButton(true);
         }
       }
     }
-  }, [messages, isLoadingMessagesHook, userId, scrollToBottom, showScrollToBottomButton]);
+  }, [messages, isLoadingMessagesHook, userId, scrollToBottom, showScrollToBottomButton, isMobile]);
 
 
   useEffect(() => {
@@ -1198,7 +1274,7 @@ export function ChatPageContent({
       const messagesColRef = collection(db, "sessions", sessionId!, "messages");
       await addDoc(messagesColRef, messageData);
 
-      setNewMessage("");
+      handleSetNewMessage("");
       setSelectedImageFile(null);
       setImagePreviewUrl(null);
       setReplyingTo(null);
@@ -1233,28 +1309,30 @@ export function ChatPageContent({
   const handleSetQuote = useCallback((message: DisplayMessage) => {
     setReplyingTo(null); 
     const quotedText = `> ${message.senderName} schrieb:\n> "${message.content.replace(/\n/g, '\n> ')}"\n\n`;
-    setNewMessage(prev => quotedText + prev); 
+    handleSetNewMessage(prev => quotedText + prev); 
     setQuotingMessage(message); 
     inputRef.current?.focus();
-  }, []);
+  }, [handleSetNewMessage]);
 
   const handleCancelQuote = useCallback(() => {
     if (quotingMessage) {
       const quotedTextPattern = `> ${quotingMessage.senderName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} schrieb:\\n> "${quotingMessage.content.replace(/\n/g, '\\n> ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"(\\n){1,2}`;
       const regex = new RegExp(quotedTextPattern.replace(/\s/g, '\\s*'), ''); 
-      setNewMessage(prev => prev.replace(regex, "").trimStart());
+      handleSetNewMessage(prev => prev.replace(regex, "").trimStart());
     }
     setQuotingMessage(null);
-  }, [quotingMessage]);
+  }, [handleSetNewMessage]);
 
   const handleMentionUser = useCallback((nameToMention: string) => {
-    setNewMessage(prev => `${prev}@${nameToMention} `); 
+    handleSetNewMessage(prev => `${prev}@${nameToMention} `); 
     inputRef.current?.focus();
-  }, []);
+  }, [handleSetNewMessage]);
   
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   
   const handleReaction = useCallback(async (messageId: string, emoji: string) => {
+    console.log('[DEBUG] handleReaction called:', { messageId, emoji, userId, sessionId });
+    
     if (!userId || !sessionId) {
         toast({variant: "destructive", title: "Fehler", description: "Reaktion konnte nicht gesendet werden (Benutzer- oder Sitzungsdaten fehlen)."});
         return;
@@ -1285,6 +1363,8 @@ export function ChatPageContent({
         }
         transaction.update(messageDocRef, { reactions: newReactions });
       });
+      
+      console.log('[DEBUG] Reaction successfully processed');
     } catch (error) {
       console.error("Error processing reaction: ", error);
       toast({
@@ -1297,9 +1377,9 @@ export function ChatPageContent({
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const handleEmojiSelectForInput = useCallback((emoji: string) => {
-    setNewMessage(prev => prev + emoji);
+    handleSetNewMessage(prev => prev + emoji);
     setShowEmojiPicker(false); 
-  }, []);
+  }, [handleSetNewMessage]);
 
   // Effect to get current participant details for UserInfoBox and set up penalty countdown
   useEffect(() => {
@@ -2026,11 +2106,59 @@ export function ChatPageContent({
     );
   }
 
-  return (
-    <div className={cn("flex h-[calc(100vh-var(--header-height,0px))] bg-background", isAdminView && "border rounded-md")}>
-      {/* Left Column: Participants List and User Info Box */}
-      <div className={cn("w-64 md:w-72 lg:w-80 border-r flex flex-col", isAdminView ? "bg-card" : "bg-muted/40")}>
-        {/* Participant List (ChatSidebar) - takes available height, becomes scrollable internally */}
+  // ... existing code ...
+
+  // Mobile und Desktop Layout zusammenführen
+  const sidebarContent = (
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Session Header - nur auf Mobile - Auskommentiert da redundant */}
+      {/* {isMobile && (
+        <div className="border-b p-4 flex-shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold text-lg">Chat</h2>
+            {(currentUserBadges?.includes('admin') || currentUserBadges?.includes('moderator')) && (
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={() => setShowModeratorOverviewDialog(true)}
+                className="relative"
+              >
+                <Settings className="h-4 w-4 mr-2" />
+                Moderation
+                {reportedMessages.length > 0 && (
+                  <div className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {reportedMessages.length > 9 ? '9+' : reportedMessages.length}
+                  </div>
+                )}
+              </Button>
+            )}
+          </div>
+          
+          {sessionData && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-medium">Session:</span>
+                <span className="text-muted-foreground">{sessionData.id}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-medium">Status:</span>
+                <Badge variant={
+                  sessionData.status === "active" ? "default" : 
+                  sessionData.status === "paused" ? "secondary" : 
+                  "destructive"
+                }>
+                  {sessionData.status === "active" && "Aktiv"}
+                  {sessionData.status === "paused" && "Pausiert"}
+                  {sessionData.status === "ended" && "Beendet"}
+                </Badge>
+              </div>
+            </div>
+          )}
+        </div>
+      )} */}
+
+      {/* Chat Sidebar Component */} 
+      <div className="flex-1 overflow-hidden">
                  <ChatSidebar
                     participants={participants}
                     currentUserId={userId}
@@ -2038,7 +2166,7 @@ export function ChatPageContent({
                     isAdminView={isAdminView}
                     getParticipantColorClasses={getParticipantColorClasses}
           onInitiateDm={(participant: Participant) => {
-            setShowInbox(false); // Close inbox if open
+            setShowInbox(false);
             loadAndMarkDmThread(participant.userId);
           }}
           currentUserBadges={currentUserBadges}
@@ -2055,32 +2183,31 @@ export function ChatPageContent({
           reportedMessagesCount={reportedMessages.length}
           onToggleBlockUser={handleToggleBlockUser}
           blockedUserIds={blockedUsers}
-                  />
-        {/* User Info Box - fixed height, shown below participant list */}
-        {!isAdminView && (
-          <div className="p-4 border-t bg-background/80 backdrop-blur-sm shadow-sm">
-            <h3 className="font-semibold text-base mb-2 text-primary">Deine Infos</h3>
-            {isLoadingUserDetails || !currentParticipantDetails ? (
-              <div className="text-sm text-muted-foreground flex items-center"><Loader2 className="h-3 w-3 animate-spin mr-1.5"/>Lade deine Daten...</div>
-            ) : (
-              <div className="space-y-2.5 text-sm">
-                <div className="flex flex-col">
-                  <span className="font-medium">Name:</span>
-                  <span className="text-foreground/90">{currentParticipantDetails.displayName} ({currentParticipantDetails.realName})</span>
+        />
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center">
-                    <span className="font-medium mr-1">Rolle:</span>
+
+      {/* User Info Section (nur Desktop) */}
+      {!isMobile && currentParticipantDetails && (
+        <div className="border-t p-4 flex-shrink-0 bg-muted/30">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-8 w-8 border-2 border-border">
+                <AvatarImage src={`https://placehold.co/32x32.png?text=${currentParticipantDetails.avatarFallback}`} alt={currentParticipantDetails.displayName} />
+                <AvatarFallback className={cn(getParticipantColorClasses(userId || undefined).bg, getParticipantColorClasses(userId || undefined).text, "font-bold text-xs")}>
+                  {currentParticipantDetails.avatarFallback}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate">{currentParticipantDetails.displayName}</p>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="link" className="p-0 h-auto text-foreground underline underline-offset-2 decoration-dashed">
+                    <Button variant="link" className="p-0 h-auto text-xs text-muted-foreground hover:text-primary">
                           {currentParticipantDetails.role}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-80 p-3 text-sm">
                         <p className="font-semibold mb-1">{currentParticipantDetails.role}</p>
                         <p className="text-muted-foreground">
-                          {/* Hier würde normaler Weise die Rollenbeschreibung aus dem Szenario */}
                           {currentScenario?.humanRolesConfig?.find((r: { id: string }) => r.id === currentParticipantDetails.roleId)?.description || 
                            "Keine Rollenbeschreibung verfügbar. Bitte beachten Sie die Anweisungen des Admins."}
                         </p>
@@ -2136,6 +2263,25 @@ export function ChatPageContent({
                     )}
                   </Button>
                 </div>
+
+                {/* Light/Dark Mode Toggle - Desktop */}
+                <div className="pt-2 mt-1 border-t">
+                  <h4 className="font-medium text-sm mb-1.5">Ansicht:</h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start text-xs py-1.5 px-2 h-auto"
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  >
+                    {theme === "dark" ? (
+                      <Sun className="h-3.5 w-3.5 mr-1.5" />
+                    ) : (
+                      <Moon className="h-3.5 w-3.5 mr-1.5" />
+                    )}
+                    {theme === "dark" ? "Light Mode" : "Dark Mode"}
+                  </Button>
+                </div>
+
                 <div className="pt-2 mt-1 border-t">
                   <h4 className="font-medium text-sm mb-1.5">Status:</h4>
                   {currentParticipantDetails.isMuted && !currentParticipantDetails.activePenalty && <Badge variant="destructive" className="text-xs">Stumm</Badge>}
@@ -2155,13 +2301,54 @@ export function ChatPageContent({
                   {!currentParticipantDetails.isMuted && !currentParticipantDetails.activePenalty && <Badge variant="default" className="text-xs bg-green-500">Aktiv</Badge>}
                 </div>
               </div>
-            )}
           </div>
         )}
       </div>
+  );
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col overflow-hidden"> {/* Added overflow-hidden here */}
+  const messageInput = (
+    <MessageInputBar
+      newMessage={newMessage}
+      setNewMessage={handleSetNewMessage}
+      handleSendMessage={handleSendMessage}
+      inputRef={inputRef}
+      fileInputRef={fileInputRef}
+      handleImageFileSelected={handleImageFileSelected}
+      selectedImageFile={selectedImageFile}
+      imagePreviewUrl={imagePreviewUrl}
+      handleRemoveSelectedImage={handleRemoveSelectedImage}
+      isSendingMessage={isSendingMessage}
+      imageUploadProgress={imageUploadProgress}
+      canTryToSend={isAdminView || (sessionData?.status === "active" && !isMuted && cooldownRemainingSeconds <= 0)}
+      cooldownRemainingSeconds={cooldownRemainingSeconds}
+      sessionStatus={sessionData?.status || null}
+      isMuted={isMuted}
+      isAdminView={isAdminView}
+      replyingTo={replyingTo}
+      handleCancelReply={handleCancelReply}
+      quotingMessage={quotingMessage}
+      handleCancelQuote={handleCancelQuote}
+      showEmojiPicker={showEmojiPicker}
+      setShowEmojiPicker={setShowEmojiPicker}
+      handleEmojiSelect={handleEmojiSelectForInput} 
+      emojiCategories={emojiCategories}
+      messageCooldownSeconds={sessionData?.messageCooldownSeconds}
+      currentUserBadges={currentUserBadges}
+      isRecording={isRecording}
+      recordingDuration={recordingDuration}
+      recordedAudioBlob={recordedAudioBlob}
+      audioPreviewUrl={audioPreviewUrl}
+      isUploadingAudio={isUploadingAudio}
+      audioUploadProgress={audioUploadProgress}
+      startVoiceRecording={startVoiceRecording}
+      stopVoiceRecording={stopVoiceRecording}
+      cancelVoiceRecording={cancelVoiceRecording}
+      handleSendVoiceMessage={handleSendVoiceMessage}
+    />
+  );
+
+  const mainChatArea = (
+    <>
         {finalPageError && isAdminView && (
           <div className="p-4 text-center text-muted-foreground flex items-center justify-center h-full bg-background">
               {isLoadingSessionDataHook || (isLoadingScenario && !currentScenario && sessionData?.scenarioId) ?
@@ -2170,10 +2357,11 @@ export function ChatPageContent({
           </div>
         )}
             <ScrollArea
-              className="flex-1" 
+              className="flex-1 h-full" 
               viewportRef={viewportRef}
+              type={isMobile ? "always" : "auto"}
               >
-               <div className="p-4 md:p-6"> 
+         <div className={cn("p-4 md:p-6", isMobile && "pb-2")}> 
                 <MessageList
                   messages={filteredMessages}
                   currentUserId={userId}
@@ -2188,15 +2376,15 @@ export function ChatPageContent({
                   messagesEndRef={messagesEndRef}
                   isChatDataLoading={isLoadingMessagesHook || (isAdminView && (isLoadingSessionDataHook || isLoadingScenario))}
                   isAdminView={isAdminView}
-                  onOpenImageModal={openImageModal}
-                  onOpenDm={(recipient: Participant) => loadAndMarkDmThread(recipient.userId)}
+            onOpenImageModal={openImageModal}
+            onOpenDm={(recipient: Participant) => loadAndMarkDmThread(recipient.userId)}
                   toggleBlurMessage={toggleBlurMessage} 
                   isTogglingBlur={isTogglingBlur} 
-                  currentUserBadges={currentUserBadges}
+            currentUserBadges={currentUserBadges}
                   currentParticipantDetails={currentParticipantDetails} 
-                  participants={participants}
-                  onBlockUser={handleToggleBlockUser}
-                  onReportMessage={handleReportMessage}
+            participants={participants}
+            onBlockUser={handleToggleBlockUser}
+            onReportMessage={handleReportMessage}
                   blockingEnabled={blockingEnabled}
                   reportingEnabled={reportingEnabled}
                 />
@@ -2206,302 +2394,56 @@ export function ChatPageContent({
               <Button
                 variant="outline"
                 size="icon"
-                className="absolute bottom-24 right-4 md:right-8 z-10 rounded-full shadow-md bg-background/80 hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted/70 backdrop-blur-sm border-border"
+          className={cn(
+            "fixed z-40 rounded-full shadow-md bg-background/80 hover:bg-muted/90 dark:bg-card/80 dark:hover:bg-muted/70 backdrop-blur-sm border-border",
+            isMobile ? "bottom-24 right-4" : "bottom-24 right-4 md:right-8",
+            isMobile && "h-11 w-11 min-h-[44px] min-w-[44px] touch-manipulation"
+          )}
                 onClick={() => scrollToBottom(true, 'smooth')}
                 aria-label="Zu neuesten Nachrichten springen"
               >
                 <ArrowDown className="h-5 w-5" />
               </Button>
             )}
-
-            <MessageInputBar
-              newMessage={newMessage}
-              setNewMessage={setNewMessage}
-              handleSendMessage={handleSendMessage}
-              inputRef={inputRef}
-              fileInputRef={fileInputRef}
-              handleImageFileSelected={handleImageFileSelected}
-              selectedImageFile={selectedImageFile}
-              imagePreviewUrl={imagePreviewUrl}
-              handleRemoveSelectedImage={handleRemoveSelectedImage}
-              isSendingMessage={isSendingMessage}
-              imageUploadProgress={imageUploadProgress}
-              canTryToSend={isAdminView || (sessionData?.status === "active" && !isMuted && cooldownRemainingSeconds <= 0)}
-              cooldownRemainingSeconds={cooldownRemainingSeconds}
-              sessionStatus={sessionData?.status || null}
-              isMuted={isMuted}
-              isAdminView={isAdminView}
-              replyingTo={replyingTo}
-              handleCancelReply={handleCancelReply}
-              quotingMessage={quotingMessage}
-              handleCancelQuote={handleCancelQuote}
-              showEmojiPicker={showEmojiPicker}
-              setShowEmojiPicker={setShowEmojiPicker}
-              handleEmojiSelect={handleEmojiSelectForInput} 
-              emojiCategories={emojiCategories}
-              messageCooldownSeconds={sessionData?.messageCooldownSeconds}
-              currentUserBadges={currentUserBadges}
-              isRecording={isRecording}
-              recordingDuration={recordingDuration}
-              recordedAudioBlob={recordedAudioBlob}
-              audioPreviewUrl={audioPreviewUrl}
-              isUploadingAudio={isUploadingAudio}
-              audioUploadProgress={audioUploadProgress}
-              startVoiceRecording={startVoiceRecording}
-              stopVoiceRecording={stopVoiceRecording}
-              cancelVoiceRecording={cancelVoiceRecording}
-              handleSendVoiceMessage={handleSendVoiceMessage}
-            />
-        </div>
-
-      {/* DM Popup / Overlay */}
-      {showDmPopup && dmRecipient && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={(e) => { e.stopPropagation(); handleCloseDmPopup();}}>
-          <Card className="w-full max-w-lg shadow-2xl relative bg-card text-card-foreground" onClick={(e) => e.stopPropagation()}> 
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <div className="flex items-center">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => {
-                    setShowDmPopup(false);
-                    setDmRecipient(null);
-                    setActiveDmThread([]);
-                    setShowInbox(true);
-                  }}
-                  className="mr-2 h-7 w-7"
-                  title="Zurück zur Inbox"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-                <CardTitle className="text-lg">
-                  Direktnachricht an {dmRecipient.displayName}
-                </CardTitle>
-      </div>
-              <Button variant="ghost" size="icon" onClick={handleCloseDmPopup} className="h-7 w-7">
-                <XIcon className="h-5 w-5" />
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-[40vh] border-y p-4 bg-muted/30">
-                {activeDmThread.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Beginne eine neue Unterhaltung.</p>}
-                {activeDmThread.map(msg => (
-                  <div key={msg.id} className={cn(
-                    "mb-2 p-2 rounded-md text-sm max-w-[80%]",
-                    msg.senderUserId === userId ? "bg-primary text-primary-foreground ml-auto" : "bg-secondary text-secondary-foreground mr-auto"
-                  )}>
-                    {msg.imageUrl && (
-                      <div className="my-1.5 relative aspect-video max-w-xs mx-auto">
-                        <NextImage 
-                          src={msg.imageUrl} 
-                          alt="Gesendetes Bild in DM" 
-                          layout="fill" 
-                          objectFit="contain" 
-                          className="rounded"
-                          // Potentially add onClick to open a modal for larger view
-                        />
-                      </div>
-                    )}
-                    {msg.content && <p className='whitespace-pre-wrap'>{msg.content}</p>}
-                    <p className={cn("text-xs opacity-70 mt-1", msg.senderUserId === userId ? "text-right" : "text-left")}>
-                        {msg.timestamp instanceof Timestamp ? msg.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "Senden..."}
-                    </p>
-                  </div>
-                ))}
-                <div ref={dmMessagesEndRef} />
-              </ScrollArea>
-              <div className="p-3 space-y-2">
-                <Textarea
-                  value={dmContent}
-                  onChange={(e) => setDmContent(e.target.value)}
-                  placeholder={`Deine Nachricht an ${dmRecipient.displayName}...`}
-                  className="min-h-[60px]"
-                  disabled={isSendingDm}
-                />
-                {dmImagePreviewUrl && (
-                  <div className="mt-2 relative w-32 h-32 group">
-                    <NextImage src={dmImagePreviewUrl} alt="DM Bildvorschau" layout="fill" objectFit="cover" className="rounded-md" />
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute top-1 right-1 h-6 w-6 opacity-70 group-hover:opacity-100"
-                      onClick={handleDmRemoveSelectedImage}
-                      disabled={isSendingDm}
-                    >
-                      <XIcon className="h-4 w-4" />
-                    </Button>
-                    {dmImageUploadProgress !== null && dmImageUploadProgress < 100 && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-md">
-                            <Loader2 className="h-6 w-6 animate-spin text-white"/>
-                        </div>
-                    )}
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-2 mt-2">
-                  <div className="flex items-center gap-2">
-                    <Popover open={showDmEmojiPicker} onOpenChange={setShowDmEmojiPicker}>
-                        <PopoverTrigger asChild>
-                        <Button variant="outline" size="icon" className="shrink-0" title="Emoji einfügen" disabled={isSendingDm}>
-                            <Smile className="h-5 w-5" />
-                        </Button>
-                        </PopoverTrigger>
-                        <PopoverContent 
-                            className="w-auto p-0 mb-1 max-w-[300px] sm:max-w-xs z-50" 
-                            side="top" 
-                            align="start"
-                        >
-                            <Tabs defaultValue={emojiCategories[0].name} className="w-full">
-                                <TabsList className="grid w-full grid-cols-5 h-auto p-1">
-                                    {emojiCategories.map(category => (
-                                    <TabsTrigger key={category.name} value={category.name} className="text-xl p-1.5 h-9" title={category.name}>
-                                        {category.icon}
-                                    </TabsTrigger>
-                                    ))}
-                                </TabsList>
-                                {emojiCategories.map(category => (
-                                    <TabsContent key={category.name} value={category.name} className="mt-0">
-                                    <ScrollArea className="h-48">
-                                        <div className="grid grid-cols-8 gap-0.5 p-2">
-                                        {category.emojis.map(emoji => (
-                                            <Button
-                                            key={emoji}
-                                            variant="ghost"
-                                            size="icon"
-                                            className="text-xl p-0 h-9 w-9 hover:bg-muted/50"
-                                            onClick={() => handleDmEmojiSelect(emoji)}
-                                            >
-                                            {emoji}
-                                            </Button>
-                                        ))}
-                                        </div>
-                                    </ScrollArea>
-                                    </TabsContent>
-                                ))}
-                            </Tabs>
-                        </PopoverContent>
-                    </Popover>
-                    <Button variant="outline" size="icon" className="shrink-0" title="Bild anhängen" onClick={() => dmFileInputRef.current?.click()} disabled={isSendingDm}>
-                        <Paperclip className="h-5 w-5" />
-                    </Button>
-                    <input type="file" accept="image/*" ref={dmFileInputRef} onChange={handleDmImageFileSelected} className="hidden" />
-                  </div>
-                  <Button onClick={handleSendDm} disabled={(!dmContent.trim() && !dmSelectedImageFile) || isSendingDm} className="w-full max-w-[calc(100%-100px)]">
-                    {isSendingDm ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-                    Senden
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-      
-      {/* Inbox Overlay/Modal */}
-      {showInbox && (
-         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowInbox(false)}>
-            <Card className="w-full max-w-md shadow-2xl relative bg-card text-card-foreground" onClick={(e) => e.stopPropagation()}>
-                <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                        <span>Deine Inbox</span>
-                        <Button variant="ghost" size="icon" onClick={() => setShowInbox(false)} className="h-7 w-7">
-                            <XIcon className="h-5 w-5" />
-                        </Button>
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {/* NEU: Button für Admin Broadcast Inbox */}
-                    {adminBroadcastInboxMessages.length > 0 && (
-                        <Button
-                            variant="outline"
-                            className="w-full justify-start p-3 mb-3 border-red-500 hover:bg-red-500/10"
-                            onClick={() => {
-                                setShowAdminBroadcastInboxModal(true);
-                                setShowInbox(false); // Hauptinbox schließen
-                            }}
-                        >
-                            <AlertTriangle className="h-5 w-5 mr-3 text-red-500 flex-shrink-0" />
-                            <div className="flex-1 text-left">
-                                <p className="font-semibold text-red-600">Admin Mitteilungen</p>
-                                {unreadAdminBroadcastCount > 0 ? (
-                                    <p className="text-xs text-red-500/90">{unreadAdminBroadcastCount} neue Mitteilung{unreadAdminBroadcastCount > 1 ? 'en' : ''}</p>
-                                ) : (
-                                    <p className="text-xs text-muted-foreground">Alle Mitteilungen gelesen</p>
-                                )}
-                            </div>
-                            {unreadAdminBroadcastCount > 0 && <span className="ml-2 h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse"></span>}
-                        </Button>
-                    )}
-                    {dmContactSummaries.length === 0 && adminBroadcastInboxMessages.length === 0 && <p className="text-muted-foreground text-sm text-center py-4">Keine Konversationen oder Admin-Mitteilungen vorhanden.</p>}
-                    <ScrollArea className="h-[60vh] max-h-[calc(80vh-120px)] pr-2 -mr-2"> {/* Added ScrollArea here */}
-                      <div className="space-y-2">
-                        {dmContactSummaries.map(summary => {
-                          if (!summary.partner) return null;
-                          const partner = summary.partner;
-                          const lastMsg = summary.lastMessage;
-                          const hasUnread = summary.unreadCount > 0;
-                          // Check if the last message is an unread admin broadcast TO THE CURRENT USER
-                          const isUnreadAdminBroadcastToCurrentUser = lastMsg?.isAdminBroadcast === true && lastMsg?.recipientId === userId && !lastMsg?.isRead;
+    </>
+  );
 
                           return (
-                            <Button
-                              key={partner.userId}
-                              variant="ghost"
-                              className={cn(
-                                "w-full h-auto p-3 text-left flex items-start space-x-3 hover:bg-muted/80 dark:hover:bg-muted/30 rounded-md",
-                                isUnreadAdminBroadcastToCurrentUser ? "border-2 border-red-500 bg-red-500/10 hover:bg-red-500/20 font-semibold" :
-                                hasUnread ? "font-semibold" : "" // General unread highlight if not admin broadcast
-                              )}
-                              onClick={() => {
-                                setShowInbox(false); 
-                                loadAndMarkDmThread(partner.userId); 
-                              }}
-                            >
-                              <Avatar className="h-10 w-10 border-2 border-border flex-shrink-0">
-                                <AvatarImage src={`https://placehold.co/40x40.png?text=${partner.avatarFallback}`} alt={partner.displayName} />
-                                <AvatarFallback className={cn(getParticipantColorClasses(partner.userId).bg, getParticipantColorClasses(partner.userId).text, "font-bold")}>
-                                  {partner.avatarFallback}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex justify-between items-center">
-                                  <p className={cn("truncate text-sm", 
-                                    isUnreadAdminBroadcastToCurrentUser ? "text-red-600 font-bold" :
-                                    hasUnread ? "text-primary" : "text-foreground"
-                                  )}>{partner.displayName}</p>
-                                  {lastMsg?.timestamp instanceof Timestamp && (
-                                    <p className={cn("text-xs shrink-0 ml-2", 
-                                      isUnreadAdminBroadcastToCurrentUser ? "text-red-600/90" :
-                                      hasUnread ? "text-primary/90" : "text-muted-foreground"
-                                    )}>
-                                      {lastMsg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                    </p>
-                                  )}
+    <div className="h-screen flex flex-col bg-background">
+      {/* Mobile oder Desktop Layout basierend auf isMobile */}
+      {isMobile ? (
+        <MobileChatLayout
+          sidebar={sidebarContent}
+          messageInput={messageInput}
+          participants={participants}
+          unreadDms={unreadDms.length}
+          showModeratorOverview={() => setShowModeratorOverviewDialog(true)}
+          currentUserBadges={currentUserBadges}
+          reportedMessagesCount={reportedMessages.length}
+          currentParticipantDetails={currentParticipantDetails}
+          penaltyTimeRemaining={penaltyTimeRemaining}
+          adminBroadcastInboxMessages={adminBroadcastInboxMessages}
+          unreadAdminBroadcastCount={unreadAdminBroadcastCount}
+          showInbox={() => setShowInbox(true)}
+          showAdminBroadcastInboxModal={() => setShowAdminBroadcastInboxModal(true)}
+          userRole={userRole || undefined}
+          roleDescription={currentScenario?.humanRolesConfig?.find((r: { id: string }) => r.id === currentParticipantDetails?.roleId)?.description}
+        >
+          {mainChatArea}
+        </MobileChatLayout>
+      ) : (
+        /* Desktop Layout - Original */
+        <div className="flex h-screen bg-background">
+          {/* Desktop Sidebar */}
+          <div className="w-64 md:w-72 lg:w-80 border-r flex flex-col bg-muted/40">
+            {sidebarContent}
+                            </div>
+          
+          {/* Desktop Chat Area */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {mainChatArea}
+            {messageInput}
                                 </div>
-                                
-                                {/* Verbesserte Nachrichtenvorschau */}
-                                <div className="flex items-center justify-between mt-1">
-                                  <p className={cn("text-xs truncate flex items-center", 
-                                    isUnreadAdminBroadcastToCurrentUser ? "text-red-600/80" :
-                                    hasUnread ? "text-foreground/90 font-medium" : "text-muted-foreground"
-                                  )}>
-                                    {isUnreadAdminBroadcastToCurrentUser && <AlertTriangle className="h-3.5 w-3.5 inline-block mr-1 text-red-500 flex-shrink-0" />}
-                                    {lastMsg?.senderUserId === userId && <span className="mr-1 opacity-80">Du:</span>}
-                                    <span className="truncate">{lastMsg?.content || "Keine Nachrichten"}</span>
-                                  </p>
-                                  {hasUnread && (
-                                    <span className={cn("ml-2 h-2.5 w-2.5 rounded-full flex-shrink-0", 
-                                      isUnreadAdminBroadcastToCurrentUser ? "bg-red-500 animate-pulse" : "bg-orange-500"
-                                    )}></span>
-                                  )}
-                                </div>
-                              </div>
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </ScrollArea>
-                </CardContent>
-            </Card>
          </div>
       )}
 
@@ -2803,6 +2745,271 @@ export function ChatPageContent({
         </div>
       )}
 
+      {/* NEU: Inbox Modal für Direktnachrichten */}
+      {showInbox && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={() => setShowInbox(false)}>
+          <Card className="w-full max-w-lg shadow-2xl relative bg-card text-card-foreground" onClick={(e) => e.stopPropagation()}>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-lg flex items-center">
+                <MessageSquare className="h-5 w-5 mr-2 text-primary" />
+                Nachrichten
+              </CardTitle>
+              <Button variant="ghost" size="icon" onClick={() => setShowInbox(false)} className="h-7 w-7">
+                <XIcon className="h-5 w-5" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="h-[60vh] border-y">
+                {dmContactSummaries.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground px-4">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>Noch keine Direktnachrichten</p>
+                    <p className="text-sm mt-2">Klicke auf das Nachrichtensymbol bei einem Teilnehmer, um eine Unterhaltung zu beginnen.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {dmContactSummaries.map(({ partner, lastMessage, unreadCount }) => (
+                      <button
+                        key={partner.userId}
+                        className="w-full px-4 py-3 hover:bg-muted/50 transition-colors text-left flex items-center gap-3"
+                        onClick={() => {
+                          setShowInbox(false);
+                          loadAndMarkDmThread(partner.userId);
+                        }}
+                      >
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className={cn(
+                            getParticipantColorClasses(partner.userId).bg,
+                            getParticipantColorClasses(partner.userId).text,
+                            "font-semibold"
+                          )}>
+                            {partner.avatarFallback}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-medium">{partner.displayName}</span>
+                            {lastMessage && (
+                              <span className="text-xs text-muted-foreground">
+                                {lastMessage.timestamp instanceof Timestamp 
+                                  ? lastMessage.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                                  : ""}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {lastMessage ? lastMessage.content : "Neue Unterhaltung"}
+                          </p>
+                        </div>
+                        {unreadCount > 0 && (
+                          <Badge className="ml-2">{unreadCount}</Badge>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+            <DialogFooter className="p-3 border-t">
+              <Button variant="outline" onClick={() => setShowInbox(false)} className="w-full">
+              Schließen
+            </Button>
+          </DialogFooter>
+          </Card>
+        </div>
+      )}
+
+      {/* DM Popup Dialog (existing) */}
+      {showDmPopup && dmRecipient && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={handleCloseDmPopup}>
+          <Card className="w-full max-w-lg shadow-2xl relative bg-card text-card-foreground" onClick={(e) => e.stopPropagation()}>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className={cn(
+                    getParticipantColorClasses(dmRecipient.userId).bg,
+                    getParticipantColorClasses(dmRecipient.userId).text,
+                    "font-semibold"
+                  )}>
+                    {dmRecipient.avatarFallback}
+                  </AvatarFallback>
+                </Avatar>
+                <CardTitle className="text-lg">Direktnachricht an {dmRecipient.displayName}</CardTitle>
+              </div>
+              <Button variant="ghost" size="icon" onClick={handleCloseDmPopup} className="h-7 w-7">
+                <XIcon className="h-5 w-5" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ScrollArea className="h-[50vh] px-4 py-3 border-y">
+                {activeDmThread.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">Noch keine Nachrichten mit {dmRecipient.displayName}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activeDmThread.map((msg) => {
+                      const isOwnDm = msg.senderUserId === userId;
+                      return (
+                        <div 
+                          key={msg.id} 
+                          className={cn(
+                            "flex gap-2",
+                            isOwnDm ? "justify-end" : "justify-start"
+                          )}
+                        >
+                          {!isOwnDm && (
+                            <Avatar className="h-6 w-6">
+                              <AvatarFallback className={cn(
+                                getParticipantColorClasses(msg.senderUserId).bg,
+                                getParticipantColorClasses(msg.senderUserId).text,
+                                "text-xs font-semibold"
+                              )}>
+                                {msg.avatarFallback}
+                              </AvatarFallback>
+                            </Avatar>
+                          )}
+                          <div className={cn(
+                            "max-w-[70%] rounded-lg px-3 py-2",
+                            isOwnDm 
+                              ? "bg-primary text-primary-foreground" 
+                              : "bg-muted"
+                          )}>
+                            {msg.imageUrl && (
+                              <div 
+                                className="mb-2 relative w-full max-w-xs cursor-pointer rounded overflow-hidden"
+                                onClick={() => openImageModal(msg.imageUrl!, msg.imageFileName)}
+                              >
+                            <NextImage 
+                                  src={msg.imageUrl} 
+                                  alt={msg.imageFileName || "DM Bild"} 
+                                  width={300} 
+                                  height={200} 
+                                  className="object-contain"
+                            />
+                          </div>
+                        )}
+                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                            <p className={cn(
+                              "text-xs mt-1",
+                              isOwnDm ? "text-primary-foreground/70" : "text-muted-foreground"
+                            )}>
+                              {msg.timestamp instanceof Timestamp 
+                                ? msg.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                                : "..."}
+                            </p>
+                      </div>
+                          {isOwnDm && (
+                            <Avatar className="h-6 w-6">
+                              <AvatarFallback className={cn(
+                                getParticipantColorClasses(userId).bg,
+                                getParticipantColorClasses(userId).text,
+                                "text-xs font-semibold"
+                              )}>
+                                {userAvatarFallback}
+                              </AvatarFallback>
+                            </Avatar>
+                          )}
+                      </div>
+                      );
+                    })}
+                    <div ref={dmMessagesEndRef} />
+                      </div>
+                    )}
+              </ScrollArea>
+            </CardContent>
+            <CardFooter className="p-3 border-t">
+              <form onSubmit={(e) => { e.preventDefault(); handleSendDm(); }} className="flex gap-2 w-full">
+                <input type="file" ref={dmFileInputRef} onChange={handleDmImageFileSelected} accept="image/*" className="hidden" />
+                
+                {/* DM Image Preview */}
+                {dmImagePreviewUrl && (
+                  <div className="absolute bottom-full left-3 mb-2 p-2 bg-card border rounded-lg shadow-lg">
+                    <div className="relative">
+                      <NextImage 
+                        src={dmImagePreviewUrl} 
+                        alt="DM Bildvorschau" 
+                        width={80} 
+                        height={80} 
+                        className="rounded object-cover"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -top-2 -right-2 h-6 w-6"
+                        onClick={handleDmRemoveSelectedImage}
+                        type="button"
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
+                  </div>
+              </div>
+            )}
+                
+                <div className="flex gap-1">
+            <Button 
+              variant="outline" 
+                    size="icon" 
+                    type="button"
+                    onClick={() => dmFileInputRef.current?.click()}
+                    disabled={isSendingDm}
+                  >
+                    <ImageIconLucide className="h-4 w-4" />
+                  </Button>
+                  
+                  {/* Angepasster DM Emoji Button und Popover */} 
+                  <div className="relative">
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      type="button"
+              onClick={() => {
+                        console.log('[DM EMOJI] DM Emoji Picker button MANUALLY clicked, toggling showDmEmojiPicker.');
+                        setShowDmEmojiPicker(prev => !prev);
+              }}
+                      disabled={isSendingDm}
+            >
+                      <Smile className="h-4 w-4" />
+            </Button>
+                    
+                    {/* Neue EmojiPicker-Komponente für DMs */}
+                    <EmojiPicker
+                      isOpen={showDmEmojiPicker}
+                      onClose={() => setShowDmEmojiPicker(false)}
+                      onEmojiSelect={handleDmEmojiSelect}
+                      position="top"
+                      align="center"
+                      isMobile={isMobile}
+                      isInModal={true}
+                    />
+                  </div>
+                </div>
+                
+                <Input
+                  placeholder="Nachricht schreiben..."
+                  value={dmContent}
+                  onChange={(e) => setDmContent(e.target.value)}
+                  className="flex-1"
+                  disabled={isSendingDm}
+                />
+                
+                <Button 
+                  type="submit" 
+                  disabled={!dmContent.trim() && !dmSelectedImageFile || isSendingDm}
+                >
+                  {isSendingDm ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                </Button>
+              </form>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
+
       {/* NEU: Image Modal für vergrößerte Bildanzeige */}
       {showImageModal && selectedImageUrl && (
         <div 
@@ -2823,23 +3030,23 @@ export function ChatPageContent({
               className="relative w-full h-full flex items-center justify-center"
               onClick={(e) => e.stopPropagation()}
             >
-                            <NextImage 
+              <NextImage 
                 src={selectedImageUrl} 
                 alt={selectedImageAlt}
-                              layout="fill" 
+                layout="fill" 
                 objectFit="contain"
                 className="rounded-lg shadow-2xl"
                 sizes="95vw"
                 priority
-                            />
-                          </div>
+              />
+            </div>
             
             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-4 py-2 rounded-lg text-sm max-w-[90%] text-center">
               {selectedImageAlt}
-                      </div>
-                      </div>
-                      </div>
-                    )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Moderationsübersicht Komponente */}
       <ModerationOverview
@@ -2871,6 +3078,84 @@ export function ChatPageContent({
         userId={userId}
         closeAllModalsExceptDMs={closeAllModalsExceptDMs}
       />
+
+      {/* NEU: Mobile Moderationsübersicht Komponente */}
+      {isMobile && (
+        <MobileModerationOverview
+          isOpen={showMobileModeratorOverview}
+          onClose={() => setShowMobileModeratorOverview(false)}
+          hasModPermissions={hasModPermissions}
+          currentUserBadges={currentUserBadges}
+          sessionId={sessionId}
+          participants={participants}
+          reportedMessages={reportedMessages}
+          isLoadingReportedMessages={isLoadingReportedMessages}
+          loadReportedMessages={loadReportedMessages}
+          handleDismissReport={handleDismissReport}
+          toggleBlurMessage={toggleBlurMessage}
+          isTogglingBlur={isTogglingBlur}
+          handleApplyPenalty={handleApplyPenalty}
+          handleShowParticipantMessages={handleShowParticipantMessages} // Evtl. direkt in MobileModOverview behandeln
+          loadAndMarkDmThread={loadAndMarkDmThread}
+          getParticipantColorClasses={getParticipantColorClasses}
+          toast={toast}
+          handleAssignBadge={handleAssignBadge}
+          handleRemoveBadge={handleRemoveBadge}
+          handleToggleMute={handleToggleMute}
+          handleRemoveParticipant={handleRemoveParticipant}
+          handleClearAllBlurs={handleClearAllBlurs}
+          isAdjustingCooldown={isAdjustingCooldown}
+          handleAdjustCooldown={handleAdjustCooldown}
+          sessionData={sessionData}
+          userId={userId}
+          activePenalties={activePenalties}
+          hiddenMessages={hiddenMessages}
+          isLoadingHiddenMessages={isLoadingHiddenMessages}
+          loadActivePenalties={loadActivePenalties}
+          loadHiddenMessages={loadHiddenMessages}
+          penaltyTimers={penaltyTimers}
+        />
+      )}
+
+      {/* Moderationsübersicht Komponente (NUR DESKTOP) */}
+      {!isMobile && (
+        <ModerationOverview
+          showModeratorOverviewDialog={showModeratorOverviewDialog}
+          setShowModeratorOverviewDialog={setShowModeratorOverviewDialog}
+          hasModPermissions={hasModPermissions}
+          currentUserBadges={currentUserBadges}
+          sessionId={sessionId}
+          participants={participants}
+          reportedMessages={reportedMessages} // Wird weiterhin für Desktop benötigt
+          isLoadingReportedMessages={isLoadingReportedMessages} // Wird weiterhin für Desktop benötigt
+          loadReportedMessages={loadReportedMessages} // Wird weiterhin für Desktop benötigt
+          handleDismissReport={handleDismissReport}
+          toggleBlurMessage={toggleBlurMessage}
+          isTogglingBlur={isTogglingBlur}
+          handleApplyPenalty={handleApplyPenalty}
+          handleShowParticipantMessages={handleShowParticipantMessages}
+          loadAndMarkDmThread={loadAndMarkDmThread}
+          getParticipantColorClasses={getParticipantColorClasses}
+          toast={toast}
+          handleAssignBadge={handleAssignBadge}
+          handleRemoveBadge={handleRemoveBadge}
+          handleToggleMute={handleToggleMute}
+          handleRemoveParticipant={handleRemoveParticipant}
+          handleClearAllBlurs={handleClearAllBlurs}
+          isAdjustingCooldown={isAdjustingCooldown}
+          handleAdjustCooldown={handleAdjustCooldown}
+          sessionData={sessionData}
+          userId={userId}
+          // Die folgenden Props sind nur für MobileModerationOverview und werden hier entfernt
+          // activePenalties={activePenalties}
+          // hiddenMessages={hiddenMessages}
+          // isLoadingHiddenMessages={isLoadingHiddenMessages}
+          // loadActivePenalties={loadActivePenalties}
+          // loadHiddenMessages={loadHiddenMessages}
+          // penaltyTimers={penaltyTimers}
+          closeAllModalsExceptDMs={closeAllModalsExceptDMs} // Wird von Desktop-Version verwendet
+        />
+      )}
     </div>
   );
 }
